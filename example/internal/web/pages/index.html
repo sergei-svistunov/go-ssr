@@ -1,0 +1,47 @@
+<ssr:var name="title" type="func() string"/>
+<ssr:var name="user" type="User"/>
+<ssr:var name="tabClass" type="func(string) string"/>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ title() }}</title>
+    <ssr:assets/>
+</head>
+<body>
+
+<nav class="navbar navbar-expand-md bg-body-tertiary">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="/">Example</a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent"
+                aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarSupportedContent">
+            <div class="navbar-nav me-auto mb-2 mb-md-0">
+                <a class="nav-link {{ tabClass('/home') }}" aria-current="page" href="/home">Home</a>
+                <a class="nav-link {{ tabClass('/users') }}" aria-current="page" href="/users">Users</a>
+            </div>
+
+            <div class="navbar-nav">
+                <span class="navbar-text">
+                    <img src="{{user.Image}}" alt="{{ user.Name }}" width="24" height="24"
+                         class="d-inline-block align-text-top">
+                    {{ user.Name }}
+                </span>
+            </div>
+        </div>
+    </div>
+</nav>
+<div class="container-fluid">
+    <ssr:content default="/home"/>
+</div>
+
+<script>
+    console.log("Test <123> {{title}}")
+    const a = 10, b = 20;
+    if (a<b>10) {}
+</script>
+</body>
+</html>

@@ -1,0 +1,36 @@
+<ssr:var name="user" type="User"/>
+<ssr:var name="userTabClass" type="func(string)string"/>
+
+<div class="card mt-3">
+    <div class="row g-0">
+        <div class="col-md-4 col-xl-2">
+            <img src="{{ user.Image }}" alt="{{ user.Name }}" class="img-fluid rounded-start">
+        </div>
+        <div class="col-md-8 col-xl-10">
+            <div class="card-body h-100">
+                <h5 class="card-title">Name: {{ user.Name }}</h5>
+                <div class="card-text">
+                    <ul>
+                        <li>Login: <strong>{{ user.Login }}</strong></li>
+                        <li>Age: <strong>{{ user.Age }}</strong></li>
+                    </ul>
+                </div>
+
+                <ul class="nav nav-underline mt-3 position-absolute bottom-0">
+                    <li class="nav-item">
+                        <a class="nav-link {{ userTabClass('/info') }}" href="/users/{{ user.Login }}/info">Info</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {{ userTabClass('/contacts') }}"
+                           href="/users/{{ user.Login }}/contacts">Contacts</a>
+                    </li>
+                </ul>
+
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="mt-3">
+    <ssr:content default="info"/>
+</div>

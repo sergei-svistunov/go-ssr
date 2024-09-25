@@ -1,0 +1,14 @@
+<ssr:var name="phones" type="[]string"/>
+<ssr:var name="emails" type="[]string"/>
+
+<div>
+    <h3>Phones</h3>
+    <ul>
+        <li ssr:for="phone in phones">{{ phone }}</li>
+    </ul>
+
+    <h3>Emails</h3>
+    <ul>
+        <li ssr:for="email in emails">{{ email }}</li>
+    </ul>
+</div>

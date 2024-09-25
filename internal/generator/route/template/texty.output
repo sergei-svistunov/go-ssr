@@ -1,0 +1,1280 @@
+
+state 0
+	$accept: .top $end 
+
+	TEXT  shift 3
+	EXPR_START  shift 4
+	RAW_EXPR_START  shift 5
+	IDENTIFIER  shift 8
+	STRING  shift 9
+	NUMBER  shift 10
+	NOT  shift 11
+	'('  shift 12
+	.  error
+
+	top  goto 1
+	content  goto 2
+	expr  goto 7
+	loop  goto 6
+
+state 1
+	$accept:  top.$end 
+
+	$end  accept
+	.  error
+
+
+state 2
+	top:  content.    (1)
+	content:  content.TEXT 
+	content:  content.EXPR_START expr EXPR_END 
+	content:  content.RAW_EXPR_START expr EXPR_END 
+
+	TEXT  shift 13
+	EXPR_START  shift 14
+	RAW_EXPR_START  shift 15
+	.  reduce 1 (src line 30)
+
+
+state 3
+	content:  TEXT.    (2)
+
+	.  reduce 2 (src line 32)
+
+
+state 4
+	content:  EXPR_START.expr EXPR_END 
+
+	IDENTIFIER  shift 17
+	STRING  shift 9
+	NUMBER  shift 10
+	NOT  shift 11
+	'('  shift 12
+	.  error
+
+	expr  goto 16
+
+state 5
+	content:  RAW_EXPR_START.expr EXPR_END 
+
+	IDENTIFIER  shift 17
+	STRING  shift 9
+	NUMBER  shift 10
+	NOT  shift 11
+	'('  shift 12
+	.  error
+
+	expr  goto 18
+
+state 6
+	content:  loop.    (8)
+
+	.  reduce 8 (src line 38)
+
+
+state 7
+	content:  expr.    (9)
+	expr:  expr.EQ expr 
+	expr:  expr.NE expr 
+	expr:  expr.'+' expr 
+	expr:  expr.'-' expr 
+	expr:  expr.'*' expr 
+	expr:  expr.'/' expr 
+	expr:  expr.'%' expr 
+	expr:  expr.'<' expr 
+	expr:  expr.LE expr 
+	expr:  expr.'>' expr 
+	expr:  expr.GE expr 
+	expr:  expr.AND expr 
+	expr:  expr.OR expr 
+	expr:  expr.'.' IDENTIFIER 
+	expr:  expr.'[' expr ']' 
+	expr:  expr.'(' expr_list ')' 
+
+	EQ  shift 19
+	NE  shift 20
+	GE  shift 29
+	LE  shift 27
+	OR  shift 31
+	AND  shift 30
+	'+'  shift 21
+	'-'  shift 22
+	'*'  shift 23
+	'/'  shift 24
+	'%'  shift 25
+	'>'  shift 28
+	'<'  shift 26
+	'('  shift 34
+	'.'  shift 32
+	'['  shift 33
+	.  reduce 9 (src line 39)
+
+
+state 8
+	expr:  IDENTIFIER.    (10)
+	loop:  IDENTIFIER.IN expr 
+	loop:  IDENTIFIER.',' IDENTIFIER IN expr 
+
+	IN  shift 35
+	','  shift 36
+	.  reduce 10 (src line 41)
+
+
+state 9
+	expr:  STRING.    (11)
+
+	.  reduce 11 (src line 42)
+
+
+state 10
+	expr:  NUMBER.    (12)
+
+	.  reduce 12 (src line 43)
+
+
+state 11
+	expr:  NOT.expr 
+
+	IDENTIFIER  shift 17
+	STRING  shift 9
+	NUMBER  shift 10
+	NOT  shift 11
+	'('  shift 12
+	.  error
+
+	expr  goto 37
+
+state 12
+	expr:  '('.expr ')' 
+
+	IDENTIFIER  shift 17
+	STRING  shift 9
+	NUMBER  shift 10
+	NOT  shift 11
+	'('  shift 12
+	.  error
+
+	expr  goto 38
+
+state 13
+	content:  content TEXT.    (5)
+
+	.  reduce 5 (src line 35)
+
+
+state 14
+	content:  content EXPR_START.expr EXPR_END 
+
+	IDENTIFIER  shift 17
+	STRING  shift 9
+	NUMBER  shift 10
+	NOT  shift 11
+	'('  shift 12
+	.  error
+
+	expr  goto 39
+
+state 15
+	content:  content RAW_EXPR_START.expr EXPR_END 
+
+	IDENTIFIER  shift 17
+	STRING  shift 9
+	NUMBER  shift 10
+	NOT  shift 11
+	'('  shift 12
+	.  error
+
+	expr  goto 40
+
+state 16
+	content:  EXPR_START expr.EXPR_END 
+	expr:  expr.EQ expr 
+	expr:  expr.NE expr 
+	expr:  expr.'+' expr 
+	expr:  expr.'-' expr 
+	expr:  expr.'*' expr 
+	expr:  expr.'/' expr 
+	expr:  expr.'%' expr 
+	expr:  expr.'<' expr 
+	expr:  expr.LE expr 
+	expr:  expr.'>' expr 
+	expr:  expr.GE expr 
+	expr:  expr.AND expr 
+	expr:  expr.OR expr 
+	expr:  expr.'.' IDENTIFIER 
+	expr:  expr.'[' expr ']' 
+	expr:  expr.'(' expr_list ')' 
+
+	EXPR_END  shift 41
+	EQ  shift 19
+	NE  shift 20
+	GE  shift 29
+	LE  shift 27
+	OR  shift 31
+	AND  shift 30
+	'+'  shift 21
+	'-'  shift 22
+	'*'  shift 23
+	'/'  shift 24
+	'%'  shift 25
+	'>'  shift 28
+	'<'  shift 26
+	'('  shift 34
+	'.'  shift 32
+	'['  shift 33
+	.  error
+
+
+state 17
+	expr:  IDENTIFIER.    (10)
+
+	.  reduce 10 (src line 41)
+
+
+state 18
+	content:  RAW_EXPR_START expr.EXPR_END 
+	expr:  expr.EQ expr 
+	expr:  expr.NE expr 
+	expr:  expr.'+' expr 
+	expr:  expr.'-' expr 
+	expr:  expr.'*' expr 
+	expr:  expr.'/' expr 
+	expr:  expr.'%' expr 
+	expr:  expr.'<' expr 
+	expr:  expr.LE expr 
+	expr:  expr.'>' expr 
+	expr:  expr.GE expr 
+	expr:  expr.AND expr 
+	expr:  expr.OR expr 
+	expr:  expr.'.' IDENTIFIER 
+	expr:  expr.'[' expr ']' 
+	expr:  expr.'(' expr_list ')' 
+
+	EXPR_END  shift 42
+	EQ  shift 19
+	NE  shift 20
+	GE  shift 29
+	LE  shift 27
+	OR  shift 31
+	AND  shift 30
+	'+'  shift 21
+	'-'  shift 22
+	'*'  shift 23
+	'/'  shift 24
+	'%'  shift 25
+	'>'  shift 28
+	'<'  shift 26
+	'('  shift 34
+	'.'  shift 32
+	'['  shift 33
+	.  error
+
+
+state 19
+	expr:  expr EQ.expr 
+
+	IDENTIFIER  shift 17
+	STRING  shift 9
+	NUMBER  shift 10
+	NOT  shift 11
+	'('  shift 12
+	.  error
+
+	expr  goto 43
+
+state 20
+	expr:  expr NE.expr 
+
+	IDENTIFIER  shift 17
+	STRING  shift 9
+	NUMBER  shift 10
+	NOT  shift 11
+	'('  shift 12
+	.  error
+
+	expr  goto 44
+
+state 21
+	expr:  expr '+'.expr 
+
+	IDENTIFIER  shift 17
+	STRING  shift 9
+	NUMBER  shift 10
+	NOT  shift 11
+	'('  shift 12
+	.  error
+
+	expr  goto 45
+
+state 22
+	expr:  expr '-'.expr 
+
+	IDENTIFIER  shift 17
+	STRING  shift 9
+	NUMBER  shift 10
+	NOT  shift 11
+	'('  shift 12
+	.  error
+
+	expr  goto 46
+
+state 23
+	expr:  expr '*'.expr 
+
+	IDENTIFIER  shift 17
+	STRING  shift 9
+	NUMBER  shift 10
+	NOT  shift 11
+	'('  shift 12
+	.  error
+
+	expr  goto 47
+
+state 24
+	expr:  expr '/'.expr 
+
+	IDENTIFIER  shift 17
+	STRING  shift 9
+	NUMBER  shift 10
+	NOT  shift 11
+	'('  shift 12
+	.  error
+
+	expr  goto 48
+
+state 25
+	expr:  expr '%'.expr 
+
+	IDENTIFIER  shift 17
+	STRING  shift 9
+	NUMBER  shift 10
+	NOT  shift 11
+	'('  shift 12
+	.  error
+
+	expr  goto 49
+
+state 26
+	expr:  expr '<'.expr 
+
+	IDENTIFIER  shift 17
+	STRING  shift 9
+	NUMBER  shift 10
+	NOT  shift 11
+	'('  shift 12
+	.  error
+
+	expr  goto 50
+
+state 27
+	expr:  expr LE.expr 
+
+	IDENTIFIER  shift 17
+	STRING  shift 9
+	NUMBER  shift 10
+	NOT  shift 11
+	'('  shift 12
+	.  error
+
+	expr  goto 51
+
+state 28
+	expr:  expr '>'.expr 
+
+	IDENTIFIER  shift 17
+	STRING  shift 9
+	NUMBER  shift 10
+	NOT  shift 11
+	'('  shift 12
+	.  error
+
+	expr  goto 52
+
+state 29
+	expr:  expr GE.expr 
+
+	IDENTIFIER  shift 17
+	STRING  shift 9
+	NUMBER  shift 10
+	NOT  shift 11
+	'('  shift 12
+	.  error
+
+	expr  goto 53
+
+state 30
+	expr:  expr AND.expr 
+
+	IDENTIFIER  shift 17
+	STRING  shift 9
+	NUMBER  shift 10
+	NOT  shift 11
+	'('  shift 12
+	.  error
+
+	expr  goto 54
+
+state 31
+	expr:  expr OR.expr 
+
+	IDENTIFIER  shift 17
+	STRING  shift 9
+	NUMBER  shift 10
+	NOT  shift 11
+	'('  shift 12
+	.  error
+
+	expr  goto 55
+
+state 32
+	expr:  expr '.'.IDENTIFIER 
+
+	IDENTIFIER  shift 56
+	.  error
+
+
+state 33
+	expr:  expr '['.expr ']' 
+
+	IDENTIFIER  shift 17
+	STRING  shift 9
+	NUMBER  shift 10
+	NOT  shift 11
+	'('  shift 12
+	.  error
+
+	expr  goto 57
+
+state 34
+	expr:  expr '('.expr_list ')' 
+	expr_list: .    (31)
+
+	IDENTIFIER  shift 17
+	STRING  shift 9
+	NUMBER  shift 10
+	NOT  shift 11
+	'('  shift 12
+	.  reduce 31 (src line 63)
+
+	expr  goto 59
+	expr_list  goto 58
+
+state 35
+	loop:  IDENTIFIER IN.expr 
+
+	IDENTIFIER  shift 17
+	STRING  shift 9
+	NUMBER  shift 10
+	NOT  shift 11
+	'('  shift 12
+	.  error
+
+	expr  goto 60
+
+state 36
+	loop:  IDENTIFIER ','.IDENTIFIER IN expr 
+
+	IDENTIFIER  shift 61
+	.  error
+
+
+37: shift/reduce conflict (shift 34(0), red'n 26(2)) on '('
+37: shift/reduce conflict (shift 32(0), red'n 26(2)) on '.'
+37: shift/reduce conflict (shift 33(0), red'n 26(2)) on '['
+state 37
+	expr:  expr.EQ expr 
+	expr:  expr.NE expr 
+	expr:  expr.'+' expr 
+	expr:  expr.'-' expr 
+	expr:  expr.'*' expr 
+	expr:  expr.'/' expr 
+	expr:  expr.'%' expr 
+	expr:  expr.'<' expr 
+	expr:  expr.LE expr 
+	expr:  expr.'>' expr 
+	expr:  expr.GE expr 
+	expr:  expr.AND expr 
+	expr:  expr.OR expr 
+	expr:  NOT expr.    (26)
+	expr:  expr.'.' IDENTIFIER 
+	expr:  expr.'[' expr ']' 
+	expr:  expr.'(' expr_list ')' 
+
+	'('  shift 34
+	'.'  shift 32
+	'['  shift 33
+	.  reduce 26 (src line 57)
+
+
+state 38
+	expr:  expr.EQ expr 
+	expr:  expr.NE expr 
+	expr:  expr.'+' expr 
+	expr:  expr.'-' expr 
+	expr:  expr.'*' expr 
+	expr:  expr.'/' expr 
+	expr:  expr.'%' expr 
+	expr:  expr.'<' expr 
+	expr:  expr.LE expr 
+	expr:  expr.'>' expr 
+	expr:  expr.GE expr 
+	expr:  expr.AND expr 
+	expr:  expr.OR expr 
+	expr:  '(' expr.')' 
+	expr:  expr.'.' IDENTIFIER 
+	expr:  expr.'[' expr ']' 
+	expr:  expr.'(' expr_list ')' 
+
+	EQ  shift 19
+	NE  shift 20
+	GE  shift 29
+	LE  shift 27
+	OR  shift 31
+	AND  shift 30
+	'+'  shift 21
+	'-'  shift 22
+	'*'  shift 23
+	'/'  shift 24
+	'%'  shift 25
+	'>'  shift 28
+	'<'  shift 26
+	'('  shift 34
+	')'  shift 62
+	'.'  shift 32
+	'['  shift 33
+	.  error
+
+
+state 39
+	content:  content EXPR_START expr.EXPR_END 
+	expr:  expr.EQ expr 
+	expr:  expr.NE expr 
+	expr:  expr.'+' expr 
+	expr:  expr.'-' expr 
+	expr:  expr.'*' expr 
+	expr:  expr.'/' expr 
+	expr:  expr.'%' expr 
+	expr:  expr.'<' expr 
+	expr:  expr.LE expr 
+	expr:  expr.'>' expr 
+	expr:  expr.GE expr 
+	expr:  expr.AND expr 
+	expr:  expr.OR expr 
+	expr:  expr.'.' IDENTIFIER 
+	expr:  expr.'[' expr ']' 
+	expr:  expr.'(' expr_list ')' 
+
+	EXPR_END  shift 63
+	EQ  shift 19
+	NE  shift 20
+	GE  shift 29
+	LE  shift 27
+	OR  shift 31
+	AND  shift 30
+	'+'  shift 21
+	'-'  shift 22
+	'*'  shift 23
+	'/'  shift 24
+	'%'  shift 25
+	'>'  shift 28
+	'<'  shift 26
+	'('  shift 34
+	'.'  shift 32
+	'['  shift 33
+	.  error
+
+
+state 40
+	content:  content RAW_EXPR_START expr.EXPR_END 
+	expr:  expr.EQ expr 
+	expr:  expr.NE expr 
+	expr:  expr.'+' expr 
+	expr:  expr.'-' expr 
+	expr:  expr.'*' expr 
+	expr:  expr.'/' expr 
+	expr:  expr.'%' expr 
+	expr:  expr.'<' expr 
+	expr:  expr.LE expr 
+	expr:  expr.'>' expr 
+	expr:  expr.GE expr 
+	expr:  expr.AND expr 
+	expr:  expr.OR expr 
+	expr:  expr.'.' IDENTIFIER 
+	expr:  expr.'[' expr ']' 
+	expr:  expr.'(' expr_list ')' 
+
+	EXPR_END  shift 64
+	EQ  shift 19
+	NE  shift 20
+	GE  shift 29
+	LE  shift 27
+	OR  shift 31
+	AND  shift 30
+	'+'  shift 21
+	'-'  shift 22
+	'*'  shift 23
+	'/'  shift 24
+	'%'  shift 25
+	'>'  shift 28
+	'<'  shift 26
+	'('  shift 34
+	'.'  shift 32
+	'['  shift 33
+	.  error
+
+
+state 41
+	content:  EXPR_START expr EXPR_END.    (3)
+
+	.  reduce 3 (src line 33)
+
+
+state 42
+	content:  RAW_EXPR_START expr EXPR_END.    (4)
+
+	.  reduce 4 (src line 34)
+
+
+43: shift/reduce conflict (shift 34(0), red'n 13(1)) on '('
+43: shift/reduce conflict (shift 32(0), red'n 13(1)) on '.'
+43: shift/reduce conflict (shift 33(0), red'n 13(1)) on '['
+state 43
+	expr:  expr.EQ expr 
+	expr:  expr EQ expr.    (13)
+	expr:  expr.NE expr 
+	expr:  expr.'+' expr 
+	expr:  expr.'-' expr 
+	expr:  expr.'*' expr 
+	expr:  expr.'/' expr 
+	expr:  expr.'%' expr 
+	expr:  expr.'<' expr 
+	expr:  expr.LE expr 
+	expr:  expr.'>' expr 
+	expr:  expr.GE expr 
+	expr:  expr.AND expr 
+	expr:  expr.OR expr 
+	expr:  expr.'.' IDENTIFIER 
+	expr:  expr.'[' expr ']' 
+	expr:  expr.'(' expr_list ')' 
+
+	'('  shift 34
+	'.'  shift 32
+	'['  shift 33
+	.  reduce 13 (src line 44)
+
+
+44: shift/reduce conflict (shift 34(0), red'n 14(1)) on '('
+44: shift/reduce conflict (shift 32(0), red'n 14(1)) on '.'
+44: shift/reduce conflict (shift 33(0), red'n 14(1)) on '['
+state 44
+	expr:  expr.EQ expr 
+	expr:  expr.NE expr 
+	expr:  expr NE expr.    (14)
+	expr:  expr.'+' expr 
+	expr:  expr.'-' expr 
+	expr:  expr.'*' expr 
+	expr:  expr.'/' expr 
+	expr:  expr.'%' expr 
+	expr:  expr.'<' expr 
+	expr:  expr.LE expr 
+	expr:  expr.'>' expr 
+	expr:  expr.GE expr 
+	expr:  expr.AND expr 
+	expr:  expr.OR expr 
+	expr:  expr.'.' IDENTIFIER 
+	expr:  expr.'[' expr ']' 
+	expr:  expr.'(' expr_list ')' 
+
+	'('  shift 34
+	'.'  shift 32
+	'['  shift 33
+	.  reduce 14 (src line 45)
+
+
+45: shift/reduce conflict (shift 34(0), red'n 15(1)) on '('
+45: shift/reduce conflict (shift 32(0), red'n 15(1)) on '.'
+45: shift/reduce conflict (shift 33(0), red'n 15(1)) on '['
+state 45
+	expr:  expr.EQ expr 
+	expr:  expr.NE expr 
+	expr:  expr.'+' expr 
+	expr:  expr '+' expr.    (15)
+	expr:  expr.'-' expr 
+	expr:  expr.'*' expr 
+	expr:  expr.'/' expr 
+	expr:  expr.'%' expr 
+	expr:  expr.'<' expr 
+	expr:  expr.LE expr 
+	expr:  expr.'>' expr 
+	expr:  expr.GE expr 
+	expr:  expr.AND expr 
+	expr:  expr.OR expr 
+	expr:  expr.'.' IDENTIFIER 
+	expr:  expr.'[' expr ']' 
+	expr:  expr.'(' expr_list ')' 
+
+	'('  shift 34
+	'.'  shift 32
+	'['  shift 33
+	.  reduce 15 (src line 46)
+
+
+46: shift/reduce conflict (shift 34(0), red'n 16(1)) on '('
+46: shift/reduce conflict (shift 32(0), red'n 16(1)) on '.'
+46: shift/reduce conflict (shift 33(0), red'n 16(1)) on '['
+state 46
+	expr:  expr.EQ expr 
+	expr:  expr.NE expr 
+	expr:  expr.'+' expr 
+	expr:  expr.'-' expr 
+	expr:  expr '-' expr.    (16)
+	expr:  expr.'*' expr 
+	expr:  expr.'/' expr 
+	expr:  expr.'%' expr 
+	expr:  expr.'<' expr 
+	expr:  expr.LE expr 
+	expr:  expr.'>' expr 
+	expr:  expr.GE expr 
+	expr:  expr.AND expr 
+	expr:  expr.OR expr 
+	expr:  expr.'.' IDENTIFIER 
+	expr:  expr.'[' expr ']' 
+	expr:  expr.'(' expr_list ')' 
+
+	'('  shift 34
+	'.'  shift 32
+	'['  shift 33
+	.  reduce 16 (src line 47)
+
+
+47: shift/reduce conflict (shift 34(0), red'n 17(1)) on '('
+47: shift/reduce conflict (shift 32(0), red'n 17(1)) on '.'
+47: shift/reduce conflict (shift 33(0), red'n 17(1)) on '['
+state 47
+	expr:  expr.EQ expr 
+	expr:  expr.NE expr 
+	expr:  expr.'+' expr 
+	expr:  expr.'-' expr 
+	expr:  expr.'*' expr 
+	expr:  expr '*' expr.    (17)
+	expr:  expr.'/' expr 
+	expr:  expr.'%' expr 
+	expr:  expr.'<' expr 
+	expr:  expr.LE expr 
+	expr:  expr.'>' expr 
+	expr:  expr.GE expr 
+	expr:  expr.AND expr 
+	expr:  expr.OR expr 
+	expr:  expr.'.' IDENTIFIER 
+	expr:  expr.'[' expr ']' 
+	expr:  expr.'(' expr_list ')' 
+
+	'('  shift 34
+	'.'  shift 32
+	'['  shift 33
+	.  reduce 17 (src line 48)
+
+
+48: shift/reduce conflict (shift 34(0), red'n 18(1)) on '('
+48: shift/reduce conflict (shift 32(0), red'n 18(1)) on '.'
+48: shift/reduce conflict (shift 33(0), red'n 18(1)) on '['
+state 48
+	expr:  expr.EQ expr 
+	expr:  expr.NE expr 
+	expr:  expr.'+' expr 
+	expr:  expr.'-' expr 
+	expr:  expr.'*' expr 
+	expr:  expr.'/' expr 
+	expr:  expr '/' expr.    (18)
+	expr:  expr.'%' expr 
+	expr:  expr.'<' expr 
+	expr:  expr.LE expr 
+	expr:  expr.'>' expr 
+	expr:  expr.GE expr 
+	expr:  expr.AND expr 
+	expr:  expr.OR expr 
+	expr:  expr.'.' IDENTIFIER 
+	expr:  expr.'[' expr ']' 
+	expr:  expr.'(' expr_list ')' 
+
+	'('  shift 34
+	'.'  shift 32
+	'['  shift 33
+	.  reduce 18 (src line 49)
+
+
+49: shift/reduce conflict (shift 34(0), red'n 19(1)) on '('
+49: shift/reduce conflict (shift 32(0), red'n 19(1)) on '.'
+49: shift/reduce conflict (shift 33(0), red'n 19(1)) on '['
+state 49
+	expr:  expr.EQ expr 
+	expr:  expr.NE expr 
+	expr:  expr.'+' expr 
+	expr:  expr.'-' expr 
+	expr:  expr.'*' expr 
+	expr:  expr.'/' expr 
+	expr:  expr.'%' expr 
+	expr:  expr '%' expr.    (19)
+	expr:  expr.'<' expr 
+	expr:  expr.LE expr 
+	expr:  expr.'>' expr 
+	expr:  expr.GE expr 
+	expr:  expr.AND expr 
+	expr:  expr.OR expr 
+	expr:  expr.'.' IDENTIFIER 
+	expr:  expr.'[' expr ']' 
+	expr:  expr.'(' expr_list ')' 
+
+	'('  shift 34
+	'.'  shift 32
+	'['  shift 33
+	.  reduce 19 (src line 50)
+
+
+50: shift/reduce conflict (shift 34(0), red'n 20(1)) on '('
+50: shift/reduce conflict (shift 32(0), red'n 20(1)) on '.'
+50: shift/reduce conflict (shift 33(0), red'n 20(1)) on '['
+state 50
+	expr:  expr.EQ expr 
+	expr:  expr.NE expr 
+	expr:  expr.'+' expr 
+	expr:  expr.'-' expr 
+	expr:  expr.'*' expr 
+	expr:  expr.'/' expr 
+	expr:  expr.'%' expr 
+	expr:  expr.'<' expr 
+	expr:  expr '<' expr.    (20)
+	expr:  expr.LE expr 
+	expr:  expr.'>' expr 
+	expr:  expr.GE expr 
+	expr:  expr.AND expr 
+	expr:  expr.OR expr 
+	expr:  expr.'.' IDENTIFIER 
+	expr:  expr.'[' expr ']' 
+	expr:  expr.'(' expr_list ')' 
+
+	'('  shift 34
+	'.'  shift 32
+	'['  shift 33
+	.  reduce 20 (src line 51)
+
+
+51: shift/reduce conflict (shift 34(0), red'n 21(1)) on '('
+51: shift/reduce conflict (shift 32(0), red'n 21(1)) on '.'
+51: shift/reduce conflict (shift 33(0), red'n 21(1)) on '['
+state 51
+	expr:  expr.EQ expr 
+	expr:  expr.NE expr 
+	expr:  expr.'+' expr 
+	expr:  expr.'-' expr 
+	expr:  expr.'*' expr 
+	expr:  expr.'/' expr 
+	expr:  expr.'%' expr 
+	expr:  expr.'<' expr 
+	expr:  expr.LE expr 
+	expr:  expr LE expr.    (21)
+	expr:  expr.'>' expr 
+	expr:  expr.GE expr 
+	expr:  expr.AND expr 
+	expr:  expr.OR expr 
+	expr:  expr.'.' IDENTIFIER 
+	expr:  expr.'[' expr ']' 
+	expr:  expr.'(' expr_list ')' 
+
+	'('  shift 34
+	'.'  shift 32
+	'['  shift 33
+	.  reduce 21 (src line 52)
+
+
+52: shift/reduce conflict (shift 34(0), red'n 22(1)) on '('
+52: shift/reduce conflict (shift 32(0), red'n 22(1)) on '.'
+52: shift/reduce conflict (shift 33(0), red'n 22(1)) on '['
+state 52
+	expr:  expr.EQ expr 
+	expr:  expr.NE expr 
+	expr:  expr.'+' expr 
+	expr:  expr.'-' expr 
+	expr:  expr.'*' expr 
+	expr:  expr.'/' expr 
+	expr:  expr.'%' expr 
+	expr:  expr.'<' expr 
+	expr:  expr.LE expr 
+	expr:  expr.'>' expr 
+	expr:  expr '>' expr.    (22)
+	expr:  expr.GE expr 
+	expr:  expr.AND expr 
+	expr:  expr.OR expr 
+	expr:  expr.'.' IDENTIFIER 
+	expr:  expr.'[' expr ']' 
+	expr:  expr.'(' expr_list ')' 
+
+	'('  shift 34
+	'.'  shift 32
+	'['  shift 33
+	.  reduce 22 (src line 53)
+
+
+53: shift/reduce conflict (shift 34(0), red'n 23(1)) on '('
+53: shift/reduce conflict (shift 32(0), red'n 23(1)) on '.'
+53: shift/reduce conflict (shift 33(0), red'n 23(1)) on '['
+state 53
+	expr:  expr.EQ expr 
+	expr:  expr.NE expr 
+	expr:  expr.'+' expr 
+	expr:  expr.'-' expr 
+	expr:  expr.'*' expr 
+	expr:  expr.'/' expr 
+	expr:  expr.'%' expr 
+	expr:  expr.'<' expr 
+	expr:  expr.LE expr 
+	expr:  expr.'>' expr 
+	expr:  expr.GE expr 
+	expr:  expr GE expr.    (23)
+	expr:  expr.AND expr 
+	expr:  expr.OR expr 
+	expr:  expr.'.' IDENTIFIER 
+	expr:  expr.'[' expr ']' 
+	expr:  expr.'(' expr_list ')' 
+
+	'('  shift 34
+	'.'  shift 32
+	'['  shift 33
+	.  reduce 23 (src line 54)
+
+
+54: shift/reduce conflict (shift 34(0), red'n 24(1)) on '('
+54: shift/reduce conflict (shift 32(0), red'n 24(1)) on '.'
+54: shift/reduce conflict (shift 33(0), red'n 24(1)) on '['
+state 54
+	expr:  expr.EQ expr 
+	expr:  expr.NE expr 
+	expr:  expr.'+' expr 
+	expr:  expr.'-' expr 
+	expr:  expr.'*' expr 
+	expr:  expr.'/' expr 
+	expr:  expr.'%' expr 
+	expr:  expr.'<' expr 
+	expr:  expr.LE expr 
+	expr:  expr.'>' expr 
+	expr:  expr.GE expr 
+	expr:  expr.AND expr 
+	expr:  expr AND expr.    (24)
+	expr:  expr.OR expr 
+	expr:  expr.'.' IDENTIFIER 
+	expr:  expr.'[' expr ']' 
+	expr:  expr.'(' expr_list ')' 
+
+	'('  shift 34
+	'.'  shift 32
+	'['  shift 33
+	.  reduce 24 (src line 55)
+
+
+55: shift/reduce conflict (shift 34(0), red'n 25(1)) on '('
+55: shift/reduce conflict (shift 32(0), red'n 25(1)) on '.'
+55: shift/reduce conflict (shift 33(0), red'n 25(1)) on '['
+state 55
+	expr:  expr.EQ expr 
+	expr:  expr.NE expr 
+	expr:  expr.'+' expr 
+	expr:  expr.'-' expr 
+	expr:  expr.'*' expr 
+	expr:  expr.'/' expr 
+	expr:  expr.'%' expr 
+	expr:  expr.'<' expr 
+	expr:  expr.LE expr 
+	expr:  expr.'>' expr 
+	expr:  expr.GE expr 
+	expr:  expr.AND expr 
+	expr:  expr.OR expr 
+	expr:  expr OR expr.    (25)
+	expr:  expr.'.' IDENTIFIER 
+	expr:  expr.'[' expr ']' 
+	expr:  expr.'(' expr_list ')' 
+
+	'('  shift 34
+	'.'  shift 32
+	'['  shift 33
+	.  reduce 25 (src line 56)
+
+
+state 56
+	expr:  expr '.' IDENTIFIER.    (28)
+
+	.  reduce 28 (src line 59)
+
+
+state 57
+	expr:  expr.EQ expr 
+	expr:  expr.NE expr 
+	expr:  expr.'+' expr 
+	expr:  expr.'-' expr 
+	expr:  expr.'*' expr 
+	expr:  expr.'/' expr 
+	expr:  expr.'%' expr 
+	expr:  expr.'<' expr 
+	expr:  expr.LE expr 
+	expr:  expr.'>' expr 
+	expr:  expr.GE expr 
+	expr:  expr.AND expr 
+	expr:  expr.OR expr 
+	expr:  expr.'.' IDENTIFIER 
+	expr:  expr.'[' expr ']' 
+	expr:  expr '[' expr.']' 
+	expr:  expr.'(' expr_list ')' 
+
+	EQ  shift 19
+	NE  shift 20
+	GE  shift 29
+	LE  shift 27
+	OR  shift 31
+	AND  shift 30
+	'+'  shift 21
+	'-'  shift 22
+	'*'  shift 23
+	'/'  shift 24
+	'%'  shift 25
+	'>'  shift 28
+	'<'  shift 26
+	'('  shift 34
+	'.'  shift 32
+	'['  shift 33
+	']'  shift 65
+	.  error
+
+
+state 58
+	expr:  expr '(' expr_list.')' 
+	expr_list:  expr_list.',' expr 
+
+	')'  shift 66
+	','  shift 67
+	.  error
+
+
+state 59
+	expr:  expr.EQ expr 
+	expr:  expr.NE expr 
+	expr:  expr.'+' expr 
+	expr:  expr.'-' expr 
+	expr:  expr.'*' expr 
+	expr:  expr.'/' expr 
+	expr:  expr.'%' expr 
+	expr:  expr.'<' expr 
+	expr:  expr.LE expr 
+	expr:  expr.'>' expr 
+	expr:  expr.GE expr 
+	expr:  expr.AND expr 
+	expr:  expr.OR expr 
+	expr:  expr.'.' IDENTIFIER 
+	expr:  expr.'[' expr ']' 
+	expr:  expr.'(' expr_list ')' 
+	expr_list:  expr.    (32)
+
+	EQ  shift 19
+	NE  shift 20
+	GE  shift 29
+	LE  shift 27
+	OR  shift 31
+	AND  shift 30
+	'+'  shift 21
+	'-'  shift 22
+	'*'  shift 23
+	'/'  shift 24
+	'%'  shift 25
+	'>'  shift 28
+	'<'  shift 26
+	'('  shift 34
+	'.'  shift 32
+	'['  shift 33
+	.  reduce 32 (src line 64)
+
+
+state 60
+	expr:  expr.EQ expr 
+	expr:  expr.NE expr 
+	expr:  expr.'+' expr 
+	expr:  expr.'-' expr 
+	expr:  expr.'*' expr 
+	expr:  expr.'/' expr 
+	expr:  expr.'%' expr 
+	expr:  expr.'<' expr 
+	expr:  expr.LE expr 
+	expr:  expr.'>' expr 
+	expr:  expr.GE expr 
+	expr:  expr.AND expr 
+	expr:  expr.OR expr 
+	expr:  expr.'.' IDENTIFIER 
+	expr:  expr.'[' expr ']' 
+	expr:  expr.'(' expr_list ')' 
+	loop:  IDENTIFIER IN expr.    (34)
+
+	EQ  shift 19
+	NE  shift 20
+	GE  shift 29
+	LE  shift 27
+	OR  shift 31
+	AND  shift 30
+	'+'  shift 21
+	'-'  shift 22
+	'*'  shift 23
+	'/'  shift 24
+	'%'  shift 25
+	'>'  shift 28
+	'<'  shift 26
+	'('  shift 34
+	'.'  shift 32
+	'['  shift 33
+	.  reduce 34 (src line 67)
+
+
+state 61
+	loop:  IDENTIFIER ',' IDENTIFIER.IN expr 
+
+	IN  shift 68
+	.  error
+
+
+state 62
+	expr:  '(' expr ')'.    (27)
+
+	.  reduce 27 (src line 58)
+
+
+state 63
+	content:  content EXPR_START expr EXPR_END.    (6)
+
+	.  reduce 6 (src line 36)
+
+
+state 64
+	content:  content RAW_EXPR_START expr EXPR_END.    (7)
+
+	.  reduce 7 (src line 37)
+
+
+state 65
+	expr:  expr '[' expr ']'.    (29)
+
+	.  reduce 29 (src line 60)
+
+
+state 66
+	expr:  expr '(' expr_list ')'.    (30)
+
+	.  reduce 30 (src line 61)
+
+
+state 67
+	expr_list:  expr_list ','.expr 
+
+	IDENTIFIER  shift 17
+	STRING  shift 9
+	NUMBER  shift 10
+	NOT  shift 11
+	'('  shift 12
+	.  error
+
+	expr  goto 69
+
+state 68
+	loop:  IDENTIFIER ',' IDENTIFIER IN.expr 
+
+	IDENTIFIER  shift 17
+	STRING  shift 9
+	NUMBER  shift 10
+	NOT  shift 11
+	'('  shift 12
+	.  error
+
+	expr  goto 70
+
+state 69
+	expr:  expr.EQ expr 
+	expr:  expr.NE expr 
+	expr:  expr.'+' expr 
+	expr:  expr.'-' expr 
+	expr:  expr.'*' expr 
+	expr:  expr.'/' expr 
+	expr:  expr.'%' expr 
+	expr:  expr.'<' expr 
+	expr:  expr.LE expr 
+	expr:  expr.'>' expr 
+	expr:  expr.GE expr 
+	expr:  expr.AND expr 
+	expr:  expr.OR expr 
+	expr:  expr.'.' IDENTIFIER 
+	expr:  expr.'[' expr ']' 
+	expr:  expr.'(' expr_list ')' 
+	expr_list:  expr_list ',' expr.    (33)
+
+	EQ  shift 19
+	NE  shift 20
+	GE  shift 29
+	LE  shift 27
+	OR  shift 31
+	AND  shift 30
+	'+'  shift 21
+	'-'  shift 22
+	'*'  shift 23
+	'/'  shift 24
+	'%'  shift 25
+	'>'  shift 28
+	'<'  shift 26
+	'('  shift 34
+	'.'  shift 32
+	'['  shift 33
+	.  reduce 33 (src line 65)
+
+
+state 70
+	expr:  expr.EQ expr 
+	expr:  expr.NE expr 
+	expr:  expr.'+' expr 
+	expr:  expr.'-' expr 
+	expr:  expr.'*' expr 
+	expr:  expr.'/' expr 
+	expr:  expr.'%' expr 
+	expr:  expr.'<' expr 
+	expr:  expr.LE expr 
+	expr:  expr.'>' expr 
+	expr:  expr.GE expr 
+	expr:  expr.AND expr 
+	expr:  expr.OR expr 
+	expr:  expr.'.' IDENTIFIER 
+	expr:  expr.'[' expr ']' 
+	expr:  expr.'(' expr_list ')' 
+	loop:  IDENTIFIER ',' IDENTIFIER IN expr.    (35)
+
+	EQ  shift 19
+	NE  shift 20
+	GE  shift 29
+	LE  shift 27
+	OR  shift 31
+	AND  shift 30
+	'+'  shift 21
+	'-'  shift 22
+	'*'  shift 23
+	'/'  shift 24
+	'%'  shift 25
+	'>'  shift 28
+	'<'  shift 26
+	'('  shift 34
+	'.'  shift 32
+	'['  shift 33
+	.  reduce 35 (src line 68)
+
+
+31 terminals, 6 nonterminals
+36 grammar rules, 71/16000 states
+42 shift/reduce, 0 reduce/reduce conflicts reported
+55 working sets used
+memory: parser 28/240000
+42 extra closures
+362 shift entries, 1 exceptions
+29 goto entries
+0 entries saved by goto default
+Optimizer space used: output 216/240000
+216 table entries, 43 zero
+maximum spread: 31, maximum offset: 68

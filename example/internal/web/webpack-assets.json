@@ -1,0 +1,32 @@
+{
+  "entrypoints": {
+    "pages/home": [
+      "/static/js/pages/home.5f13d36dca3eb49dffe2.js"
+    ],
+    "pages/users/_userId_/contacts": [
+      "/static/css/pages/users/_userId_/contacts.ebaa73568a9350e8216c.css",
+      "/static/js/pages/users/_userId_/contacts.ebaa73568a9350e8216c.js"
+    ],
+    "pages/users/_userId_/info": [
+      "/static/js/pages/users/_userId_/info.a2435ab41912ef57ab27.js"
+    ],
+    "pages/users": [
+      "/static/js/bootstrap.9e956bb5a71942fc3218.js",
+      "/static/js/vendors.c44cd0e6d374429cb0f9.js",
+      "/static/js/luxon.1ed077e024362cfc6deb.js",
+      "/static/css/pages/users.1794bf4ad6e6eacffefd.css",
+      "/static/js/pages/users.1794bf4ad6e6eacffefd.js"
+    ],
+    "main": [
+      "/static/js/bootstrap.9e956bb5a71942fc3218.js",
+      "/static/js/vendors.c44cd0e6d374429cb0f9.js",
+      "/static/css/vendors-node_modules_bootstrap-icons_font_bootstrap-icons_min_css.89597b09c5e69f3d5f80.css",
+      "/static/css/main.a39f9b1eb5039bcdef96.css",
+      "/static/js/main.a39f9b1eb5039bcdef96.js"
+    ]
+  },
+  "images": {
+    "home/logo.png": "/static/images/home/logo.pnglogo.b11feeeb5df711606111.png",
+    "logo.png": "/static/images/logo.pnglogo.b11feeeb5df711606111.png"
+  }
+}

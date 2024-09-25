@@ -1,0 +1,41 @@
+<div class="col-xl-4">
+    <form method="post" class="mt-3">
+        <div class="form-floating mb-3">
+            <ssr:var name="login" type="FormValue"/>
+            <input type="text" name="login" required class="form-control {{ login.Class }}" id="login"
+                   placeholder="Login" value="{{ login.Value }}">
+            <label for="login">Login</label>
+            <div class="invalid-feedback" ssr:if="login.Error != ''">{{ login.Error }}</div>
+        </div>
+
+        <div class="form-floating mb-3">
+            <ssr:var name="name" type="FormValue"/>
+            <input type="text" name="name" required class="form-control {{ name.Class }}" id="name" placeholder="Name"
+                   value="{{ name.Value }}">
+            <label for="name">Name</label>
+            <div class="invalid-feedback" ssr:if="name.Error != ''">{{ name.Error }}</div>
+        </div>
+
+        <div class="form-floating mb-3">
+            <ssr:var name="age" type="FormValue"/>
+            <input type="number" name="age" step="1" required class="form-control {{ age.Class }}" placeholder="Age"
+                   id="age" value="{{ age.Value }}">
+            <label for="age">Age</label>
+            <div class="invalid-feedback" ssr:if="age.Error != ''">{{ age.Error }}</div>
+        </div>
+
+        <div class="form-floating mb-3">
+            <ssr:var name="description" type="FormValue"/>
+            <textarea name="description" required class="form-control  {{ description.Class }}" style="height: 100px"
+                      placeholder="Description" id="description">{{ description.Value }}</textarea>
+            <label for="description">Description</label>
+            <div class="invalid-feedback" ssr:if="description.Error != ''">{{ description.Error }}</div>
+        </div>
+
+        <ssr:var name="formError" type="string"/>
+        <div class="alert alert-danger" ssr:if="formError != ''">{{ formError }}</div>
+
+        <button type="submit" class="btn btn-primary">Add</button>
+
+    </form>
+</div>
