@@ -7,6 +7,7 @@ import (
 var _ Node = &Content{}
 
 type Content struct {
+	BaseNode
 	Children []Node
 }
 

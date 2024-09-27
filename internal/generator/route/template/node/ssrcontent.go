@@ -7,6 +7,7 @@ import (
 var _ Node = &SsrContent{}
 
 type SsrContent struct {
+	BaseNode
 	Default string
 }
 

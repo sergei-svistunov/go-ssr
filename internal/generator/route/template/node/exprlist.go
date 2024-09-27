@@ -7,6 +7,7 @@ import (
 var _ Node = &ExpressionsList{}
 
 type ExpressionsList struct {
+	BaseNode
 	Values []Node
 }
 

@@ -7,7 +7,7 @@ import (
 )
 
 func TestGenerator_Generate(t *testing.T) {
-	g := generator.New("../../example/internal/web/pages", "github.com/sergei-svistunov/go-ssr/example/internal/web/pages")
+	g := generator.New("../../example/internal/web", "github.com/sergei-svistunov/go-ssr/example/internal/web")
 
 	if err := g.Analyze(); err != nil {
 		t.Fatal(err)

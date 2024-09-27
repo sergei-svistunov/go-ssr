@@ -7,6 +7,7 @@ import (
 var _ Node = &Indexed{}
 
 type Indexed struct {
+	BaseNode
 	Expr  Node
 	Index Node
 }

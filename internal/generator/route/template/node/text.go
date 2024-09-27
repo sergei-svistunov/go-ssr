@@ -9,6 +9,7 @@ import (
 var _ Node = &Text{}
 
 type Text struct {
+	BaseNode
 	Text string
 }
 

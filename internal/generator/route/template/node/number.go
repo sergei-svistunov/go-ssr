@@ -7,6 +7,7 @@ import (
 var _ Node = &Number{}
 
 type Number struct {
+	BaseNode
 	Text string
 }
 

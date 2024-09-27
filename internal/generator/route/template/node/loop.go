@@ -7,6 +7,7 @@ import (
 var _ Node = &Loop{}
 
 type Loop struct {
+	BaseNode
 	Index    string
 	Variable string
 	Array    Node
@@ -14,6 +15,7 @@ type Loop struct {
 }
 
 func (n *Loop) WriteGoCode(buf *gobuf.GoBuf) {
+	buf.WriteStringLn(n.FilePos())
 	buf.WriteString("for ")
 	if n.Index != "" {
 		buf.WriteString(n.Index)

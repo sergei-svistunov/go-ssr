@@ -7,6 +7,7 @@ import (
 var _ Node = &Parentheses{}
 
 type Parentheses struct {
+	BaseNode
 	Value Node
 }
 

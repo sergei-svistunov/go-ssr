@@ -7,10 +7,12 @@ import (
 var _ Node = &Expression{}
 
 type Expression struct {
+	BaseNode
 	Value Node
 }
 
 func (n *Expression) WriteGoCode(buf *gobuf.GoBuf) {
+	buf.WriteStringLn(n.FilePos())
 	buf.WriteString("if _, err := mux.WriteHtmlEscaped(w,")
 	n.Value.WriteGoCode(buf)
 	buf.WriteStringLn("); err != nil {")

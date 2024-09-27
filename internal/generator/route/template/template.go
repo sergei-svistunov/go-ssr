@@ -6,6 +6,8 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -23,12 +25,30 @@ type Template struct {
 }
 
 type Variable struct {
+	File string
+	Line int
 	Name string
 	Type string
 }
 
-func Parse(r io.Reader, imageResolver func(string) string) (*Template, error) {
-	tok := html.NewTokenizer(r)
+func (v *Variable) FilePos() string {
+	return fmt.Sprintf("//line %s:%d", v.File, v.Line)
+}
+
+func Parse(filename string, imageResolver func(string) string) (*Template, error) {
+	tplFile, err := os.Open(filename)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("could not open template file: %w", err)
+	}
+	defer tplFile.Close()
+
+	filename = filepath.Base(filename)
+
+	tok := html.NewTokenizer(tplFile)
+	curLine := 1
 	rootNode := node.HtmlElement{}
 	stack := NodesStack{&rootNode}
 	var (
@@ -38,6 +58,7 @@ func Parse(r io.Reader, imageResolver func(string) string) (*Template, error) {
 
 	for {
 		tokenType := tok.Next()
+		tokenLines := bytes.Count(tok.Raw(), []byte{'\n'})
 		switch tokenType {
 		case html.ErrorToken:
 			if tok.Err() == io.EOF {
@@ -47,9 +68,9 @@ func Parse(r io.Reader, imageResolver func(string) string) (*Template, error) {
 					contentNode: contentNode,
 				}, nil
 			}
-			return nil, tok.Err()
+			return nil, fmt.Errorf("%s:%d: cannot parse HTML: %v", filename, curLine, tok.Err())
 		case html.TextToken:
-			nodes, err := parseText(string(tok.Text()), false)
+			nodes, err := parseText(string(tok.Text()), filename, curLine, false)
 			if err != nil {
 				return nil, err
 			}
@@ -77,14 +98,19 @@ func Parse(r io.Reader, imageResolver func(string) string) (*Template, error) {
 						return nil, fmt.Errorf("missing var type attribute")
 					}
 					variables = append(variables, Variable{
+						File: filename,
+						Line: curLine,
 						Name: attrs["name"],
 						Type: attrs["type"],
 					})
 				case "content":
-					contentNode = &node.SsrContent{attrs["default"]}
+					contentNode = &node.SsrContent{
+						BaseNode: node.BaseNode{filename, curLine},
+						Default:  attrs["default"],
+					}
 					stack.Top().Children = append(stack.Top().Children, contentNode)
 				case "assets":
-					stack.Top().Children = append(stack.Top().Children, &node.SsrAssets{})
+					stack.Top().Children = append(stack.Top().Children, &node.SsrAssets{node.BaseNode{filename, curLine}})
 				default:
 					return nil, fmt.Errorf("invalid tag name: %s", tagName)
 				}
@@ -93,6 +119,7 @@ func Parse(r io.Reader, imageResolver func(string) string) (*Template, error) {
 			}
 
 			n := &node.HtmlElement{
+				BaseNode:   node.BaseNode{filename, curLine},
 				TagName:    string(tagName),
 				SelfClosed: tokenType == html.SelfClosingTagToken,
 			}
@@ -105,7 +132,7 @@ func Parse(r io.Reader, imageResolver func(string) string) (*Template, error) {
 					if bytes.HasPrefix(key, []byte("ssr:")) {
 						switch key := string(key[4:]); key {
 						case "for":
-							expr, err := parseText(string(value), true)
+							expr, err := parseText(string(value), filename, curLine, true)
 							if err != nil {
 								return nil, err
 							}
@@ -117,13 +144,18 @@ func Parse(r io.Reader, imageResolver func(string) string) (*Template, error) {
 							hasWrapper = true
 							stack.Top().Children = append(stack.Top().Children, loop)
 						case "if":
-							expr, err := parseText(string(value), true)
+							expr, err := parseText(string(value), filename, curLine, true)
 							if err != nil {
 								return nil, err
 							}
 							hasWrapper = true
 							stack.Top().Children = append(stack.Top().Children, &node.SsrCondition{
-								Conditions: []node.SsrConditionData{{expr[0], n}}},
+								BaseNode: node.BaseNode{filename, curLine},
+								Conditions: []node.SsrConditionData{{
+									BaseNode:  node.BaseNode{filename, curLine},
+									Condition: expr[0],
+									Body:      n,
+								}}},
 							)
 
 						case "else", "else-if":
@@ -144,11 +176,15 @@ func Parse(r io.Reader, imageResolver func(string) string) (*Template, error) {
 							if key == "else" {
 								nodeCond.ElseBody = n
 							} else {
-								expr, err := parseText(string(value), true)
+								expr, err := parseText(string(value), filename, curLine, true)
 								if err != nil {
 									return nil, err
 								}
-								nodeCond.Conditions = append(nodeCond.Conditions, node.SsrConditionData{expr[0], n})
+								nodeCond.Conditions = append(nodeCond.Conditions, node.SsrConditionData{
+									BaseNode:  node.BaseNode{filename, curLine},
+									Condition: expr[0],
+									Body:      n,
+								})
 							}
 						default:
 							return nil, fmt.Errorf("invalid attribute name: \"%s\"", key)
@@ -166,7 +202,7 @@ func Parse(r io.Reader, imageResolver func(string) string) (*Template, error) {
 
 					var nodes []node.Node
 					if len(value) > 0 {
-						n, err := parseText(string(value), false)
+						n, err := parseText(string(value), filename, curLine, false)
 						if err != nil {
 							return nil, err
 						}
@@ -196,9 +232,11 @@ func Parse(r io.Reader, imageResolver func(string) string) (*Template, error) {
 			// Ignore comments
 		case html.DoctypeToken:
 			stack.Top().Children = append(stack.Top().Children, &node.HtmlRaw{
-				Data: string(tok.Raw()),
+				BaseNode: node.BaseNode{filename, curLine},
+				Data:     string(tok.Raw()),
 			})
 		}
+		curLine += tokenLines
 	}
 }
 
@@ -217,8 +255,8 @@ func (t *Template) WriteGoCode(buf *gobuf.GoBuf) {
 	}
 }
 
-func parseText(text string, insideExpr bool) ([]node.Node, error) {
-	lexer := &exprLex{text: text, insideExpr: insideExpr}
+func parseText(text string, filename string, fileLine int, insideExpr bool) ([]node.Node, error) {
+	lexer := &exprLex{text: text, filename: filename, curLine: fileLine, insideExpr: insideExpr}
 	yyErrorVerbose = true
 	//yyDebug = 5
 	yyParse(lexer)

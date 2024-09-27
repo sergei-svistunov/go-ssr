@@ -7,6 +7,7 @@ import (
 var _ Node = &Variable{}
 
 type Variable struct {
+	BaseNode
 	Name string
 }
 

@@ -11,10 +11,22 @@ import (
 var YyLexDebug = false //|| true
 
 type exprLex struct {
+	filename   string
 	text       string
 	insideExpr bool
-	err        error
+	curLine    int
+	err        *SyntaxError
 	result     *node.Content
+}
+
+type SyntaxError struct {
+	Filename string
+	Line     int
+	Message  string
+}
+
+func (e *SyntaxError) Error() string {
+	return fmt.Sprintf("%s:%d: %s", e.Filename, e.Line, e.Message)
 }
 
 var simpleTokens = []struct {
@@ -44,7 +56,7 @@ var reTokens = []struct {
 }
 
 func (x *exprLex) Error(s string) {
-	x.err = fmt.Errorf("%s", s)
+	x.err = &SyntaxError{x.filename, x.curLine, s}
 }
 
 func (x *exprLex) Lex(yylval *yySymType) int {
@@ -89,7 +101,10 @@ func (x *exprLex) Lex(yylval *yySymType) int {
 			x.text = x.text[1:]
 
 			switch c {
-			case ' ', '\t', '\r', '\n':
+			case ' ', '\t', '\r':
+				continue
+			case '\n':
+				x.curLine++
 				continue
 			default:
 				if YyLexDebug {
@@ -135,8 +150,11 @@ func (x *exprLex) Lex(yylval *yySymType) int {
 			return TEXT
 		}
 	}
+}
 
-	return 0
+func bn(lexer yyLexer) node.BaseNode {
+	x := lexer.(*exprLex)
+	return node.BaseNode{x.filename, x.curLine}
 }
 
 func tokenName(c int) string {

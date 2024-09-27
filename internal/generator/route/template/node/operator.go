@@ -7,6 +7,7 @@ import (
 var _ Node = &Operator{}
 
 type Operator struct {
+	BaseNode
 	Op    string
 	Left  Node
 	Right Node

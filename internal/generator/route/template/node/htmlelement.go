@@ -13,6 +13,7 @@ type HtmlAttribute struct {
 }
 
 type HtmlElement struct {
+	BaseNode
 	TagName    string
 	Attributes []HtmlAttribute
 	SelfClosed bool

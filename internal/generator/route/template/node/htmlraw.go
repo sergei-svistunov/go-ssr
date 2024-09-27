@@ -7,6 +7,7 @@ import (
 var _ Node = &HtmlRaw{}
 
 type HtmlRaw struct {
+	BaseNode
 	Data string
 }
 

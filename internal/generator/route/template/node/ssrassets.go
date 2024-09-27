@@ -6,7 +6,9 @@ import (
 
 var _ Node = &SsrAssets{}
 
-type SsrAssets struct{}
+type SsrAssets struct {
+	BaseNode
+}
 
 func (n *SsrAssets) WriteGoCode(buf *gobuf.GoBuf) {
 	buf.WriteStringLn("if err := c.WriteAssets(w, map[string]struct{}{}); err != nil {")

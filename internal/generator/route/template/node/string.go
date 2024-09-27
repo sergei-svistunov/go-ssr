@@ -7,6 +7,7 @@ import (
 var _ Node = &String{}
 
 type String struct {
+	BaseNode
 	Text string
 }
 

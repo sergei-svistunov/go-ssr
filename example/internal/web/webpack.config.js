@@ -1,7 +1,7 @@
 const path = require('path');
 const {CleanWebpackPlugin} = require('clean-webpack-plugin');
 const MiniCssExtractPlugin = require('mini-css-extract-plugin');
-const AssetMapPlugin = require('./webpack.plugin.assetsmap');
+const GoSSRAssetsPlugin = require('gossr-assets-webpack-plugin');
 
 module.exports = {
     entry: {},
@@ -43,7 +43,7 @@ module.exports = {
         extensions: ['.ts', '.js'],
     },
     plugins: [
-        new AssetMapPlugin(),
+        new GoSSRAssetsPlugin(),
         new CleanWebpackPlugin(),
         new MiniCssExtractPlugin({
             filename: 'css/[name].[chunkhash].css',

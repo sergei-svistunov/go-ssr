@@ -29,42 +29,42 @@ import (
 
 top:            content                                 { yylex.(*exprLex).result = $$  }
 
-content:        TEXT                                    { $$ = &node.Content{[]node.Node{&node.Text{$1}}} }
-|               EXPR_START expr EXPR_END                { $$ = &node.Content{[]node.Node{&node.Expression{$2}}} }
-|               RAW_EXPR_START expr EXPR_END            { $$ = &node.Content{[]node.Node{&node.RawExpression{$2}}} }
-|               content TEXT                            { $1.Children = append($1.Children, &node.Text{$2}); $$ = $1 }
-|               content EXPR_START expr EXPR_END        { $1.Children = append($1.Children, &node.Expression{$3}); $$ = $1 }
-|               content RAW_EXPR_START expr EXPR_END    { $1.Children = append($1.Children, &node.RawExpression{$3}); $$ = $1 }
-|               loop                                    { $$ = &node.Content{[]node.Node{$1}} }
-|               expr                                    { $$ = &node.Content{[]node.Node{$1}} }
+content:        TEXT                                    { $$ = &node.Content{bn(yylex), []node.Node{&node.Text{bn(yylex), $1}}} }
+|               EXPR_START expr EXPR_END                { $$ = &node.Content{bn(yylex), []node.Node{&node.Expression{bn(yylex), $2}}} }
+|               RAW_EXPR_START expr EXPR_END            { $$ = &node.Content{bn(yylex), []node.Node{&node.RawExpression{bn(yylex), $2}}} }
+|               content TEXT                            { $1.Children = append($1.Children, &node.Text{bn(yylex), $2}); $$ = $1 }
+|               content EXPR_START expr EXPR_END        { $1.Children = append($1.Children, &node.Expression{bn(yylex), $3}); $$ = $1 }
+|               content RAW_EXPR_START expr EXPR_END    { $1.Children = append($1.Children, &node.RawExpression{bn(yylex), $3}); $$ = $1 }
+|               loop                                    { $$ = &node.Content{bn(yylex), []node.Node{$1}} }
+|               expr                                    { $$ = &node.Content{bn(yylex), []node.Node{$1}} }
 
-expr:           IDENTIFIER                              { $$ = &node.Variable{Name: $1} }
-|               STRING                                  { $$ = &node.String{$1} }
-|               NUMBER                                  { $$ = &node.Number{$1} }
-|               expr EQ expr                            { $$ = &node.Operator{"==", $1, $3} }
-|               expr NE expr                            { $$ = &node.Operator{"!=", $1, $3} }
-|               expr '+' expr                           { $$ = &node.Operator{"+", $1, $3} }
-|               expr '-' expr                           { $$ = &node.Operator{"-", $1, $3} }
-|               expr '*' expr                           { $$ = &node.Operator{"*", $1, $3} }
-|               expr '/' expr                           { $$ = &node.Operator{"/", $1, $3} }
-|               expr '%' expr                           { $$ = &node.Operator{"%", $1, $3} }
-|               expr '<' expr                           { $$ = &node.Operator{"<", $1, $3} }
-|               expr LE expr                            { $$ = &node.Operator{"<=", $1, $3} }
-|               expr '>' expr                           { $$ = &node.Operator{">", $1, $3} }
-|               expr GE expr                            { $$ = &node.Operator{">=", $1, $3} }
-|               expr AND expr                           { $$ = &node.Operator{"&&", $1, $3} }
-|               expr OR expr                            { $$ = &node.Operator{"||", $1, $3} }
-|               NOT expr                                { $$ = &node.Operator{"!", nil, $2} }
-|               '(' expr ')'                            { $$ = &node.Parentheses{$2} }
-|               expr '.' IDENTIFIER                     { $$ = &node.StructField{$1, $3} }
-|               expr '[' expr ']'                       { $$ = &node.Indexed{$1, $3} }
-|               expr '(' expr_list ')'                  { $$ = &node.Function{$1, $3} }
+expr:           IDENTIFIER                              { $$ = &node.Variable{bn(yylex), $1} }
+|               STRING                                  { $$ = &node.String{bn(yylex), $1} }
+|               NUMBER                                  { $$ = &node.Number{bn(yylex), $1} }
+|               expr EQ expr                            { $$ = &node.Operator{bn(yylex), "==", $1, $3} }
+|               expr NE expr                            { $$ = &node.Operator{bn(yylex), "!=", $1, $3} }
+|               expr '+' expr                           { $$ = &node.Operator{bn(yylex), "+", $1, $3} }
+|               expr '-' expr                           { $$ = &node.Operator{bn(yylex), "-", $1, $3} }
+|               expr '*' expr                           { $$ = &node.Operator{bn(yylex), "*", $1, $3} }
+|               expr '/' expr                           { $$ = &node.Operator{bn(yylex), "/", $1, $3} }
+|               expr '%' expr                           { $$ = &node.Operator{bn(yylex), "%", $1, $3} }
+|               expr '<' expr                           { $$ = &node.Operator{bn(yylex), "<", $1, $3} }
+|               expr LE expr                            { $$ = &node.Operator{bn(yylex), "<=", $1, $3} }
+|               expr '>' expr                           { $$ = &node.Operator{bn(yylex), ">", $1, $3} }
+|               expr GE expr                            { $$ = &node.Operator{bn(yylex), ">=", $1, $3} }
+|               expr AND expr                           { $$ = &node.Operator{bn(yylex), "&&", $1, $3} }
+|               expr OR expr                            { $$ = &node.Operator{bn(yylex), "||", $1, $3} }
+|               NOT expr                                { $$ = &node.Operator{bn(yylex), "!", nil, $2} }
+|               '(' expr ')'                            { $$ = &node.Parentheses{bn(yylex), $2} }
+|               expr '.' IDENTIFIER                     { $$ = &node.StructField{bn(yylex), $1, $3} }
+|               expr '[' expr ']'                       { $$ = &node.Indexed{bn(yylex), $1, $3} }
+|               expr '(' expr_list ')'                  { $$ = &node.Function{bn(yylex), $1, $3} }
 
-expr_list:                                              { $$ = &node.ExpressionsList{} }
-|               expr                                    { $$ = &node.ExpressionsList{[]node.Node{$1}} }
+expr_list:                                              { $$ = &node.ExpressionsList{bn(yylex), nil} }
+|               expr                                    { $$ = &node.ExpressionsList{bn(yylex), []node.Node{$1}} }
 |               expr_list ',' expr                      { $1.Values = append($1.Values, $3); $$ = $1 }
 
-loop:           IDENTIFIER IN expr                      { $$ = &node.Loop{Variable: $1, Array: $3} }
-|               IDENTIFIER ',' IDENTIFIER IN expr       { $$ = &node.Loop{Index: $1, Variable: $3, Array: $5} }
+loop:           IDENTIFIER IN expr                      { $$ = &node.Loop{bn(yylex), "", $1, $3, nil} }
+|               IDENTIFIER ',' IDENTIFIER IN expr       { $$ = &node.Loop{bn(yylex), $1, $3, $5, nil} }
 
 %%
