@@ -9,8 +9,9 @@ import (
 )
 
 type Assets struct {
-	assets map[string][]string
-	images map[string]string
+	outputPath string
+	assets     map[string][]string
+	images     map[string]string
 }
 
 func AssetsFromDir(p string) (*Assets, error) {
@@ -24,6 +25,7 @@ func AssetsFromDir(p string) (*Assets, error) {
 	defer f.Close()
 
 	var assetsData struct {
+		OutputPath  string              `json:"outputPath"`
 		Entrypoints map[string][]string `json:"entrypoints"`
 		Images      map[string]string   `json:"images"`
 	}
@@ -47,7 +49,7 @@ func AssetsFromDir(p string) (*Assets, error) {
 		assets[epId] = epAssets
 	}
 
-	return &Assets{assets, assetsData.Images}, nil
+	return &Assets{assetsData.OutputPath, assets, assetsData.Images}, nil
 }
 
 var dqReplacer = strings.NewReplacer(

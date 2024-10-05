@@ -5,11 +5,14 @@ const GoSSRAssetsPlugin = require('gossr-assets-webpack-plugin');
 
 module.exports = {
     entry: {},
-    stats: {warnings: false},
     output: {
         filename: 'js/[name].[chunkhash].js',
         path: path.resolve(__dirname, 'static'),
         publicPath: '/static/'
+    },
+    stats: {warnings: false},
+    cache: {
+        type: 'filesystem'
     },
     module: {
         rules: [

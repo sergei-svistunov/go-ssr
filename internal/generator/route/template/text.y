@@ -22,7 +22,7 @@ import (
 %type   <Node>                  expr loop
 %type   <NodeExpressionsList>   expr_list
 
-%left '+' '-' '*' '/' '%' '>' '<' EQ NE GE LE OR AND
+%left '+' '-' '*' '/' '%' '>' '<' EQ NE GE LE OR AND '?' ':'
 %left NOT
 
 %%
@@ -59,6 +59,7 @@ expr:           IDENTIFIER                              { $$ = &node.Variable{bn
 |               expr '.' IDENTIFIER                     { $$ = &node.StructField{bn(yylex), $1, $3} }
 |               expr '[' expr ']'                       { $$ = &node.Indexed{bn(yylex), $1, $3} }
 |               expr '(' expr_list ')'                  { $$ = &node.Function{bn(yylex), $1, $3} }
+|               expr '?' expr ':' expr                  { $$ = &node.TernaryIf{bn(yylex), $1, $3, $5} }
 
 expr_list:                                              { $$ = &node.ExpressionsList{bn(yylex), nil} }
 |               expr                                    { $$ = &node.ExpressionsList{bn(yylex), []node.Node{$1}} }

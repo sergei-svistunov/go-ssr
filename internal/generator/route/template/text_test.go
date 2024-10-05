@@ -24,9 +24,10 @@ func TestTextParse(t *testing.T) {
 		{input: "{{$ '<h1>Raw html</h1>' }}"},
 		{input: "{{$ a }} {{$ '<h1>Raw html</h1>' }}"},
 		{input: "{{ a[10] }}"},
+		{input: "{{ a > 4 ? 'yes' : 'no' }}"},
 	} {
 		t.Run(fmt.Sprintf("Testcase #%d", i), func(t *testing.T) {
-			nodes, err := parseText(tc.input, tc.insideExpr)
+			nodes, err := parseText(tc.input, "", 0, tc.insideExpr)
 			if err != nil {
 				t.Fatal(err)
 			}

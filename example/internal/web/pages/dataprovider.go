@@ -22,14 +22,9 @@ func NewDP(m *model.Model) *RootDP {
 }
 
 func (D *RootDP) GetRouteRootData(ctx context.Context, r *mux.Request, w mux.ResponseWriter, data *RouteData) error {
-	data.TabClass = func(rPath string) string {
-		currentPath := r.URL.Path
-
-		if currentPath == rPath || strings.HasPrefix(currentPath, rPath+"/") {
-			return "active"
-		}
-
-		return ""
+	pathParts := strings.Split(r.URL.Path, "/")
+	if len(pathParts) > 1 {
+		data.RoutePath = "/" + pathParts[1]
 	}
 
 	data.Title = func() string {

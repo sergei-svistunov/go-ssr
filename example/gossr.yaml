@@ -1,0 +1,5 @@
+webDir: ./internal/web
+webPackage: github.com/sergei-svistunov/go-ssr/example/internal/web
+goRunArgs: .
+env: {}
+genDataProviders: true

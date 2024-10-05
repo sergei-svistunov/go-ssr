@@ -37,15 +37,19 @@ var (
 			web.NewDataProvider(&model.Model{}), mux.Options{},
 		),
 	}
-	recorder *httptest.ResponseRecorder
-	req1     = httptest.NewRequest(http.MethodGet, "/home", nil)
-	req2     = httptest.NewRequest(http.MethodGet, "/users/johndoe123/info", nil)
-	headers  = map[string][]string{}
+	req1    = httptest.NewRequest(http.MethodGet, "/home", nil)
+	req2    = httptest.NewRequest(http.MethodGet, "/users/johndoe123/info", nil)
+	headers = map[string][]string{}
+	dw      = DiscardWriter{}
 )
 
-var dw = DiscardWriter{}
+func BenchmarkSsrHandlerSimple(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		ssrHandler.ServeHTTP(dw, req1)
+	}
+}
 
-func BenchmarkSsrHandler(b *testing.B) {
+func BenchmarkSsrHandlerDeep(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		ssrHandler.ServeHTTP(dw, req2)
 	}

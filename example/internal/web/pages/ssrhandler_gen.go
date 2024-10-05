@@ -17,6 +17,7 @@ import (
 
 type DataProvider interface {
 	RouteDataProvider
+	routeHome.RouteDataProvider
 	routeUsers.RouteDataProvider
 	routeUsers_userId_.RouteDataProvider
 	routeUsers_userId_Contacts.RouteDataProvider

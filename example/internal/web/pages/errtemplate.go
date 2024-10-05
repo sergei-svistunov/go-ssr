@@ -33,7 +33,6 @@ func (e *errDataContext) WriteAssets(w io.Writer, writen map[string]struct{}) er
 type errRouteDataProvider struct{}
 
 func (errRouteDataProvider) GetRouteRootData(ctx context.Context, r *mux.Request, w mux.ResponseWriter, data *RouteData) error {
-	data.TabClass = func(string) string { return "" }
 	data.Title = func() string { return "Error" }
 	return nil
 }

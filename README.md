@@ -1,110 +1,124 @@
 
 # GoSSR: Go Generator for HTML Server-Side Rendering
 
-**GoSSR** is a Go-based tool designed to streamline the development of web applications by generating `http.Handler` implementations. It leverages the directory structure of your project to define routing and uses HTML templates for server-side rendering.
+**GoSSR** is a Go-based tool that simplifies the development of web applications by generating `http.Handler` implementations. It leverages your project's directory structure to define routing and uses HTML templates for efficient server-side rendering (SSR).
 
-## Features
+## Key Features
 
-- **Directory-Based Routing**: Define web routes based on your project's folder structure. Each folder translates into a route, while folders with a leading and trailing underscore (e.g., `_userId_`) become dynamic URL parameters accessible via the `UrlParam` method in the request object.
-- **HTML Template Conversion**: Convert HTML templates into Go code, enabling fast and type-safe server-side rendering.
-- **Dynamic Parameters in Routes**: Define dynamic parts of URLs using folder names. These are passed as parameters to the corresponding handler.
-- **Data Providers**: Automatically generate interfaces that enable injection of custom application logic into handlers via `RouteDataProvider`.
-- **SSR Asset Management**: Works seamlessly with `gossr-assets-webpack-plugin` to manage static assets (CSS, JavaScript, images) and replace paths dynamically with hashed filenames.
+- **Directory-Based Routing**: Define web routes based on your project’s folder structure. Folders with leading and trailing underscores (e.g., `_userId_`) are interpreted as dynamic URL parameters, accessible via the `UrlParam` method in the request object.
+- **HTML Template Rendering**: Transform HTML templates into Go code, enabling fast, type-safe server-side rendering.
+- **Dynamic URL Parameters**: Use folder names to define dynamic parts of URLs, which are passed as parameters to the corresponding handlers.
+- **Data Providers**: Automatically generate interfaces that allow injecting custom application logic into handlers via `RouteDataProvider`.
+- **Static Asset Management**: Seamlessly integrate with `gossr-assets-webpack-plugin` to manage static assets (CSS, JavaScript, images) and dynamically replace paths with hashed filenames.
+- **Automatic Rebuild**: Watches for file changes, rebuilding assets and templates as needed, and automatically restarts the project.
+
+## It's very fast
+
+The example below shows how you can benchmark SSR handler performance:
+
+```go
+var (
+    ssrHandler = ctxMiddleware{
+        pages.NewSsrHandler(
+            web.NewDataProvider(&model.Model{}), mux.Options{},
+        ),
+    }
+    req1    = httptest.NewRequest(http.MethodGet, "/home", nil)
+    req2    = httptest.NewRequest(http.MethodGet, "/users/johndoe123/info", nil)
+    dw      = DiscardWriter{}
+)
+
+func BenchmarkSsrHandlerSimple(b *testing.B) {
+    for i := 0; i < b.N; i++ {
+        ssrHandler.ServeHTTP(dw, req1)
+    }
+}
+
+func BenchmarkSsrHandlerDeep(b *testing.B) {
+    for i := 0; i < b.N; i++ {
+        ssrHandler.ServeHTTP(dw, req2)
+    }
+}
+```
+Results:
+```
+goos: linux
+goarch: amd64
+pkg: github.com/sergei-svistunov/go-ssr/example/internal/web/pages
+cpu: AMD Ryzen 7 5800H with Radeon Graphics         
+BenchmarkSsrHandlerSimple
+BenchmarkSsrHandlerSimple-16    	  432955	      2343 ns/op
+BenchmarkSsrHandlerDeep
+BenchmarkSsrHandlerDeep-16      	  164113	      7131 ns/op
+```
 
 ## Installation
 
-To install GoSSR, run the following command:
+To install GoSSR, run:
 
 ```bash
 go install github.com/sergei-svistunov/go-ssr@latest
 ```
 
-## Template Syntax
+## Usage
 
-### Expressions
+### Initialize a New Project
 
-Expressions are used to insert dynamic data into HTML templates. GoSSR supports a wide variety of operations, including arithmetic, logical comparisons, and function calls.
+To initialize a new project, run the generator in your project directory:
 
-Expressions can be inserted into text between HTML tags or inside attributes. For example:
-
-```html
-<p>Some text: {{ textValue }}</p>
-<span class="name {{ dynamicClass }}">Text</span>
+```bash
+go-ssr -init
 ```
 
-### Expression Operators
+This creates a `gossr.yaml` configuration file with the following structure:
 
-The following operators are supported in GoSSR templates:
-
-- **Arithmetic**: `+`, `-`, `*`, `/`, `%`
-- **Comparisons**: `==` (equal), `!=` (not equal), `<` (less than), `<=` (less than or equal), `>` (greater than), `>=` (greater than or equal)
-- **Logical**: `&&` (and), `||` (or), `!` (not)
-- **Accessors**: `.` for accessing struct fields, `[]` for indexing arrays
-- **Function Calls**: `funcName(arg1, arg2, ...)`
-- **Parentheses**: `()` for grouping expressions
-
-Example of using operators:
-
-```html
-<p>Sum: {{ a + b }}</p>
-<p>Age: {{ user.Age >= 18 ? 'Adult' : 'Minor' }}</p>
+```go
+type Config struct {
+  WebDir           string            `yaml:"webDir"`           // Directory containing SSR handlers and templates
+  WebPackage       string            `yaml:"webPackage"`       // Full path to the web package
+  GoRunArgs        string            `yaml:"goRunArgs"`        // Arguments for `go run`
+  Env              map[string]string `yaml:"env"`              // Environment variables
+  GenDataProviders bool              `yaml:"genDataProviders"` // Enable basic DataProviders implementation generation (experimental)
+}
 ```
 
-### Variables
+### Generate GoSSR Files
 
-GoSSR requires that each variable has an explicitly defined type. You can declare variables using the tag: 
-```html
-<ssr:var name="varName" type="varType"/>
-``` 
-Variables can be declared anywhere within the template.
+Run the generator to create the necessary SSR files:
 
-If a template contains variables, a corresponding `RouteDataProvider` interface is generated, which must be implemented in your Go code.
-
-### Embedding Content
-
-For a route such as `/user/login/info`, which contains nested sub-routes, you can embed the content of each child template within the parent using the `<ssr:content/>` tag. You can also specify a default child route with the `default` attribute:
-
-```html
-<ssr:content default="/info"/>
+```bash
+go-ssr
 ```
 
-If no default is specified, a `GetDefaultSubRoute` method will be added to the `RouteDataProvider` interface.
+### Automatically Rebuild the Project
 
-### Conditions
+Run the generator in watch mode to automatically rebuild your project when changes are detected:
 
-You can conditionally render HTML elements using the `ssr:if`, `ssr:else-if`, and `ssr:else` attributes:
-
-```html
-<span ssr:if="user.Age <= 18">0-18</span>
-<span ssr:else-if="user.Age <= 30">19-30</span>
-<span ssr:else-if="user.Age <= 60">31-60</span>
-<span ssr:else>60+</span>
+```bash
+go-ssr -watch
 ```
 
-### Loops
+## Project Structure
 
-You can use loops to iterate over arrays and render multiple elements:
+Create a directory for all GoSSR files, such as `internal/web`. This directory must include:
 
-```html
-<ul>
-    <li ssr:for="phone in phones">{{ phone }}</li>
-</ul>
-```
-
-Or with an index variable:
-
-```html
-<ul>
-    <p ssr:for="i, phone in phones">{{ i }}: {{ phone }}</p>
-</ul>
-```
+- **`pages/`**: Contains routes, GoSSR templates, TypeScript, and SCSS files. Each subdirectory is a route. Key files include:
+  - `index.html`: Required, the page template.
+  - `index.ts`: Optional, the page script.
+  - `styles.scss`: Optional, the page's CSS styles.
+  - `ssrhandler_gen.go`: Auto-generated, only in `pages` directory, contains common `DataProvider` interface and SSR router constructor.
+  - `ssrroute_gen.go`: Auto-generated, defines route `DataProvider` interface and code for rendering templates.
+- `package.json`: Contains JS and CSS dependencies.
+- `tsconfig.json`: TypeScript configuration.
+- `webpack.config.js`: Webpack configuration for building static assets.
+- `webpack-assets.json`: Auto-generated file with asset information.
 
 ## Static Asset Management
 
-GoSSR integrates with Webpack for managing static assets like JavaScript, CSS, and images. By using the `gossr-assets-webpack-plugin`, you can automatically generate an entry point for each directory.
+GoSSR integrates with Webpack for managing JavaScript, CSS, and images using the `gossr-assets-webpack-plugin`. Key features include:
 
-- **JavaScript & Styles**: The plugin uses `index.ts` and `styles.scss` as dependencies for the entry point if they exist in the directory.
-- **Image Management**: Images in the project are collected and copied to the `/static` folder, and their paths in `<img>` tags are replaced with hashed filenames. For example, an image `logo.png` is transformed as follows:
+- **JavaScript & Styles**: The plugin automatically includes `index.ts` and `styles.scss` as entry point dependencies if they exist in the directory.
+- **Image Management**: Images are copied to the `/static` folder, and their paths are updated to use hashed filenames. For example:
 
 ```html
 <img src="./logo.png">
@@ -112,14 +126,85 @@ GoSSR integrates with Webpack for managing static assets like JavaScript, CSS, a
 <img src="/static/images/logo.<hash>.png">
 ```
 
+## Template Syntax
+
+### Expressions
+
+GoSSR templates support expressions for inserting dynamic data between HTML tags or within attributes. For example:
+
+```html
+<p>Some text: {{ textValue }}</p>
+<span class="name {{ dynamicClass }}">Text</span>
+```
+
+### Operators
+
+Supported operators include:
+
+- **Arithmetic**: `+`, `-`, `*`, `/`, `%`
+- **Comparisons**: `==`, `!=`, `<`, `<=`, `>`, `>=`
+- **Logical**: `&&`, `||`, `!`
+- **Accessors**: `.` for struct fields, `[]` for arrays
+- **Function Calls**: `funcName(arg1, arg2, ...)`
+- **Ternary If**: `<boolean expression> ? <true value> : <false value>`
+
+Example:
+
+```html
+<p>Sum: {{ a + b }}</p>
+<p>Age: {{ user.Age >= 18 ? 'Adult' : 'Minor' }}</p>
+```
+
+### Declaring Variables
+
+Variables in GoSSR templates must have explicitly defined types. Declare them using the following syntax:
+
+```html
+<ssr:var name="varName" type="varType"/>
+```
+
+### Embedding Content
+
+For routes with nested sub-routes, use the `<ssr:content/>` tag to embed child templates. You can also specify a default child route using the `default` attribute:
+
+```html
+<ssr:content default="/info"/>
+```
+
+### Conditional Rendering
+
+Render elements conditionally using `ssr:if`, `ssr:else-if`, and `ssr:else` attributes:
+
+```html
+<span ssr:if="user.Age <= 18">0-18</span>
+<span ssr:else-if="user.Age <= 30">19-30</span>
+<span ssr:else>60+</span>
+```
+
+### Loops
+
+Use loops to iterate over arrays:
+
+```html
+<ul>
+    <li ssr:for="phone in phones">{{ phone }}</li>
+</ul>
+```
+
+With an index variable:
+
+```html
+<p ssr:for="i, phone in phones">{{ i }}: {{ phone }}</p>
+```
+
 ## Example
 
-For a working example of GoSSR in action, check out the [example folder](/example). It demonstrates directory-based routing, template embedding, dynamic URL parameters, and asset management with Webpack.
+For a working example, refer to the [example folder](/example). It demonstrates directory-based routing, template embedding, dynamic URL parameters, and asset management with Webpack.
 
 ## Contributing
 
-We welcome contributions! Whether you want to add new features, fix bugs, or improve documentation, feel free to fork the repository and submit a pull request.
+Contributions are welcome! Feel free to submit pull requests for new features, bug fixes, or improvements to documentation.
 
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for more details.
+GoSSR is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.

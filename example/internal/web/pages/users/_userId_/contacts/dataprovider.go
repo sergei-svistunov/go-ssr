@@ -9,17 +9,17 @@ import (
 	"github.com/sergei-svistunov/go-ssr/pkg/mux"
 )
 
-var _ RouteDataProvider = &UsersUserContactsDP{}
+var _ RouteDataProvider = &Users_userId_ContactsDP{}
 
-type UsersUserContactsDP struct {
+type Users_userId_ContactsDP struct {
 	model *model.Model
 }
 
-func NewDP(m *model.Model) *UsersUserContactsDP {
-	return &UsersUserContactsDP{m}
+func NewDP(m *model.Model) *Users_userId_ContactsDP {
+	return &Users_userId_ContactsDP{m}
 }
 
-func (p *UsersUserContactsDP) GetRouteUsers_userId_ContactsData(ctx context.Context, r *mux.Request, w mux.ResponseWriter, data *RouteData) error {
+func (p *Users_userId_ContactsDP) GetRouteUsers_userId_ContactsData(ctx context.Context, r *mux.Request, w mux.ResponseWriter, data *RouteData) error {
 	ctxdata.FromContext(ctx).PageTitle += " | User info"
 
 	dbUser := p.model.GetUserByLogin(r.URLParam("userId"))

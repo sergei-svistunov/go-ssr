@@ -9,7 +9,11 @@ import (
 	"github.com/sergei-svistunov/go-ssr/pkg/mux"
 )
 
+type RouteData struct {
+}
+
 type RouteDataProvider interface {
+	GetRouteHomeData(ctx context.Context, r *mux.Request, w mux.ResponseWriter, data *RouteData) error
 }
 
 type Route[DataProvider RouteDataProvider] struct{}
@@ -23,6 +27,9 @@ func (Route[DataProvider]) GetDataContext(ctx context.Context, r *mux.Request, w
 			},
 		}}
 	)
+	if err := dp.GetRouteHomeData(ctx, r, w, &dataCtx.RouteData); err != nil {
+		return nil, err
+	}
 	return dataCtx, nil
 }
 
@@ -32,6 +39,7 @@ func (Route[DataProvider]) GetDefaultSubRoute(ctx context.Context, r *mux.Reques
 
 type dataContext struct {
 	mux.RouteDataContext
+	RouteData
 }
 
 func (c *dataContext) Write(w io.Writer) error {

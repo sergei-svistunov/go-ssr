@@ -1,4 +1,5 @@
 {
+  "outputPath": "static",
   "entrypoints": {
     "pages/home": [
       "/static/js/pages/home.5f13d36dca3eb49dffe2.js"

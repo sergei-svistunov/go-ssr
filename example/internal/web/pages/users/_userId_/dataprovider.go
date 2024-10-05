@@ -9,7 +9,7 @@ import (
 	"github.com/sergei-svistunov/go-ssr/pkg/mux"
 )
 
-var _ RouteDataProvider = &UsersUserDP{}
+var _ RouteDataProvider = &Users_userId_DP{}
 
 type User struct {
 	Age   uint8
@@ -18,15 +18,15 @@ type User struct {
 	Image string
 }
 
-type UsersUserDP struct {
+type Users_userId_DP struct {
 	model *model.Model
 }
 
-func NewDP(m *model.Model) *UsersUserDP {
-	return &UsersUserDP{m}
+func NewDP(m *model.Model) *Users_userId_DP {
+	return &Users_userId_DP{m}
 }
 
-func (p *UsersUserDP) GetRouteUsers_userId_Data(ctx context.Context, r *mux.Request, w mux.ResponseWriter, data *RouteData) error {
+func (p *Users_userId_DP) GetRouteUsers_userId_Data(ctx context.Context, r *mux.Request, w mux.ResponseWriter, data *RouteData) error {
 	dbUser := p.model.GetUserByLogin(r.URLParam("userId"))
 	if dbUser == nil {
 		return mux.NewHttpError(http.StatusNotFound, "user wasn't found")

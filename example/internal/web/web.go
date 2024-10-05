@@ -1,4 +1,3 @@
-//go:generate go run github.com/sergei-svistunov/go-ssr -dir . -package github.com/sergei-svistunov/go-ssr/example/internal/web
 package web
 
 import (
@@ -22,7 +21,7 @@ func New(m *model.Model) http.Handler {
 		ssrHandler.ServeHTTP(w, r.WithContext(ctxdata.ToContext(r.Context(), &ctxdata.Data{})))
 	}))
 
-	mux.Handle("/static/", http.FileServer(http.Dir("example/internal/web"))) // ToDo: disable directory listing
+	mux.Handle("/static/", http.FileServer(http.Dir("internal/web"))) // ToDo: disable directory listing
 
 	return mux
 }

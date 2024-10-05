@@ -1,11 +1,8 @@
-<ssr:var name="title" type="func() string"/>
-<ssr:var name="user" type="User"/>
-<ssr:var name="tabClass" type="func(string) string"/>
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <ssr:var name="title" type="func() string"/>
     <title>{{ title() }}</title>
     <ssr:assets/>
 </head>
@@ -20,12 +17,14 @@
         </button>
         <div class="collapse navbar-collapse" id="navbarSupportedContent">
             <div class="navbar-nav me-auto mb-2 mb-md-0">
-                <a class="nav-link {{ tabClass('/home') }}" aria-current="page" href="/home">Home</a>
-                <a class="nav-link {{ tabClass('/users') }}" aria-current="page" href="/users">Users</a>
+                <ssr:var name="routePath" type="string"/>
+                <a class="nav-link {{ routePath == '/home' ? 'active' : '' }}" aria-current="page" href="/home">Home</a>
+                <a class="nav-link {{ routePath == '/users' ? 'active' : '' }}" aria-current="page" href="/users">Users</a>
             </div>
 
             <div class="navbar-nav">
                 <span class="navbar-text">
+                    <ssr:var name="user" type="User"/>
                     <img src="{{user.Image}}" alt="{{ user.Name }}" width="24" height="24"
                          class="d-inline-block align-text-top">
                     {{ user.Name }}
