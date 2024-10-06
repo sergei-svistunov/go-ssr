@@ -3,14 +3,14 @@
 
 **GoSSR** is a Go-based tool that simplifies the development of web applications by generating `http.Handler` implementations. It leverages your project's directory structure to define routing and uses HTML templates for efficient server-side rendering (SSR).
 
-## Key Features
+## Key features
 
-- **Directory-Based Routing**: Define web routes based on your project’s folder structure. Folders with leading and trailing underscores (e.g., `_userId_`) are interpreted as dynamic URL parameters, accessible via the `UrlParam` method in the request object.
-- **HTML Template Rendering**: Transform HTML templates into Go code, enabling fast, type-safe server-side rendering.
-- **Dynamic URL Parameters**: Use folder names to define dynamic parts of URLs, which are passed as parameters to the corresponding handlers.
-- **Data Providers**: Automatically generate interfaces that allow injecting custom application logic into handlers via `RouteDataProvider`.
-- **Static Asset Management**: Seamlessly integrate with `gossr-assets-webpack-plugin` to manage static assets (CSS, JavaScript, images) and dynamically replace paths with hashed filenames.
-- **Automatic Rebuild**: Watches for file changes, rebuilding assets and templates as needed, and automatically restarts the project.
+- **Directory-based routing**: Define web routes based on your project’s folder structure. Folders with leading and trailing underscores (e.g., `_userId_`) are interpreted as dynamic URL parameters, accessible via the `UrlParam` method in the request object.
+- **HTML template rendering**: Transform HTML templates into Go code, enabling fast, type-safe server-side rendering.
+- **Dynamic URL parameters**: Use folder names to define dynamic parts of URLs, which are passed as parameters to the corresponding handlers.
+- **Data providers**: Automatically generate interfaces that allow injecting custom application logic into handlers via `RouteDataProvider`.
+- **Static asset management**: Seamlessly integrate with `gossr-assets-webpack-plugin` to manage static assets (CSS, JavaScript, images) and dynamically replace paths with hashed filenames.
+- **Automatic rebuild**: Watches for file changes, rebuilding assets and templates as needed, and automatically restarts the project.
 
 ## It's very fast
 
@@ -62,15 +62,33 @@ go install github.com/sergei-svistunov/go-ssr@latest
 
 ## Usage
 
-### Initialize a New Project
+### Initialize a new project
 
 To initialize a new project, run the generator in your project directory:
 
 ```bash
-go-ssr -init
+go-ssr -init -pkg-name <appname>
+```
+This generates a boilerplate for your application.
+
+### Generate GoSSR files
+
+Run the generator to create the necessary SSR files:
+
+```bash
+go-ssr
 ```
 
-This creates a `gossr.yaml` configuration file with the following structure:
+### Automatically rebuild the project
+
+Run the generator in watch mode to automatically rebuild your project when changes are detected:
+
+```bash
+go-ssr -watch
+```
+
+## GoSSR config
+The config for the current project is in the `gossr.yaml` file with the following structure:
 
 ```go
 type Config struct {
@@ -82,23 +100,7 @@ type Config struct {
 }
 ```
 
-### Generate GoSSR Files
-
-Run the generator to create the necessary SSR files:
-
-```bash
-go-ssr
-```
-
-### Automatically Rebuild the Project
-
-Run the generator in watch mode to automatically rebuild your project when changes are detected:
-
-```bash
-go-ssr -watch
-```
-
-## Project Structure
+## Project structure
 
 Create a directory for all GoSSR files, such as `internal/web`. This directory must include:
 
@@ -113,12 +115,12 @@ Create a directory for all GoSSR files, such as `internal/web`. This directory m
 - `webpack.config.js`: Webpack configuration for building static assets.
 - `webpack-assets.json`: Auto-generated file with asset information.
 
-## Static Asset Management
+## Static asset management
 
 GoSSR integrates with Webpack for managing JavaScript, CSS, and images using the `gossr-assets-webpack-plugin`. Key features include:
 
-- **JavaScript & Styles**: The plugin automatically includes `index.ts` and `styles.scss` as entry point dependencies if they exist in the directory.
-- **Image Management**: Images are copied to the `/static` folder, and their paths are updated to use hashed filenames. For example:
+- **JavaScript & styles**: The plugin automatically includes `index.ts` and `styles.scss` as entry point dependencies if they exist in the directory.
+- **Image management**: Images are copied to the `/static` folder, and their paths are updated to use hashed filenames. For example:
 
 ```html
 <img src="./logo.png">
@@ -126,7 +128,7 @@ GoSSR integrates with Webpack for managing JavaScript, CSS, and images using the
 <img src="/static/images/logo.<hash>.png">
 ```
 
-## Template Syntax
+## Template syntax
 
 ### Expressions
 
@@ -145,8 +147,8 @@ Supported operators include:
 - **Comparisons**: `==`, `!=`, `<`, `<=`, `>`, `>=`
 - **Logical**: `&&`, `||`, `!`
 - **Accessors**: `.` for struct fields, `[]` for arrays
-- **Function Calls**: `funcName(arg1, arg2, ...)`
-- **Ternary If**: `<boolean expression> ? <true value> : <false value>`
+- **Function calls**: `funcName(arg1, arg2, ...)`
+- **Ternary if**: `<boolean expression> ? <true value> : <false value>`
 
 Example:
 
@@ -155,7 +157,7 @@ Example:
 <p>Age: {{ user.Age >= 18 ? 'Adult' : 'Minor' }}</p>
 ```
 
-### Declaring Variables
+### Declaring variables
 
 Variables in GoSSR templates must have explicitly defined types. Declare them using the following syntax:
 
@@ -163,7 +165,7 @@ Variables in GoSSR templates must have explicitly defined types. Declare them us
 <ssr:var name="varName" type="varType"/>
 ```
 
-### Embedding Content
+### Embedding content
 
 For routes with nested sub-routes, use the `<ssr:content/>` tag to embed child templates. You can also specify a default child route using the `default` attribute:
 
@@ -171,7 +173,7 @@ For routes with nested sub-routes, use the `<ssr:content/>` tag to embed child t
 <ssr:content default="/info"/>
 ```
 
-### Conditional Rendering
+### Conditional rendering
 
 Render elements conditionally using `ssr:if`, `ssr:else-if`, and `ssr:else` attributes:
 

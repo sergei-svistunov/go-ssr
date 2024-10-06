@@ -11,9 +11,9 @@ import (
 const FileName = "gossr.yaml"
 
 var defaultConfig = Config{
-	WebDir:     "./internal/web",
-	WebPackage: "web",
-	GoRunArgs:  ".",
+	WebDir:           "./internal/web",
+	GenDataProviders: true,
+	GoRunArgs:        ".",
 }
 
 type Config struct {
@@ -47,13 +47,17 @@ func Read() (*Config, error) {
 	return nil, fmt.Errorf("config file not found")
 }
 
-func Init() error {
+func Init(webPkgName string) error {
 	f, err := os.OpenFile(FileName, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-	return yaml.NewEncoder(f).Encode(defaultConfig)
+
+	cfg := defaultConfig
+	cfg.WebPackage = webPkgName
+
+	return yaml.NewEncoder(f).Encode(cfg)
 }
 
 func parseConfigFile(path string) (*Config, error) {
