@@ -137,7 +137,7 @@ func (g *Generator) Shutdown() {
 }
 
 func (g *Generator) runProject(ctx context.Context) {
-	g.projectCmd = exec.CommandContext(ctx, "go", "run", g.dir)
+	g.projectCmd = exec.CommandContext(ctx, "go", "run", g.goRunArgs)
 	g.projectCmd.SysProcAttr = &syscall.SysProcAttr{
 		Setpgid: true,
 	}

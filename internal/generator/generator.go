@@ -30,6 +30,7 @@ type Generator struct {
 	projectCmd       *exec.Cmd
 	projectCmdDone   chan struct{}
 	projectCmdEnv    map[string]string
+	goRunArgs        string
 	genDataProviders bool
 }
 
@@ -40,6 +41,7 @@ func New(cfg *config.Config) *Generator {
 		webPkgName:       cfg.WebPackage,
 		routes:           make(map[string]*route.Route),
 		projectCmdEnv:    cfg.Env,
+		goRunArgs:        cfg.GoRunArgs,
 		genDataProviders: cfg.GenDataProviders,
 	}
 }
