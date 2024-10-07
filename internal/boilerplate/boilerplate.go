@@ -7,7 +7,6 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 
@@ -40,10 +39,6 @@ func Init(pkgName, webDir string) error {
 	}
 
 	if err := recursiveCopy("files/web", webDir, pkgName); err != nil {
-		return err
-	}
-
-	if err := installNpmModules(webDir); err != nil {
 		return err
 	}
 
@@ -125,14 +120,4 @@ func writeGoMod(pkgName string) error {
 		return err
 	}
 	return nil
-}
-
-func installNpmModules(webDir string) error {
-	cmd := exec.Command("npm", "install")
-	cmd.Dir = webDir
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	return cmd.Run()
 }

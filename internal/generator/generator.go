@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/sergei-svistunov/go-ssr/internal/config"
 	"github.com/sergei-svistunov/go-ssr/internal/generator/gobuf"
@@ -584,4 +585,12 @@ func getExportedName(name string) string {
 func fileExists(filename string) bool {
 	_, err := os.Stat(filename)
 	return err == nil
+}
+
+func fileTime(filename string) (time.Time, error) {
+	stat, err := os.Stat(filename)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return stat.ModTime(), nil
 }
