@@ -549,10 +549,10 @@ func pathToVariable(path string) string {
 
 func getRouteDataProviderName(rPath string) string {
 	if rPath == "" || rPath == "/" {
-		return "RootDP"
+		return "DPRoot"
 	}
 
-	return pathToVariable(rPath) + "DP"
+	return "DP" + pathToVariable(rPath)
 }
 
 func getRouteDataProviderMethod(rPath string) string {
