@@ -18,6 +18,7 @@ var defaultConfig = Config{
 
 type Config struct {
 	Dir              string            `yaml:"-"`
+	Prod             bool              `yaml:"-"`
 	WebDir           string            `yaml:"webDir"`           // Directory containing SSR handlers and templates
 	WebPackage       string            `yaml:"webPackage"`       // Full path to the web package
 	GoRunArgs        string            `yaml:"goRunArgs"`        // Arguments for `go run`

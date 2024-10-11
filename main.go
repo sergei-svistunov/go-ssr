@@ -18,6 +18,7 @@ var (
 	fInit        = flag.Bool("init", false, "Initialize GoSSR config")
 	fPackageName = flag.String("pkg-name", "gossr/app", "Using with -init flag")
 	fWatch       = flag.Bool("watch", false, "Watch project files for changes and rebuild the project")
+	fProd        = flag.Bool("prod", false, "Build static files for production")
 )
 
 func main() {
@@ -33,6 +34,9 @@ func main() {
 	cfg, err := config.Read()
 	if err != nil {
 		fatal(err)
+	}
+	if *fProd {
+		cfg.Prod = true
 	}
 
 	g := generator.New(cfg)

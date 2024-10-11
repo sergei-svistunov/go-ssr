@@ -18,7 +18,11 @@ func (g *Generator) Webpack() error {
 		}
 	}
 
-	cmd := exec.Command("npx", "webpack", "--mode", "development")
+	mode := "development"
+	if g.prod {
+		mode = "production"
+	}
+	cmd := exec.Command("npx", "webpack", "--mode", mode)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
