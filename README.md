@@ -87,6 +87,14 @@ Run the generator in watch mode to automatically rebuild your project when chang
 go-ssr -watch
 ```
 
+### Building static files in production mode
+
+Just add the argument `-prod`:
+
+```bash
+go-ssr -prod
+```
+
 ## GoSSR config
 The config for the current project is in the `gossr.yaml` file with the following structure:
 
