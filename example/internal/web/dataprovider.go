@@ -14,13 +14,13 @@ import (
 
 func NewDataProvider(m *model.Model) pages.DataProvider {
 	return &struct {
-		*route_.RootDP
-		*routeHome.HomeDP
-		*routeUsers.UsersDP
-		*routeUsers_userId_.Users_userId_DP
-		*routeUsers_userId_Contacts.Users_userId_ContactsDP
-		*routeUsers_userId_Info.Users_userId_InfoDP
-		*routeUsersAdd.UsersAddDP
+		*route_.DPRoot
+		*routeHome.DPHome
+		*routeUsers.DPUsers
+		*routeUsers_userId_.DPUsers_userId_
+		*routeUsers_userId_Contacts.DPUsers_userId_Contacts
+		*routeUsers_userId_Info.DPUsers_userId_Info
+		*routeUsersAdd.DPUsersAdd
 	}{
 		route_.NewDP(m),
 		routeHome.NewDP(),

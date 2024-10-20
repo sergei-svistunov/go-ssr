@@ -60,7 +60,7 @@ func (g *Generator) Analyze() error {
 
 	pagesDir := filepath.Join(g.webDir, "pages")
 	if err := filepath.WalkDir(pagesDir, func(p string, d fs.DirEntry, err error) error {
-		if !d.IsDir() {
+		if !d.IsDir() || isDirEmpty(p) {
 			return nil
 		}
 
@@ -595,4 +595,12 @@ func fileTime(filename string) (time.Time, error) {
 		return time.Time{}, err
 	}
 	return stat.ModTime(), nil
+}
+
+func isDirEmpty(p string) bool {
+	entries, err := os.ReadDir(p)
+	if err != nil {
+		return true
+	}
+	return len(entries) == 0
 }

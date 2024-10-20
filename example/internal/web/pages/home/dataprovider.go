@@ -6,18 +6,18 @@ import (
 	"github.com/sergei-svistunov/go-ssr/pkg/mux"
 )
 
-var _ RouteDataProvider = &HomeDP{}
+var _ RouteDataProvider = &DPHome{}
 
-type HomeDP struct{}
+type DPHome struct{}
 
-func NewDP() *HomeDP {
-	return &HomeDP{}
+func NewDP() *DPHome {
+	return &DPHome{}
 }
 
-func (p *HomeDP) GetRouteHomeDefaultSubRoute(ctx context.Context, r *mux.Request) (string, error) {
+func (p *DPHome) GetRouteHomeDefaultSubRoute(ctx context.Context, r *mux.Request) (string, error) {
 	return "", nil
 }
 
-func (p *HomeDP) GetRouteHomeData(ctx context.Context, r *mux.Request, w mux.ResponseWriter, data *RouteData) error {
+func (p *DPHome) GetRouteHomeData(ctx context.Context, r *mux.Request, w mux.ResponseWriter, data *RouteData) error {
 	return nil
 }

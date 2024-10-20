@@ -11,7 +11,7 @@ import (
 	"github.com/sergei-svistunov/go-ssr/pkg/mux"
 )
 
-var _ RouteDataProvider = &UsersAddDP{}
+var _ RouteDataProvider = &DPUsersAdd{}
 
 type FormValue struct {
 	Value string
@@ -19,15 +19,15 @@ type FormValue struct {
 	Class string
 }
 
-type UsersAddDP struct {
+type DPUsersAdd struct {
 	model *model.Model
 }
 
-func NewDP(m *model.Model) *UsersAddDP {
-	return &UsersAddDP{m}
+func NewDP(m *model.Model) *DPUsersAdd {
+	return &DPUsersAdd{m}
 }
 
-func (p *UsersAddDP) GetRouteUsersAddData(ctx context.Context, r *mux.Request, w mux.ResponseWriter, data *RouteData) error {
+func (p *DPUsersAdd) GetRouteUsersAddData(ctx context.Context, r *mux.Request, w mux.ResponseWriter, data *RouteData) error {
 	if r.Method != http.MethodPost {
 		return nil
 	}
