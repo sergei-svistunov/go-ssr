@@ -11,6 +11,13 @@ type Node interface {
 	FilePos() string
 }
 
+type WithChildren interface {
+	Node
+	AddChildren(children ...Node)
+	LastChild() Node
+	PopChild()
+}
+
 type BaseNode struct {
 	File string
 	Line int

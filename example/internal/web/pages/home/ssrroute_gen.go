@@ -19,17 +19,19 @@ type RouteDataProvider interface {
 type Route[DataProvider RouteDataProvider] struct{}
 
 func (Route[DataProvider]) GetDataContext(ctx context.Context, r *mux.Request, w mux.ResponseWriter, dp DataProvider, child mux.DataContext) (mux.DataContext, error) {
-	var (
-		dataCtx = &dataContext{RouteDataContext: mux.RouteDataContext{
+	dataCtx := &dataContext{
+		RouteDataContext: mux.RouteDataContext{
 			Child: child,
 			Assets: []string{
 				"<script defer=\"defer\" src=\"/static/js/pages/home.5f13d36dca3eb49dffe2.js\"></script>",
 			},
-		}}
-	)
+		},
+	}
+
 	if err := dp.GetRouteHomeData(ctx, r, w, &dataCtx.RouteData); err != nil {
 		return nil, err
 	}
+
 	return dataCtx, nil
 }
 
@@ -39,7 +41,7 @@ func (Route[DataProvider]) GetDefaultSubRoute(ctx context.Context, r *mux.Reques
 
 type dataContext struct {
 	mux.RouteDataContext
-	RouteData
+	RouteData RouteData
 }
 
 func (c *dataContext) Write(w io.Writer) error {

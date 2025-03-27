@@ -1,41 +1,86 @@
-<div class="col-xl-4">
-    <form method="post" class="mt-3">
+<div class="col-xl-4 pt-3">
+    <ssr:form name="add" enctype="multipart/form-data">
         <div class="form-floating mb-3">
-            <ssr:var name="login" type="FormValue"/>
-            <input type="text" name="login" required class="form-control {{ login.Class }}" id="login"
-                   placeholder="Login" value="{{ login.Value }}">
+            <ssr:input name="login" type="text" required id="login" placeholder="Login"
+                       class="form-control {{ form.IsValidated() ? input.HasError() ? 'is-invalid' : 'is-valid' : '' }}"/>
             <label for="login">Login</label>
-            <div class="invalid-feedback" ssr:if="login.Error != ''">{{ login.Error }}</div>
+            <div class="invalid-feedback" ssr:if="form.Login.HasError()">{{ form.Login.Error }}</div>
         </div>
 
         <div class="form-floating mb-3">
-            <ssr:var name="name" type="FormValue"/>
-            <input type="text" name="name" required class="form-control {{ name.Class }}" id="name" placeholder="Name"
-                   value="{{ name.Value }}">
+            <ssr:input name="name" type="text" required id="name" placeholder="Name"
+                       class="form-control {{ form.IsValidated() ? input.HasError() ? 'is-invalid' : 'is-valid' : '' }}"/>
             <label for="name">Name</label>
-            <div class="invalid-feedback" ssr:if="name.Error != ''">{{ name.Error }}</div>
+            <div class="invalid-feedback" ssr:if="form.Name.HasError()">{{ form.Name.Error }}</div>
         </div>
 
         <div class="form-floating mb-3">
-            <ssr:var name="age" type="FormValue"/>
-            <input type="number" name="age" step="1" required class="form-control {{ age.Class }}" placeholder="Age"
-                   id="age" value="{{ age.Value }}">
+            <ssr:input type="number" gotype="uint8" name="age" step="1" required id="age" placeholder="Age"
+                       class="form-control {{ form.IsValidated() ? input.HasError() ? 'is-invalid' : 'is-valid' : '' }}"/>
             <label for="age">Age</label>
-            <div class="invalid-feedback" ssr:if="age.Error != ''">{{ age.Error }}</div>
+            <div class="invalid-feedback" ssr:if="form.Age.HasError()">{{ form.Age.Error }}</div>
         </div>
 
         <div class="form-floating mb-3">
-            <ssr:var name="description" type="FormValue"/>
-            <textarea name="description" required class="form-control  {{ description.Class }}" style="height: 100px"
-                      placeholder="Description" id="description">{{ description.Value }}</textarea>
-            <label for="description">Description</label>
-            <div class="invalid-feedback" ssr:if="description.Error != ''">{{ description.Error }}</div>
+            <ssr:select name="select" gotype="uint8" id="select"
+                        class="form-select {{ form.IsValidated() ? input.HasError() ? 'is-invalid' : 'is-valid' : '' }}"/>
+            <label for="select">Works with selects</label>
+            <div class="invalid-feedback" ssr:if="form.Select.HasError()">{{ form.Select.Error }}</div>
         </div>
 
-        <ssr:var name="formError" type="string"/>
-        <div class="alert alert-danger" ssr:if="formError != ''">{{ formError }}</div>
+        <div class="form-floating mb-3">
+            <ssr:select name="multSelect" gotype="uint8" multiple="multiple" id="mult-select" style="height: 200px"
+                        class="form-select {{ form.IsValidated() ? input.HasError() ? 'is-invalid' : 'is-valid' : '' }}"/>
+            <label for="mult-select">Works with selects with multiple</label>
+            <div class="invalid-feedback" ssr:if="form.MultSelect.HasError()">{{ form.MultSelect.Error }}</div>
+        </div>
 
-        <button type="submit" class="btn btn-primary">Add</button>
+        <div class="form-floating mb-3">
+            <ssr:textarea name="description" required style="height: 100px" placeholder="Description" id="description"
+                          class="form-control {{ form.IsValidated() ? textarea.HasError() ? 'is-invalid' : 'is-valid' : '' }}"/>
+            <label for="description">Description</label>
+            <div class="invalid-feedback" ssr:if="form.Description.HasError()">{{ form.Description.Error }}</div>
+        </div>
 
-    </form>
+        <div class="form-floating mb-3">
+            <ssr:input type="file" name="image" required id="image" placeholder="Image"
+                       class="form-control {{ form.IsValidated() ? input.HasError() ? 'is-invalid' : 'is-valid' : '' }}"/>
+            <label for="age">Image</label>
+            <div class="invalid-feedback" ssr:if="form.Image.HasError()">{{ form.Image.Error }}</div>
+        </div>
+
+        <div class="form-floating mb-3">
+            <ssr:input type="file" name="images" required id="images" placeholder="Images" multiple
+                       class="form-control {{ form.IsValidated() ? input.HasError() ? 'is-invalid' : 'is-valid' : '' }}"/>
+            <label for="age">Images</label>
+            <div class="invalid-feedback" ssr:if="form.Images.HasError()">{{ form.Images.Error }}</div>
+        </div>
+
+        <div class="form-check mb-3">
+            <ssr:input type="checkbox" gotype="bool" name="confirm" id="confirm" value="true"
+                       class="form-check-input is-{{ input.HasError() ? 'invalid' : 'valid' }}"/>
+            <label for="confirm">I confirm ...</label>
+            <div class="invalid-feedback" ssr:if="form.Confirm.HasError()">{{ form.Confirm.Error }}</div>
+        </div>
+
+        <div class="form-check mb-3">
+            <ssr:input type="checkbox" gotype="bool" name="confirm" id="confirm2" value="false"
+                       class="form-check-input is-{{ input.HasError() ? 'invalid' : 'valid' }}"/>
+            <label for="confirm2">I confirm 2...</label>
+            <div class="invalid-feedback" ssr:if="form.Confirm.HasError()">{{ form.Confirm.Error }}</div>
+        </div>
+
+        <div class="form-control mb-3">
+            <ssr:input type="radio" gotype="uint8" name="radio" id="radio1" value="1" class="form-check-input"/>
+            <label for="radio1">Radio 1</label>
+
+            <ssr:input type="radio" gotype="uint8" name="radio" id="radio2" value="2" class="form-check-input"/>
+            <label for="radio2">Radio 2</label>
+        </div>
+
+        <div class="alert alert-danger" ssr:if="form.Error != ''">{{ form.Error }}</div>
+
+        <button type="submit" class="btn btn-primary mb-3">Add</button>
+
+    </ssr:form>
 </div>

@@ -21,8 +21,8 @@ type RouteDataProvider interface {
 type Route[DataProvider RouteDataProvider] struct{}
 
 func (Route[DataProvider]) GetDataContext(ctx context.Context, r *mux.Request, w mux.ResponseWriter, dp DataProvider, child mux.DataContext) (mux.DataContext, error) {
-	var (
-		dataCtx = &dataContext{RouteDataContext: mux.RouteDataContext{
+	dataCtx := &dataContext{
+		RouteDataContext: mux.RouteDataContext{
 			Child: child,
 			Assets: []string{
 				"<script defer=\"defer\" src=\"/static/js/bootstrap.9e956bb5a71942fc3218.js\"></script>",
@@ -31,11 +31,13 @@ func (Route[DataProvider]) GetDataContext(ctx context.Context, r *mux.Request, w
 				"<link href=\"/static/css/pages/users.1794bf4ad6e6eacffefd.css\" rel=\"stylesheet\">",
 				"<script defer=\"defer\" src=\"/static/js/pages/users.1794bf4ad6e6eacffefd.js\"></script>",
 			},
-		}}
-	)
+		},
+	}
+
 	if err := dp.GetRouteUsersData(ctx, r, w, &dataCtx.RouteData); err != nil {
 		return nil, err
 	}
+
 	return dataCtx, nil
 }
 
@@ -45,7 +47,7 @@ func (Route[DataProvider]) GetDefaultSubRoute(ctx context.Context, r *mux.Reques
 
 type dataContext struct {
 	mux.RouteDataContext
-	RouteData
+	RouteData RouteData
 }
 
 func (c *dataContext) Write(w io.Writer) error {

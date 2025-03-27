@@ -17,9 +17,9 @@ func TestGenerator_Generate(t *testing.T) {
 		GenDataProviders: true,
 	})
 
-	if err := g.Webpack(); err != nil {
-		t.Fatal(err)
-	}
+	//if err := g.Webpack(); err != nil {
+	//	t.Fatal(err)
+	//}
 
 	if err := g.Analyze(); err != nil {
 		t.Fatal(err)

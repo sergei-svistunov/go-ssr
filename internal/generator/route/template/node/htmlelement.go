@@ -5,7 +5,7 @@ import (
 	"github.com/sergei-svistunov/go-ssr/internal/generator/route/template/htmlutils"
 )
 
-var _ Node = &HtmlElement{}
+var _ WithChildren = &HtmlElement{}
 
 type HtmlAttribute struct {
 	Key    string
@@ -20,17 +20,24 @@ type HtmlElement struct {
 	Children   []Node
 }
 
-func (n *HtmlElement) WriteGoCode(buf *gobuf.GoBuf) {
-	if n.TagName == "qssr:content" {
-		buf.WriteStringLn("if c.child != nil {")
-		buf.WriteStringLn("	err := c.child.Write(w)")
-		buf.WriteStringLn("	if err != nil {")
-		buf.WriteStringLn("		return err")
-		buf.WriteStringLn("	}")
-		buf.WriteStringLn("}")
-		return
+func (n *HtmlElement) LastChild() Node {
+	if len(n.Children) == 0 {
+		return nil
 	}
+	return n.Children[len(n.Children)-1]
+}
 
+func (n *HtmlElement) PopChild() {
+	if len(n.Children) > 0 {
+		n.Children = n.Children[:len(n.Children)-1]
+	}
+}
+
+func (n *HtmlElement) AddChildren(children ...Node) {
+	n.Children = append(n.Children, children...)
+}
+
+func (n *HtmlElement) WriteGoCode(buf *gobuf.GoBuf) {
 	buf.WritePrintString("<" + n.TagName)
 	for _, a := range n.Attributes {
 		buf.WritePrintString(" ")

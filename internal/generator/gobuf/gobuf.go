@@ -43,11 +43,7 @@ func (b *GoBuf) WriteQuotedString(s string, suffixes ...string) {
 	b.flushPrintStrings()
 
 	b.outBuf.WriteRune('"')
-	b.outBuf.WriteString(strings.NewReplacer(
-		`"`, `\"`,
-		"\n", `\n`,
-		"\r", `\r`,
-	).Replace(s))
+	b.outBuf.WriteString(quotesReplacer.Replace(s))
 	b.outBuf.WriteRune('"')
 	for _, suffix := range suffixes {
 		b.outBuf.WriteString(suffix)

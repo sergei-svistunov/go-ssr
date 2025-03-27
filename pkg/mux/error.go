@@ -34,3 +34,7 @@ func NewHttpError(code int, message string) *HttpError {
 func Redirect(code int, location string) *HttpRedirect {
 	return &HttpRedirect{code, location}
 }
+
+func NotFound() *HttpError {
+	return NewHttpError(http.StatusNotFound, http.StatusText(http.StatusNotFound))
+}
