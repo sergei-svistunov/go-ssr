@@ -189,7 +189,7 @@ func (g *Generator) genHandler() error {
 		return fmt.Errorf("could not format generated code: %w", err)
 	}
 
-	if err := os.WriteFile(filepath.Join(g.webDir, "pages/ssrhandler_gen.go"), formattedCode, 0755); err != nil {
+	if err := os.WriteFile(filepath.Join(g.webDir, "pages", "ssrhandler_gen.go"), formattedCode, 0755); err != nil {
 		return fmt.Errorf("could not write handler.go: %w", err)
 	}
 
@@ -246,7 +246,9 @@ func (g *Generator) genRoute(rPath string, r *route.Route) error {
 					buf.WriteStringLn(" form.Input[" + element.GoType + "]")
 				}
 				for _, n := range element.Nodes {
-					n.(*node.SsrInput).FormFieldName = fieldName
+					if inp, ok := n.(*node.SsrInput); ok {
+						inp.FormFieldName = fieldName
+					}
 				}
 			case template.FormElementInputFile:
 				if element.IsMultiple {
@@ -254,20 +256,25 @@ func (g *Generator) genRoute(rPath string, r *route.Route) error {
 				} else {
 					buf.WriteStringLn(" form.File")
 				}
-				element.Nodes[0].(*node.SsrInput).FormFieldName = fieldName
+				if inp, ok := element.Nodes[0].(*node.SsrInput); ok {
+					inp.FormFieldName = fieldName
+				}
 			case template.FormElementTextarea:
 				buf.WriteStringLn(" form.Textarea")
-				element.Nodes[0].(*node.SsrTextarea).FormFieldName = fieldName
+				if ta, ok := element.Nodes[0].(*node.SsrTextarea); ok {
+					ta.FormFieldName = fieldName
+				}
 			case template.FormElementSelect:
 				if element.IsMultiple {
 					buf.WriteStringLn(" form.SelectMultiple[" + element.GoType + "]")
 				} else {
 					buf.WriteStringLn(" form.Select[" + element.GoType + "]")
 				}
-				element.Nodes[0].(*node.SsrSelect).FormFieldName = fieldName
+				if sel, ok := element.Nodes[0].(*node.SsrSelect); ok {
+					sel.FormFieldName = fieldName
+				}
 			default:
-				// Should never happen
-				panic("Invalid form element")
+				return fmt.Errorf("invalid form element type %d for element %q", element.Type, element.Name)
 			}
 		}
 		buf.WriteStringLn("}")
@@ -666,10 +673,10 @@ func (g *Generator) updateDP(dpFilename string) error {
 	if err != nil {
 		return err
 	}
+	defer outF.Close()
 	if err := format.Node(outF, fset, f); err != nil {
 		return err
 	}
-	outF.Close()
 
 	if err := os.Remove(dpFilename); err != nil {
 		return err

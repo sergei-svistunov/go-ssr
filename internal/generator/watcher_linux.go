@@ -52,6 +52,7 @@ func (g *Generator) stopProject() {
 	}
 
 	timer := time.NewTimer(3 * time.Second)
+	defer timer.Stop()
 
 	if err := syscall.Kill(-g.projectCmd.Process.Pid, syscall.SIGTERM); err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "%s: %v\n", g.projectCmd, err)

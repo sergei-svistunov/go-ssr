@@ -48,6 +48,7 @@ func (g *Generator) stopProject() {
 	}
 
 	timer := time.NewTimer(3 * time.Second)
+	defer timer.Stop()
 
 	// Use GenerateConsoleCtrlEvent to send CTRL_BREAK_EVENT to the process group
 	err := windows.GenerateConsoleCtrlEvent(windows.CTRL_BREAK_EVENT, uint32(g.projectCmd.Process.Pid))

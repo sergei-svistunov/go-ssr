@@ -194,7 +194,7 @@ func Parse(filename string, imageResolver func(string) string) (*Template, error
 					stack.Push(formNode)
 				case "input", "textarea", "select":
 					if activeForm == nil {
-						return nil, fmt.Errorf("<ssr:%> is not inside <ssr:form>", tagName[4:])
+						return nil, fmt.Errorf("<ssr:%s> is not inside <ssr:form>", tagName[4:])
 					}
 
 					_, isRequired := attrsMap["required"]

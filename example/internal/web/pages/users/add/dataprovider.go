@@ -26,9 +26,9 @@ type DPUsersAdd struct {
 }
 
 func (p *DPUsersAdd) InitRouteUsersAddData_FormAdd(ctx context.Context, r *mux.Request, w mux.ResponseWriter, formData *FormAddValues) error {
-	formData.Name.Value = "John Doe"
+	formData.Name.SetValue("John Doe")
 
-	formData.Select.Options = []form.SelectOptionElement[uint8]{
+	formData.Select.SetOptions([]form.SelectOptionElement[uint8]{
 		form.SelectOptionGroup[uint8]{
 			Label: "Group 1",
 			Options: []form.SelectOptionElement[uint8]{
@@ -45,9 +45,9 @@ func (p *DPUsersAdd) InitRouteUsersAddData_FormAdd(ctx context.Context, r *mux.R
 				form.SelectOption[uint8]{Value: 6, Label: "Value 6"},
 			},
 		},
-	}
+	})
 
-	formData.MultSelect.Options = formData.Select.Options
+	formData.MultSelect.SetOptions(formData.Select.GetOptions())
 
 	return nil
 }
@@ -55,7 +55,7 @@ func (p *DPUsersAdd) InitRouteUsersAddData_FormAdd(ctx context.Context, r *mux.R
 func (p *DPUsersAdd) ProcessRouteUsersAddData_FormAdd(ctx context.Context, r *mux.Request, w mux.ResponseWriter, form *FormAddValues) error {
 	log.Printf("%#v\n", form)
 
-	f, err := form.Image.Value.Open()
+	f, err := form.Image.GetValue().Open()
 	if err != nil {
 		return err
 	}
@@ -64,29 +64,29 @@ func (p *DPUsersAdd) ProcessRouteUsersAddData_FormAdd(ctx context.Context, r *mu
 
 	if err := p.model.AddUser(model.MockUser{
 		Id:       0,
-		Login:    form.Login.Value,
-		Name:     form.Name.Value,
-		Age:      form.Age.Value,
+		Login:    form.Login.GetValue(),
+		Name:     form.Name.GetValue(),
+		Age:      form.Age.GetValue(),
 		ImageUrl: "",
 		Phones:   nil,
 		Emails:   nil,
-		Info:     form.Description.Value,
+		Info:     form.Description.GetValue(),
 	}); err != nil {
 		if errors.Is(err, model.ErrInvalidLogin) {
-			form.Login.Error = "Invalid characters in login"
+			form.Login.SetError("Invalid characters in login")
 			return nil
 		} else if errors.Is(err, model.ErrUserAlreadyExists) {
-			form.Login.Error = "User already exists"
+			form.Login.SetError("User already exists")
 			return nil
 		} else if errors.Is(err, model.ErrInvalidAge) {
-			form.Age.Error = "Invalid age"
+			form.Age.SetError("Invalid age")
 			return nil
 		} else {
 			return err
 		}
 	}
 
-	return mux.Redirect(http.StatusFound, path.Join("/users", form.Login.Value))
+	return mux.Redirect(http.StatusFound, path.Join("/users", form.Login.GetValue()))
 }
 
 func NewDP(m *model.Model) *DPUsersAdd {

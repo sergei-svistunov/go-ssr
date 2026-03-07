@@ -44,18 +44,18 @@ func (Route[DataProvider]) GetDataContext(ctx context.Context, r *mux.Request, w
 		},
 	}
 
-	dataCtx.FormAddData.BaseFormValues.ElementsErrors = []*string{
-		&dataCtx.FormAddData.Login.Error,
-		&dataCtx.FormAddData.Name.Error,
-		&dataCtx.FormAddData.Age.Error,
-		&dataCtx.FormAddData.Select.Error,
-		&dataCtx.FormAddData.MultSelect.Error,
-		&dataCtx.FormAddData.Description.Error,
-		&dataCtx.FormAddData.Image.Error,
-		&dataCtx.FormAddData.Images.Error,
-		&dataCtx.FormAddData.Confirm.Error,
-		&dataCtx.FormAddData.Radio.Error,
-	}
+	dataCtx.FormAddData.BaseFormValues.SetElements([]form.Element{
+		&dataCtx.FormAddData.Login,
+		&dataCtx.FormAddData.Name,
+		&dataCtx.FormAddData.Age,
+		&dataCtx.FormAddData.Select,
+		&dataCtx.FormAddData.MultSelect,
+		&dataCtx.FormAddData.Description,
+		&dataCtx.FormAddData.Image,
+		&dataCtx.FormAddData.Images,
+		&dataCtx.FormAddData.Confirm,
+		&dataCtx.FormAddData.Radio,
+	})
 
 	if err := dp.InitRouteUsersAddData_FormAdd(ctx, r, w, &dataCtx.FormAddData); err != nil {
 		return nil, err
@@ -84,7 +84,7 @@ func (Route[DataProvider]) GetDataContext(ctx context.Context, r *mux.Request, w
 			if err := dp.ProcessRouteUsersAddData_FormAdd(ctx, r, w, &dataCtx.FormAddData); err != nil {
 				return nil, err
 			}
-			dataCtx.FormAddData.BaseFormValues.Validated = true
+			dataCtx.FormAddData.BaseFormValues.MarkValidated()
 		}
 	}
 	if err := form.SetCSRFToken(r, w, &dataCtx.FormAddData.BaseFormValues); err != nil {
@@ -108,7 +108,7 @@ type dataContext struct {
 }
 
 func (c *dataContext) Write(w io.Writer) error {
-	if _, err := w.Write(_j16lniv0cld36e0kv6srvb0gjjgkrg6gkig1f5to1r1mi6q4n3ig); err != nil {
+	if _, err := w.Write(_esh8b0l3ddigap8uc4cc3i7lsq6q2jgf9lcmaa489724c08ce0h0); err != nil {
 		return err
 	}
 	{
@@ -117,7 +117,7 @@ func (c *dataContext) Write(w io.Writer) error {
 		if _, err := w.Write(_tqi22utq5r5h3pt3jreqic8764o1jin7j6moa7f131pl4abisas0); err != nil {
 			return err
 		}
-		if _, err := w.Write([]byte(form.BaseFormValues.CsrfToken)); err != nil {
+		if _, err := w.Write([]byte(form.BaseFormValues.GetCSRFToken())); err != nil {
 			return err
 		}
 		if _, err := w.Write(_2hmhe8lceth2qbrm81cspqc5uh0aqjp7jfdfe5qcl9atm7v1a2v0); err != nil {
@@ -126,16 +126,17 @@ func (c *dataContext) Write(w io.Writer) error {
 		{
 //line index.html:4
 			input := form.Login
+			_ = input
 			if _, err := w.Write(_qlll0rtr0dhlscet37qdl77tp5rc11867jtau5eji7qef8ndgd80); err != nil {
 				return err
 			}
-			if input.NotNull {
+			if input.IsNotNull() {
 				if _, err := w.Write(_63vr14drqsiva5f56b6amrrmmor3buvslfse7ml6l1afqb599jb0); err != nil {
 					return err
 				}
-				v := any(input.Value)
+				v := any(input.GetValue())
 				if input.HasError() {
-					v = input.FormValue
+					v = input.GetFormValue()
 				}
 				if _, err := mux.WriteHtmlEscaped(w, v); err != nil {
 					return err
@@ -164,7 +165,7 @@ func (c *dataContext) Write(w io.Writer) error {
 				return err
 			}
 //line index.html:6
-			if _, err := mux.WriteHtmlEscaped(w, form.Login.Error); err != nil {
+			if _, err := mux.WriteHtmlEscaped(w, form.Login.GetError()); err != nil {
 				return err
 			}
 			if _, err := w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
@@ -177,16 +178,17 @@ func (c *dataContext) Write(w io.Writer) error {
 		{
 //line index.html:10
 			input := form.Name
+			_ = input
 			if _, err := w.Write(_1o719rrsjhrau2miah76n0n8rdkp4kbc59dtq4tclscpfjik2g40); err != nil {
 				return err
 			}
-			if input.NotNull {
+			if input.IsNotNull() {
 				if _, err := w.Write(_63vr14drqsiva5f56b6amrrmmor3buvslfse7ml6l1afqb599jb0); err != nil {
 					return err
 				}
-				v := any(input.Value)
+				v := any(input.GetValue())
 				if input.HasError() {
-					v = input.FormValue
+					v = input.GetFormValue()
 				}
 				if _, err := mux.WriteHtmlEscaped(w, v); err != nil {
 					return err
@@ -215,7 +217,7 @@ func (c *dataContext) Write(w io.Writer) error {
 				return err
 			}
 //line index.html:12
-			if _, err := mux.WriteHtmlEscaped(w, form.Name.Error); err != nil {
+			if _, err := mux.WriteHtmlEscaped(w, form.Name.GetError()); err != nil {
 				return err
 			}
 			if _, err := w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
@@ -228,16 +230,17 @@ func (c *dataContext) Write(w io.Writer) error {
 		{
 //line index.html:16
 			input := form.Age
+			_ = input
 			if _, err := w.Write(_765l9b2otngonbq8i6o96r370cqvo5nngu06iemfasrm2b83k7q0); err != nil {
 				return err
 			}
-			if input.NotNull {
+			if input.IsNotNull() {
 				if _, err := w.Write(_63vr14drqsiva5f56b6amrrmmor3buvslfse7ml6l1afqb599jb0); err != nil {
 					return err
 				}
-				v := any(input.Value)
+				v := any(input.GetValue())
 				if input.HasError() {
-					v = input.FormValue
+					v = input.GetFormValue()
 				}
 				if _, err := mux.WriteHtmlEscaped(w, v); err != nil {
 					return err
@@ -266,7 +269,7 @@ func (c *dataContext) Write(w io.Writer) error {
 				return err
 			}
 //line index.html:18
-			if _, err := mux.WriteHtmlEscaped(w, form.Age.Error); err != nil {
+			if _, err := mux.WriteHtmlEscaped(w, form.Age.GetError()); err != nil {
 				return err
 			}
 			if _, err := w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
@@ -279,6 +282,7 @@ func (c *dataContext) Write(w io.Writer) error {
 		{
 //line index.html:22
 			input := form.Select
+			_ = input
 			if _, err := w.Write(_ai7pr690p8n2tmn7ea3q5bnub22t704vfn26amr1lkdjj90dm41g); err != nil {
 				return err
 			}
@@ -289,8 +293,8 @@ func (c *dataContext) Write(w io.Writer) error {
 			if _, err := w.Write(_lcmdet48ia9q0oam521uudg1jkg3li09sdb2shbhi1v9i6kec5og); err != nil {
 				return err
 			}
-			isSelected := func(v uint8) bool { return v == input.Value }
-			for _, o := range input.Options {
+			isSelected := func(v uint8) bool { return v == input.GetValue() }
+			for _, o := range input.GetOptions() {
 				if err := o.WriteHtml(w, isSelected); err != nil {
 					return err
 				}
@@ -308,7 +312,7 @@ func (c *dataContext) Write(w io.Writer) error {
 				return err
 			}
 //line index.html:24
-			if _, err := mux.WriteHtmlEscaped(w, form.Select.Error); err != nil {
+			if _, err := mux.WriteHtmlEscaped(w, form.Select.GetError()); err != nil {
 				return err
 			}
 			if _, err := w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
@@ -321,6 +325,7 @@ func (c *dataContext) Write(w io.Writer) error {
 		{
 //line index.html:28
 			input := form.MultSelect
+			_ = input
 			if _, err := w.Write(_rv8pkanhu2gsqqdl4g602r40fch56tpt6a9op2u9trrcfu61rqa0); err != nil {
 				return err
 			}
@@ -331,8 +336,8 @@ func (c *dataContext) Write(w io.Writer) error {
 			if _, err := w.Write(_lcmdet48ia9q0oam521uudg1jkg3li09sdb2shbhi1v9i6kec5og); err != nil {
 				return err
 			}
-			isSelected := func(v uint8) bool { _, exists := input.Value[v]; return exists }
-			for _, o := range input.Options {
+			isSelected := func(v uint8) bool { _, exists := input.GetValue()[v]; return exists }
+			for _, o := range input.GetOptions() {
 				if err := o.WriteHtml(w, isSelected); err != nil {
 					return err
 				}
@@ -350,7 +355,7 @@ func (c *dataContext) Write(w io.Writer) error {
 				return err
 			}
 //line index.html:30
-			if _, err := mux.WriteHtmlEscaped(w, form.MultSelect.Error); err != nil {
+			if _, err := mux.WriteHtmlEscaped(w, form.MultSelect.GetError()); err != nil {
 				return err
 			}
 			if _, err := w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
@@ -363,6 +368,7 @@ func (c *dataContext) Write(w io.Writer) error {
 		{
 //line index.html:34
 			textarea := form.Description
+			_ = textarea
 			if _, err := w.Write(_tt4j3936cif9dr9k9ipgpj9o1i93uupl7f17g9gf0s1glc7l7i2g); err != nil {
 				return err
 			}
@@ -373,7 +379,7 @@ func (c *dataContext) Write(w io.Writer) error {
 			if _, err := w.Write(_lcmdet48ia9q0oam521uudg1jkg3li09sdb2shbhi1v9i6kec5og); err != nil {
 				return err
 			}
-			if _, err := mux.WriteHtmlEscaped(w, textarea.Value); err != nil {
+			if _, err := mux.WriteHtmlEscaped(w, textarea.GetValue()); err != nil {
 				return err
 			}
 			if _, err := w.Write(_m1nmnfcnoneh7kdc3n37g3svivj3o839hkcemk3ifs0v9q2to6p0); err != nil {
@@ -389,7 +395,7 @@ func (c *dataContext) Write(w io.Writer) error {
 				return err
 			}
 //line index.html:36
-			if _, err := mux.WriteHtmlEscaped(w, form.Description.Error); err != nil {
+			if _, err := mux.WriteHtmlEscaped(w, form.Description.GetError()); err != nil {
 				return err
 			}
 			if _, err := w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
@@ -402,6 +408,7 @@ func (c *dataContext) Write(w io.Writer) error {
 		{
 //line index.html:40
 			input := form.Image
+			_ = input
 			if _, err := w.Write(_i6vl56as5mcnsronkljhamj68gfprj261mi8shk453om6gchki80); err != nil {
 				return err
 			}
@@ -422,7 +429,7 @@ func (c *dataContext) Write(w io.Writer) error {
 				return err
 			}
 //line index.html:42
-			if _, err := mux.WriteHtmlEscaped(w, form.Image.Error); err != nil {
+			if _, err := mux.WriteHtmlEscaped(w, form.Image.GetError()); err != nil {
 				return err
 			}
 			if _, err := w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
@@ -435,6 +442,7 @@ func (c *dataContext) Write(w io.Writer) error {
 		{
 //line index.html:46
 			input := form.Images
+			_ = input
 			if _, err := w.Write(_r51hp55u9u0bqfarpa97i2vnfu2hn1fp0o5va19ri50s7gp72lng); err != nil {
 				return err
 			}
@@ -455,7 +463,7 @@ func (c *dataContext) Write(w io.Writer) error {
 				return err
 			}
 //line index.html:48
-			if _, err := mux.WriteHtmlEscaped(w, form.Images.Error); err != nil {
+			if _, err := mux.WriteHtmlEscaped(w, form.Images.GetError()); err != nil {
 				return err
 			}
 			if _, err := w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
@@ -468,10 +476,11 @@ func (c *dataContext) Write(w io.Writer) error {
 		{
 //line index.html:52
 			input := form.Confirm
+			_ = input
 			if _, err := w.Write(_r5mrigvrgk49rllv2onh2qcue4usmts43kpghp87drg6m3qrb0c0); err != nil {
 				return err
 			}
-			if _, exists := input.Value[true]; exists {
+			if _, exists := input.GetValue()[true]; exists {
 				if _, err := w.Write(_buhf1qlpbp58h0d9ciqt1dkidphv7j7qc8mq83o4vj07dii21q10); err != nil {
 					return err
 				}
@@ -496,7 +505,7 @@ func (c *dataContext) Write(w io.Writer) error {
 				return err
 			}
 //line index.html:54
-			if _, err := mux.WriteHtmlEscaped(w, form.Confirm.Error); err != nil {
+			if _, err := mux.WriteHtmlEscaped(w, form.Confirm.GetError()); err != nil {
 				return err
 			}
 			if _, err := w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
@@ -509,10 +518,11 @@ func (c *dataContext) Write(w io.Writer) error {
 		{
 //line index.html:58
 			input := form.Confirm
+			_ = input
 			if _, err := w.Write(_lg26hq1vbjh74o3jqugjprj5n3an9skl1fbeatsia5bkcbnrv260); err != nil {
 				return err
 			}
-			if _, exists := input.Value[false]; exists {
+			if _, exists := input.GetValue()[false]; exists {
 				if _, err := w.Write(_buhf1qlpbp58h0d9ciqt1dkidphv7j7qc8mq83o4vj07dii21q10); err != nil {
 					return err
 				}
@@ -537,7 +547,7 @@ func (c *dataContext) Write(w io.Writer) error {
 				return err
 			}
 //line index.html:60
-			if _, err := mux.WriteHtmlEscaped(w, form.Confirm.Error); err != nil {
+			if _, err := mux.WriteHtmlEscaped(w, form.Confirm.GetError()); err != nil {
 				return err
 			}
 			if _, err := w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
@@ -550,10 +560,11 @@ func (c *dataContext) Write(w io.Writer) error {
 		{
 //line index.html:64
 			input := form.Radio
+			_ = input
 			if _, err := w.Write(_9il28ovt721reju6kf425t2v3ec2ai0uu23vioi0skpgoc7mhuk0); err != nil {
 				return err
 			}
-			if input.Value == 1 {
+			if input.GetValue() == 1 {
 				if _, err := w.Write(_buhf1qlpbp58h0d9ciqt1dkidphv7j7qc8mq83o4vj07dii21q10); err != nil {
 					return err
 				}
@@ -568,10 +579,11 @@ func (c *dataContext) Write(w io.Writer) error {
 		{
 //line index.html:67
 			input := form.Radio
+			_ = input
 			if _, err := w.Write(_j6g1nvvj0cr6fjh96pbf6dsfrorgdiddg9qcrk4viemvj7rgk6sg); err != nil {
 				return err
 			}
-			if input.Value == 2 {
+			if input.GetValue() == 2 {
 				if _, err := w.Write(_buhf1qlpbp58h0d9ciqt1dkidphv7j7qc8mq83o4vj07dii21q10); err != nil {
 					return err
 				}
@@ -584,12 +596,12 @@ func (c *dataContext) Write(w io.Writer) error {
 			return err
 		}
 //line index.html:71
-		if form.Error != "" {
+		if form.GetError() != "" {
 			if _, err := w.Write(_d98iqq949bnkvl0am05us0b6jqcl7sqp3s515ehnr3vvln1ihd5g); err != nil {
 				return err
 			}
 //line index.html:71
-			if _, err := mux.WriteHtmlEscaped(w, form.Error); err != nil {
+			if _, err := mux.WriteHtmlEscaped(w, form.GetError()); err != nil {
 				return err
 			}
 			if _, err := w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
@@ -680,6 +692,10 @@ var (
 		0x3c, 0x64, 0x69, 0x76, 0x20, 0x63, 0x6c, 0x61, 0x73, 0x73, 0x3d, 0x22, 0x61, 0x6c, 0x65, 0x72, 0x74, 0x20, 0x61, 0x6c, 0x65, 0x72, 0x74, 0x2d,
 		0x64, 0x61, 0x6e, 0x67, 0x65, 0x72, 0x22, 0x3e,
 	}
+	_esh8b0l3ddigap8uc4cc3i7lsq6q2jgf9lcmaa489724c08ce0h0 = []byte{
+		0x3c, 0x64, 0x69, 0x76, 0x20, 0x63, 0x6c, 0x61, 0x73, 0x73, 0x3d, 0x22, 0x63, 0x6f, 0x6c, 0x2d, 0x78, 0x6c, 0x2d, 0x34, 0x20, 0x70, 0x74, 0x2d,
+		0x33, 0x22, 0x3e, 0x0a, 0x20, 0x20, 0x20, 0x20,
+	}
 	_fp86jiqhost96kpq3rutric1veqjqlsgclokoo2vjesk6ucf72sg = []byte{
 		0x0a, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x3c, 0x2f, 0x64, 0x69, 0x76, 0x3e, 0x0a, 0x0a, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20,
 		0x20, 0x3c, 0x64, 0x69, 0x76, 0x20, 0x63, 0x6c, 0x61, 0x73, 0x73, 0x3d, 0x22, 0x66, 0x6f, 0x72, 0x6d, 0x2d, 0x63, 0x6f, 0x6e, 0x74, 0x72, 0x6f,
@@ -721,11 +737,6 @@ var (
 		0x0a, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x3c, 0x2f, 0x64, 0x69, 0x76, 0x3e, 0x0a, 0x0a, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20,
 		0x20, 0x3c, 0x64, 0x69, 0x76, 0x20, 0x63, 0x6c, 0x61, 0x73, 0x73, 0x3d, 0x22, 0x66, 0x6f, 0x72, 0x6d, 0x2d, 0x66, 0x6c, 0x6f, 0x61, 0x74, 0x69,
 		0x6e, 0x67, 0x20, 0x6d, 0x62, 0x2d, 0x33, 0x22, 0x3e, 0x0a, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20,
-	}
-	_j16lniv0cld36e0kv6srvb0gjjgkrg6gkig1f5to1r1mi6q4n3ig = []byte{
-		0x3c, 0x64, 0x69, 0x76, 0x20, 0x63, 0x6c, 0x61, 0x73, 0x73, 0x3d, 0x22, 0x63, 0x6f, 0x6c, 0x2d, 0x78, 0x6c, 0x2d, 0x34, 0x20, 0x70, 0x74, 0x2d,
-		0x33, 0x22, 0x20, 0x78, 0x6d, 0x6c, 0x6e, 0x73, 0x3a, 0x73, 0x73, 0x72, 0x3d, 0x22, 0x68, 0x74, 0x74, 0x70, 0x3a, 0x2f, 0x2f, 0x77, 0x77, 0x77,
-		0x2e, 0x77, 0x33, 0x2e, 0x6f, 0x72, 0x67, 0x2f, 0x31, 0x39, 0x39, 0x39, 0x2f, 0x68, 0x74, 0x6d, 0x6c, 0x22, 0x3e, 0x0a, 0x20, 0x20, 0x20, 0x20,
 	}
 	_j6g1nvvj0cr6fjh96pbf6dsfrorgdiddg9qcrk4viemvj7rgk6sg = []byte{
 		0x3c, 0x69, 0x6e, 0x70, 0x75, 0x74, 0x20, 0x6e, 0x61, 0x6d, 0x65, 0x3d, 0x22, 0x72, 0x61, 0x64, 0x69, 0x6f, 0x22, 0x20, 0x74, 0x79, 0x70, 0x65,

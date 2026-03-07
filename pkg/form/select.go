@@ -6,10 +6,12 @@ type Select[T ElementValueType] struct {
 	value   T
 	notNull bool
 	error   string
-	Options []SelectOptionElement[T]
+	options []SelectOptionElement[T]
 }
 
-func (e *Select[T]) SetError(err string) { e.error = err }
+func (e *Select[T]) SetOptions(o []SelectOptionElement[T]) { e.options = o }
+func (e *Select[T]) GetOptions() []SelectOptionElement[T]  { return e.options }
+func (e *Select[T]) SetError(err string)                   { e.error = err }
 func (e *Select[T]) HasError() bool      { return e.error != "" }
 func (e *Select[T]) GetError() string    { return e.error }
 func (e *Select[T]) GetValue() T         { return e.value }
@@ -49,7 +51,9 @@ type SelectMultiple[T ElementValueType] struct {
 	options []SelectOptionElement[T]
 }
 
-func (e *SelectMultiple[T]) SetError(err string)       { e.error = err }
+func (e *SelectMultiple[T]) SetOptions(o []SelectOptionElement[T]) { e.options = o }
+func (e *SelectMultiple[T]) GetOptions() []SelectOptionElement[T]  { return e.options }
+func (e *SelectMultiple[T]) SetError(err string)                   { e.error = err }
 func (e *SelectMultiple[T]) HasError() bool            { return e.error != "" }
 func (e *SelectMultiple[T]) GetError() string          { return e.error }
 func (e *SelectMultiple[T]) GetValue() map[T]struct{}  { return e.value }

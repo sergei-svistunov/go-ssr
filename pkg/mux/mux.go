@@ -108,10 +108,14 @@ func (m *Mux[DataProvider]) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var dataContext DataContext = nil
+	var dataContext DataContext
 	for len(routesStack) > 0 {
 		route := routesStack[len(routesStack)-1]
 		routesStack = routesStack[:len(routesStack)-1]
+
+		if route == nil {
+			continue
+		}
 
 		dc, err := route.GetDataContext(r.Context(), muxRequest, w, m.dataProvider, dataContext)
 		if err != nil {
@@ -119,6 +123,11 @@ func (m *Mux[DataProvider]) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		dataContext = dc
+	}
+
+	if dataContext == nil {
+		m.errorHandler(w, muxRequest, NewHttpError(http.StatusNotFound, http.StatusText(http.StatusNotFound)))
+		return
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
