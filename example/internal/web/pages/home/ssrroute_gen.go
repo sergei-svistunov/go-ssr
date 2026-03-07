@@ -13,12 +13,13 @@ type RouteData struct {
 }
 
 type RouteDataProvider interface {
-	GetRouteHomeData(ctx context.Context, r *mux.Request, w mux.ResponseWriter, data *RouteData) error
+	Data(ctx context.Context, r *mux.Request, w mux.ResponseWriter, data *RouteData) error
 }
 
-type Route[DataProvider RouteDataProvider] struct{}
+type ssrRoute struct{ dp RouteDataProvider }
 
-func (Route[DataProvider]) GetDataContext(ctx context.Context, r *mux.Request, w mux.ResponseWriter, dp DataProvider, child mux.DataContext) (mux.DataContext, error) {
+func NewRoute(dp RouteDataProvider) mux.Route { return &ssrRoute{dp: dp} }
+func (rt *ssrRoute) GetDataContext(ctx context.Context, r *mux.Request, w mux.ResponseWriter, child mux.DataContext) (mux.DataContext, error) {
 	dataCtx := &dataContext{
 		RouteDataContext: mux.RouteDataContext{
 			Child: child,
@@ -28,14 +29,14 @@ func (Route[DataProvider]) GetDataContext(ctx context.Context, r *mux.Request, w
 		},
 	}
 
-	if err := dp.GetRouteHomeData(ctx, r, w, &dataCtx.RouteData); err != nil {
+	if err := rt.dp.Data(ctx, r, w, &dataCtx.RouteData); err != nil {
 		return nil, err
 	}
 
 	return dataCtx, nil
 }
 
-func (Route[DataProvider]) GetDefaultSubRoute(ctx context.Context, r *mux.Request, dp DataProvider) (string, error) {
+func (rt *ssrRoute) GetDefaultRoute(ctx context.Context, r *mux.Request) (string, error) {
 	return "", nil
 }
 

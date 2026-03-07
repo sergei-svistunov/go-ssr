@@ -6,14 +6,16 @@ server-side rendering (SSR).
 
 ## Key features
 
-- **Directory-based routing**: Define web routes based on your project’s folder structure. Folders with leading and
+- **Directory-based routing**: Define web routes based on your project's folder structure. Folders with leading and
   trailing underscores (e.g., `_userId_`) are interpreted as dynamic URL parameters, accessible via the `UrlParam`
   method in the request object.
 - **HTML template rendering**: Transform HTML templates into Go code, enabling fast, type-safe server-side rendering.
 - **Dynamic URL parameters**: Use folder names to define dynamic parts of URLs, which are passed as parameters to the
   corresponding handlers.
-- **Data providers**: Automatically generate interfaces that allow injecting custom application logic into handlers via
-  `RouteDataProvider`.
+- **Data providers**: Each route has its own `RouteDataProvider` interface with short method names (`Data`,
+  `DefaultRoute`, `Init*`, `Process*`). Routes are self-contained — each carries its own data provider.
+- **Dependency injection**: Optionally configure a `depsPackage` in `gossr.yaml` to pass a shared dependencies struct
+  to all route data providers via constructor injection. No composite interfaces or manual wiring needed.
 - **Static asset management**: Seamlessly integrate with `gossr-assets-webpack-plugin` to manage static assets (CSS,
   JavaScript, images) and dynamically replace paths with hashed filenames.
 - **Automatic rebuild**: Watches for file changes, rebuilding assets and templates as needed, and automatically restarts
@@ -28,7 +30,7 @@ The example below shows how you can benchmark SSR handler performance:
 var (
     ssrHandler = ctxMiddleware{
         pages.NewSsrHandler(
-            web.NewDataProvider(&model.Model{}), mux.Options{},
+            &model.Model{}, mux.Options{},
         ),
     }
     req1 = httptest.NewRequest(http.MethodGet, "/home", nil)
@@ -55,7 +57,7 @@ Results:
 goos: linux
 goarch: amd64
 pkg: github.com/sergei-svistunov/go-ssr/example/internal/web/pages
-cpu: AMD Ryzen 7 5800H with Radeon Graphics         
+cpu: AMD Ryzen 7 5800H with Radeon Graphics
 BenchmarkSsrHandlerSimple
 BenchmarkSsrHandlerSimple-16    	  432955	      2343 ns/op
 BenchmarkSsrHandlerDeep
@@ -112,13 +114,39 @@ The config for the current project is in the `gossr.yaml` file with the followin
 
 ```go
 type Config struct {
-    WebDir           string            `yaml:"webDir"`     // Directory containing SSR handlers and templates
-    WebPackage       string            `yaml:"webPackage"` // Full path to the web package
-    GoRunArgs        string            `yaml:"goRunArgs"` // Arguments for `go run`
-    Env              map[string]string `yaml:"env"`       // Environment variables
-    GenDataProviders bool              `yaml:"genDataProviders"` // Enable basic DataProviders implementation generation (experimental)
+    WebDir      string            `yaml:"webDir"`      // Directory containing SSR handlers and templates
+    WebPackage  string            `yaml:"webPackage"`   // Full path to the web package
+    DepsPackage string            `yaml:"depsPackage"`  // Full path to the deps package (optional)
+    DepsType    string            `yaml:"depsType"`     // Type name in the deps package (default: "Deps")
+    GoRunArgs   string            `yaml:"goRunArgs"`    // Arguments for `go run`
+    Env         map[string]string `yaml:"env"`          // Environment variables
 }
 ```
+
+### Dependency injection with `depsPackage`
+
+When `depsPackage` is set, the generator creates `NewDP(d *<pkg>.<Type>)` constructors and wires them automatically in
+`NewSsrHandler(d *<pkg>.<Type>, opts)`. The deps package should be independent of the web/pages packages to avoid
+circular imports. Use `depsType` to specify the type name (defaults to `"Deps"`).
+
+Example `gossr.yaml` with a dedicated deps package:
+
+```yaml
+webDir: ./internal/web
+webPackage: github.com/example/internal/web
+depsPackage: github.com/example/internal/deps
+```
+
+Or pass an existing type directly (e.g. `*model.Model`):
+
+```yaml
+webDir: ./internal/web
+webPackage: github.com/example/internal/web
+depsPackage: github.com/example/internal/model
+depsType: Model
+```
+
+When `depsPackage` is omitted, the generator creates zero-arg `NewDP()` constructors instead.
 
 ## Project structure
 
@@ -129,9 +157,11 @@ Create a directory for all GoSSR files, such as `internal/web`. This directory m
     - `index.html`: Required, the page template.
     - `index.ts`: Optional, the page script.
     - `styles.scss`: Optional, the page's CSS styles.
-    - `ssrhandler_gen.go`: Auto-generated, only in `pages` directory, contains common `DataProvider` interface and SSR
-      router constructor.
-    - `ssrroute_gen.go`: Auto-generated, defines route `DataProvider` interface and code for rendering templates.
+    - `ssrhandler_gen.go`: Auto-generated, only in `pages` directory, contains `NewSsrHandler` constructor that wires
+      all routes.
+    - `ssrroute_gen.go`: Auto-generated, defines route `RouteDataProvider` interface and code for rendering templates.
+    - `dataprovider.go`: Generated once as a stub, then user-maintained. Implements `RouteDataProvider` with methods
+      like `Data`, `DefaultRoute`, `Init*`, `Process*`.
 - `package.json`: Contains JS and CSS dependencies.
 - `tsconfig.json`: TypeScript configuration.
 - `webpack.config.js`: Webpack configuration for building static assets.
@@ -285,19 +315,19 @@ Below is an example of how to use the supported elements within a form in your `
         <div>
             <label for="login">Login</label>
             <ssr:input name="login" type="text" required id="login" placeholder="Login"/>
-            <div ssr:if="form.Login.HasError()">{{ form.Login.Error }}</div>
+            <div ssr:if="form.Login.HasError()">{{ form.Login.GetError() }}</div>
         </div>
 
         <div>
             <label for="age">Age</label>
             <ssr:input name="age" type="number" gotype="uint8" required id="age" placeholder="Age"/>
-            <div ssr:if="form.Age.HasError()">{{ form.Age.Error }}</div>
+            <div ssr:if="form.Age.HasError()">{{ form.Age.GetError() }}</div>
         </div>
 
         <div>
             <label for="gender">Gender</label>
             <ssr:select name="gender" gotype="string" required id="gender"/>
-            <div ssr:if="form.Gender.HasError()">{{ form.Gender.Error }}</div>
+            <div ssr:if="form.Gender.HasError()">{{ form.Gender.GetError() }}</div>
         </div>
 
         <button type="submit">Submit</button>
@@ -330,16 +360,16 @@ type FormAddUserValues struct {
     Gender  form.Select[string]
 }
 
-func (p *DataProvider) InitRouteAddUserData_FormAddUser(ctx context.Context, r *http.Request, w http.ResponseWriter, form *FormAddUserValues) error {
+func (p *DP) InitAddUser(ctx context.Context, r *mux.Request, w mux.ResponseWriter, form *FormAddUserValues) error {
     // Initialize default values, if any
-    form.Gender.Options = []form.SelectOption[string]{
-        {Value: "male", Label: "Male"},
-        {Value: "female", Label: "Female"},
-    }
+    form.Gender.SetOptions([]form.SelectOptionElement[string]{
+        form.SelectOption[string]{Value: "male", Label: "Male"},
+        form.SelectOption[string]{Value: "female", Label: "Female"},
+    })
     return nil
 }
 
-func (p *DataProvider) ProcessRouteAddUserData_FormAddUser(ctx context.Context, r *http.Request, w http.ResponseWriter, form *FormAddUserValues) error {
+func (p *DP) ProcessAddUser(ctx context.Context, r *mux.Request, w mux.ResponseWriter, form *FormAddUserValues) error {
     // Handle form submission logic, e.g., saving data to the database
     return nil
 }
@@ -360,7 +390,7 @@ func (p *DataProvider) ProcessRouteAddUserData_FormAddUser(ctx context.Context, 
 ## Example
 
 For a working example, refer to the [example folder](/example). It demonstrates directory-based routing, template
-embedding, dynamic URL parameters, and asset management with Webpack.
+embedding, dynamic URL parameters, dependency injection, and asset management with Webpack.
 
 ## Contributing
 

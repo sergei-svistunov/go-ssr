@@ -10,21 +10,20 @@ import (
 	"strings"
 )
 
-type Route[DataProvider any] interface {
-	GetDataContext(ctx context.Context, r *Request, w ResponseWriter, dp DataProvider, child DataContext) (DataContext, error)
-	GetDefaultSubRoute(ctx context.Context, r *Request, dp DataProvider) (string, error)
+type Route interface {
+	GetDataContext(ctx context.Context, r *Request, w ResponseWriter, child DataContext) (DataContext, error)
+	GetDefaultRoute(ctx context.Context, r *Request) (string, error)
 }
 
-type Mux[DataProvider any] struct {
-	dataProvider DataProvider
-	rootRoute    *muxRoute[DataProvider]
+type Mux struct {
+	rootRoute    *muxRoute
 	errorHandler ErrorHandler
 }
 
-type muxRoute[DataProvider any] struct {
-	route    Route[DataProvider]
+type muxRoute struct {
+	route    Route
 	paramId  string
-	children map[string]*muxRoute[DataProvider]
+	children map[string]*muxRoute
 }
 
 type Options struct {
@@ -33,9 +32,9 @@ type Options struct {
 
 type ErrorHandler func(w http.ResponseWriter, r *Request, err error)
 
-func New[DataProvider any](dataProvider DataProvider, routes map[string]Route[DataProvider], opts Options) *Mux[DataProvider] {
-	rootRoute := &muxRoute[DataProvider]{
-		children: map[string]*muxRoute[DataProvider]{},
+func New(routes map[string]Route, opts Options) *Mux {
+	rootRoute := &muxRoute{
+		children: map[string]*muxRoute{},
 	}
 
 	reDynParam := regexp.MustCompile("^_[^_]+_$")
@@ -45,8 +44,8 @@ func New[DataProvider any](dataProvider DataProvider, routes map[string]Route[Da
 		currentRoute := rootRoute
 		for _, p := range pathParts {
 			if currentRoute.children[p] == nil {
-				currentRoute.children[p] = &muxRoute[DataProvider]{
-					children: map[string]*muxRoute[DataProvider]{},
+				currentRoute.children[p] = &muxRoute{
+					children: map[string]*muxRoute{},
 				}
 			}
 
@@ -63,14 +62,13 @@ func New[DataProvider any](dataProvider DataProvider, routes map[string]Route[Da
 		opts.ErrorHandler = defaultErrorHandler
 	}
 
-	return &Mux[DataProvider]{
-		dataProvider: dataProvider,
+	return &Mux{
 		rootRoute:    rootRoute,
 		errorHandler: opts.ErrorHandler,
 	}
 }
 
-func (m *Mux[DataProvider]) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	routePath := r.URL.Path
 	if len(routePath) > 0 && routePath[len(routePath)-1] == '/' {
 		routePath = routePath[:len(routePath)-1]
@@ -79,7 +77,7 @@ func (m *Mux[DataProvider]) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	routePathParts := strings.Split(routePath, "/")[1:]
 
 	currentRoute := m.rootRoute
-	routesStack := []Route[DataProvider]{currentRoute.route}
+	routesStack := []Route{currentRoute.route}
 	muxRequest := NewRequest(r)
 	for _, routePathPart := range routePathParts {
 		child := currentRoute.children[routePathPart]
@@ -98,7 +96,7 @@ func (m *Mux[DataProvider]) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(currentRoute.children) > 0 {
-		subRoute, err := currentRoute.route.GetDefaultSubRoute(r.Context(), muxRequest, m.dataProvider)
+		subRoute, err := currentRoute.route.GetDefaultRoute(r.Context(), muxRequest)
 		if err != nil {
 			m.errorHandler(w, muxRequest, err)
 			return
@@ -117,7 +115,7 @@ func (m *Mux[DataProvider]) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		dc, err := route.GetDataContext(r.Context(), muxRequest, w, m.dataProvider, dataContext)
+		dc, err := route.GetDataContext(r.Context(), muxRequest, w, dataContext)
 		if err != nil {
 			m.errorHandler(w, muxRequest, err)
 			return

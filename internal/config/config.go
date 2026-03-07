@@ -11,19 +11,19 @@ import (
 const FileName = "gossr.yaml"
 
 var defaultConfig = Config{
-	WebDir:           "./internal/web",
-	GenDataProviders: true,
-	GoRunArgs:        ".",
+	WebDir:    "./internal/web",
+	GoRunArgs: ".",
 }
 
 type Config struct {
-	Dir              string            `yaml:"-"`
-	Prod             bool              `yaml:"-"`
-	WebDir           string            `yaml:"webDir"`           // Directory containing SSR handlers and templates
-	WebPackage       string            `yaml:"webPackage"`       // Full path to the web package
-	GoRunArgs        string            `yaml:"goRunArgs"`        // Arguments for `go run`
-	Env              map[string]string `yaml:"env"`              // Environment variables
-	GenDataProviders bool              `yaml:"genDataProviders"` // Enable basic DataProviders implementation generation (experimental)
+	Dir         string            `yaml:"-"`
+	Prod        bool              `yaml:"-"`
+	WebDir      string            `yaml:"webDir"`      // Directory containing SSR handlers and templates
+	WebPackage  string            `yaml:"webPackage"`   // Full path to the web package
+	DepsPackage string            `yaml:"depsPackage"`  // Full path to the deps package containing Deps struct
+	DepsType    string            `yaml:"depsType"`     // Type name in the deps package (default: "Deps")
+	GoRunArgs   string            `yaml:"goRunArgs"`    // Arguments for `go run`
+	Env         map[string]string `yaml:"env"`          // Environment variables
 }
 
 func Read() (*Config, error) {
@@ -73,5 +73,8 @@ func parseConfigFile(path string) (*Config, error) {
 		return nil, err
 	}
 	config.Dir = filepath.Dir(path)
+	if config.DepsPackage != "" && config.DepsType == "" {
+		config.DepsType = "Deps"
+	}
 	return &config, nil
 }

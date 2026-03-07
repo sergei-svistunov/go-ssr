@@ -15,7 +15,7 @@ var staticFiles embed.FS
 func New() http.Handler {
 	mux := http.NewServeMux()
 
-	mux.Handle("/", pages.NewSsrHandler(NewDataProvider(), ssrMux.Options{}))
+	mux.Handle("/", pages.NewSsrHandler(ssrMux.Options{}))
 
 	mux.Handle("/static/", http.FileServer(http.Dir("internal/web"))) // ToDo: disable directory listing
 

@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/sergei-svistunov/go-ssr/example/internal/model"
-	"github.com/sergei-svistunov/go-ssr/example/internal/web"
 	"github.com/sergei-svistunov/go-ssr/example/internal/web/ctxdata"
 	"github.com/sergei-svistunov/go-ssr/example/internal/web/pages"
 	"github.com/sergei-svistunov/go-ssr/pkg/mux"
@@ -34,7 +33,7 @@ func (d DiscardWriter) WriteHeader(int) {}
 var (
 	ssrHandler = ctxMiddleware{
 		pages.NewSsrHandler(
-			web.NewDataProvider(&model.Model{}), mux.Options{},
+			&model.Model{}, mux.Options{},
 		),
 	}
 	req1    = httptest.NewRequest(http.MethodGet, "/home", nil)

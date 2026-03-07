@@ -32,13 +32,14 @@ func (e *errDataContext) WriteAssets(w io.Writer, writen map[string]struct{}) er
 
 type errRouteDataProvider struct{}
 
-func (errRouteDataProvider) GetRouteRootData(ctx context.Context, r *mux.Request, w mux.ResponseWriter, data *RouteData) error {
+func (errRouteDataProvider) Data(ctx context.Context, r *mux.Request, w mux.ResponseWriter, data *RouteData) error {
 	data.Title = func() string { return "Error" }
 	return nil
 }
 
 func WriteError(w http.ResponseWriter, r *mux.Request, err error) {
-	dc, err := Route[RouteDataProvider]{}.GetDataContext(r.Context(), r, w, errRouteDataProvider{}, &errDataContext{err})
+	rt := &ssrRoute{dp: errRouteDataProvider{}}
+	dc, err := rt.GetDataContext(r.Context(), r, w, &errDataContext{err})
 	if err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		log.Print(err)

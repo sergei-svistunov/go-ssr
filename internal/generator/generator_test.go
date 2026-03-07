@@ -9,12 +9,13 @@ import (
 
 func TestGenerator_Generate(t *testing.T) {
 	g := generator.New(&config.Config{
-		Dir:              "../../example",
-		WebDir:           "../../example/internal/web",
-		WebPackage:       "github.com/sergei-svistunov/go-ssr/example/internal/web",
-		GoRunArgs:        ".",
-		Env:              nil,
-		GenDataProviders: true,
+		Dir:         "../../example",
+		WebDir:      "../../example/internal/web",
+		WebPackage:  "github.com/sergei-svistunov/go-ssr/example/internal/web",
+		DepsPackage: "github.com/sergei-svistunov/go-ssr/example/internal/model",
+		DepsType:    "Model",
+		GoRunArgs:   ".",
+		Env:         nil,
 	})
 
 	//if err := g.Webpack(); err != nil {

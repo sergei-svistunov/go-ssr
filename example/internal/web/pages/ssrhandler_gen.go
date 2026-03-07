@@ -5,6 +5,7 @@ package pages
 import (
 	"net/http"
 
+	"github.com/sergei-svistunov/go-ssr/example/internal/model"
 	"github.com/sergei-svistunov/go-ssr/pkg/mux"
 
 	routeHome "github.com/sergei-svistunov/go-ssr/example/internal/web/pages/home"
@@ -15,24 +16,14 @@ import (
 	routeUsersAdd "github.com/sergei-svistunov/go-ssr/example/internal/web/pages/users/add"
 )
 
-type DataProvider interface {
-	RouteDataProvider
-	routeHome.RouteDataProvider
-	routeUsers.RouteDataProvider
-	routeUsers_userId_.RouteDataProvider
-	routeUsers_userId_Contacts.RouteDataProvider
-	routeUsers_userId_Info.RouteDataProvider
-	routeUsersAdd.RouteDataProvider
-}
-
-func NewSsrHandler(dp DataProvider, opts mux.Options) http.Handler {
-	return mux.New(dp, map[string]mux.Route[DataProvider]{
-		"/":                        Route[DataProvider]{},
-		"/home":                    routeHome.Route[DataProvider]{},
-		"/users":                   routeUsers.Route[DataProvider]{},
-		"/users/_userId_":          routeUsers_userId_.Route[DataProvider]{},
-		"/users/_userId_/contacts": routeUsers_userId_Contacts.Route[DataProvider]{},
-		"/users/_userId_/info":     routeUsers_userId_Info.Route[DataProvider]{},
-		"/users/add":               routeUsersAdd.Route[DataProvider]{},
+func NewSsrHandler(d *model.Model, opts mux.Options) http.Handler {
+	return mux.New(map[string]mux.Route{
+		"/":                        NewRoute(NewDP(d)),
+		"/home":                    routeHome.NewRoute(routeHome.NewDP(d)),
+		"/users":                   routeUsers.NewRoute(routeUsers.NewDP(d)),
+		"/users/_userId_":          routeUsers_userId_.NewRoute(routeUsers_userId_.NewDP(d)),
+		"/users/_userId_/contacts": routeUsers_userId_Contacts.NewRoute(routeUsers_userId_Contacts.NewDP(d)),
+		"/users/_userId_/info":     routeUsers_userId_Info.NewRoute(routeUsers_userId_Info.NewDP(d)),
+		"/users/add":               routeUsersAdd.NewRoute(routeUsersAdd.NewDP(d)),
 	}, opts)
 }

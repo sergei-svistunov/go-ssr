@@ -8,7 +8,7 @@ import (
 	"github.com/sergei-svistunov/go-ssr/pkg/mux"
 )
 
-var _ RouteDataProvider = &DPUsers{}
+var _ RouteDataProvider = &DP{}
 
 type User struct {
 	Name        string
@@ -17,19 +17,19 @@ type User struct {
 	NavTabClass string
 }
 
-type DPUsers struct {
+type DP struct {
 	model *model.Model
 }
 
-func NewDP(m *model.Model) *DPUsers {
-	return &DPUsers{m}
+func NewDP(d *model.Model) *DP {
+	return &DP{model: d}
 }
 
-func (p *DPUsers) GetRouteUsersDefaultSubRoute(ctx context.Context, r *mux.Request) (string, error) {
+func (p *DP) DefaultRoute(ctx context.Context, r *mux.Request) (string, error) {
 	return p.model.GetUsers()[0].Login, nil
 }
 
-func (p *DPUsers) GetRouteUsersData(ctx context.Context, r *mux.Request, w mux.ResponseWriter, data *RouteData) error {
+func (p *DP) Data(ctx context.Context, r *mux.Request, w mux.ResponseWriter, data *RouteData) error {
 	ctxdata.FromContext(ctx).PageTitle += " | User"
 
 	curUserLogin := r.URLParam("userId")

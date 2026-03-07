@@ -11,10 +11,10 @@ import (
 	ssrMux "github.com/sergei-svistunov/go-ssr/pkg/mux"
 )
 
-func New(m *model.Model) http.Handler {
+func New(d *model.Model) http.Handler {
 	mux := http.NewServeMux()
 
-	ssrHandler := pages.NewSsrHandler(NewDataProvider(m), ssrMux.Options{
+	ssrHandler := pages.NewSsrHandler(d, ssrMux.Options{
 		ErrorHandler: handleError,
 	})
 	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

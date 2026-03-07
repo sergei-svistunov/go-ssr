@@ -1,5 +1,6 @@
 webDir: ./internal/web
 webPackage: github.com/sergei-svistunov/go-ssr/example/internal/web
+depsPackage: github.com/sergei-svistunov/go-ssr/example/internal/model
+depsType: Model
 goRunArgs: .
 env: {}
-genDataProviders: true

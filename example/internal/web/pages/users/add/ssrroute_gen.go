@@ -29,14 +29,15 @@ type FormAddValues struct {
 }
 
 type RouteDataProvider interface {
-	GetRouteUsersAddData(ctx context.Context, r *mux.Request, w mux.ResponseWriter, data *RouteData) error
-	InitRouteUsersAddData_FormAdd(ctx context.Context, r *mux.Request, w mux.ResponseWriter, data *FormAddValues) error
-	ProcessRouteUsersAddData_FormAdd(ctx context.Context, r *mux.Request, w mux.ResponseWriter, data *FormAddValues) error
+	Data(ctx context.Context, r *mux.Request, w mux.ResponseWriter, data *RouteData) error
+	InitAdd(ctx context.Context, r *mux.Request, w mux.ResponseWriter, data *FormAddValues) error
+	ProcessAdd(ctx context.Context, r *mux.Request, w mux.ResponseWriter, data *FormAddValues) error
 }
 
-type Route[DataProvider RouteDataProvider] struct{}
+type ssrRoute struct{ dp RouteDataProvider }
 
-func (Route[DataProvider]) GetDataContext(ctx context.Context, r *mux.Request, w mux.ResponseWriter, dp DataProvider, child mux.DataContext) (mux.DataContext, error) {
+func NewRoute(dp RouteDataProvider) mux.Route { return &ssrRoute{dp: dp} }
+func (rt *ssrRoute) GetDataContext(ctx context.Context, r *mux.Request, w mux.ResponseWriter, child mux.DataContext) (mux.DataContext, error) {
 	dataCtx := &dataContext{
 		RouteDataContext: mux.RouteDataContext{
 			Child:  child,
@@ -57,7 +58,7 @@ func (Route[DataProvider]) GetDataContext(ctx context.Context, r *mux.Request, w
 		&dataCtx.FormAddData.Radio,
 	})
 
-	if err := dp.InitRouteUsersAddData_FormAdd(ctx, r, w, &dataCtx.FormAddData); err != nil {
+	if err := rt.dp.InitAdd(ctx, r, w, &dataCtx.FormAddData); err != nil {
 		return nil, err
 	}
 
@@ -81,7 +82,7 @@ func (Route[DataProvider]) GetDataContext(ctx context.Context, r *mux.Request, w
 			dataCtx.FormAddData.Images.Process(r, "images", true, true)
 			dataCtx.FormAddData.Confirm.Process(r, "confirm", true, false)
 			dataCtx.FormAddData.Radio.Process(r, "radio", true, false)
-			if err := dp.ProcessRouteUsersAddData_FormAdd(ctx, r, w, &dataCtx.FormAddData); err != nil {
+			if err := rt.dp.ProcessAdd(ctx, r, w, &dataCtx.FormAddData); err != nil {
 				return nil, err
 			}
 			dataCtx.FormAddData.BaseFormValues.MarkValidated()
@@ -90,14 +91,14 @@ func (Route[DataProvider]) GetDataContext(ctx context.Context, r *mux.Request, w
 	if err := form.SetCSRFToken(r, w, &dataCtx.FormAddData.BaseFormValues); err != nil {
 		return nil, err
 	}
-	if err := dp.GetRouteUsersAddData(ctx, r, w, &dataCtx.RouteData); err != nil {
+	if err := rt.dp.Data(ctx, r, w, &dataCtx.RouteData); err != nil {
 		return nil, err
 	}
 
 	return dataCtx, nil
 }
 
-func (Route[DataProvider]) GetDefaultSubRoute(ctx context.Context, r *mux.Request, dp DataProvider) (string, error) {
+func (rt *ssrRoute) GetDefaultRoute(ctx context.Context, r *mux.Request) (string, error) {
 	return "", nil
 }
 

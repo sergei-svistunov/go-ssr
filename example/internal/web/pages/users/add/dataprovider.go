@@ -13,7 +13,7 @@ import (
 	"github.com/sergei-svistunov/go-ssr/pkg/mux"
 )
 
-var _ RouteDataProvider = &DPUsersAdd{}
+var _ RouteDataProvider = &DP{}
 
 type FormValue struct {
 	Value string
@@ -21,11 +21,15 @@ type FormValue struct {
 	Class string
 }
 
-type DPUsersAdd struct {
+type DP struct {
 	model *model.Model
 }
 
-func (p *DPUsersAdd) InitRouteUsersAddData_FormAdd(ctx context.Context, r *mux.Request, w mux.ResponseWriter, formData *FormAddValues) error {
+func NewDP(d *model.Model) *DP {
+	return &DP{model: d}
+}
+
+func (p *DP) InitAdd(ctx context.Context, r *mux.Request, w mux.ResponseWriter, formData *FormAddValues) error {
 	formData.Name.SetValue("John Doe")
 
 	formData.Select.SetOptions([]form.SelectOptionElement[uint8]{
@@ -52,7 +56,7 @@ func (p *DPUsersAdd) InitRouteUsersAddData_FormAdd(ctx context.Context, r *mux.R
 	return nil
 }
 
-func (p *DPUsersAdd) ProcessRouteUsersAddData_FormAdd(ctx context.Context, r *mux.Request, w mux.ResponseWriter, form *FormAddValues) error {
+func (p *DP) ProcessAdd(ctx context.Context, r *mux.Request, w mux.ResponseWriter, form *FormAddValues) error {
 	log.Printf("%#v\n", form)
 
 	f, err := form.Image.GetValue().Open()
@@ -89,11 +93,7 @@ func (p *DPUsersAdd) ProcessRouteUsersAddData_FormAdd(ctx context.Context, r *mu
 	return mux.Redirect(http.StatusFound, path.Join("/users", form.Login.GetValue()))
 }
 
-func NewDP(m *model.Model) *DPUsersAdd {
-	return &DPUsersAdd{m}
-}
-
-func (p *DPUsersAdd) GetRouteUsersAddData(ctx context.Context, r *mux.Request, w mux.ResponseWriter, data *RouteData) error {
+func (p *DP) Data(ctx context.Context, r *mux.Request, w mux.ResponseWriter, data *RouteData) error {
 	if r.Method != http.MethodPost {
 		return nil
 	}

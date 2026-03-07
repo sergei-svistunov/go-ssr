@@ -11,17 +11,15 @@ import (
 	"github.com/sergei-svistunov/go-ssr/pkg/mux"
 )
 
-var _ RouteDataProvider = &DPRoot{}
+var _ RouteDataProvider = &DP{}
 
-type DPRoot struct {
-	model *model.Model
+type DP struct{}
+
+func NewDP(_ *model.Model) *DP {
+	return &DP{}
 }
 
-func NewDP(m *model.Model) *DPRoot {
-	return &DPRoot{m}
-}
-
-func (D *DPRoot) GetRouteRootData(ctx context.Context, r *mux.Request, w mux.ResponseWriter, data *RouteData) error {
+func (p *DP) Data(ctx context.Context, r *mux.Request, w mux.ResponseWriter, data *RouteData) error {
 	pathParts := strings.Split(r.URL.Path, "/")
 	if len(pathParts) > 1 {
 		data.RoutePath = "/" + pathParts[1]

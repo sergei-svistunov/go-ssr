@@ -11,8 +11,6 @@ import (
 
 // --- test helpers ---
 
-type testDP struct{}
-
 type testDataContext struct {
 	body string
 }
@@ -32,7 +30,7 @@ type testRoute struct {
 	err             error
 }
 
-func (r testRoute) GetDataContext(_ context.Context, req *Request, _ ResponseWriter, _ testDP, child DataContext) (DataContext, error) {
+func (r testRoute) GetDataContext(_ context.Context, req *Request, _ ResponseWriter, child DataContext) (DataContext, error) {
 	if r.err != nil {
 		return nil, r.err
 	}
@@ -42,17 +40,15 @@ func (r testRoute) GetDataContext(_ context.Context, req *Request, _ ResponseWri
 	return &testDataContext{body: r.body}, nil
 }
 
-func (r testRoute) GetDefaultSubRoute(_ context.Context, _ *Request, _ testDP) (string, error) {
+func (r testRoute) GetDefaultRoute(_ context.Context, _ *Request) (string, error) {
 	return r.defaultSubRoute, nil
 }
 
-
-
-func newMux(routes map[string]Route[testDP], opts Options) *Mux[testDP] {
-	return New(testDP{}, routes, opts)
+func newMux(routes map[string]Route, opts Options) *Mux {
+	return New(routes, opts)
 }
 
-func doGet(m *Mux[testDP], path string) *httptest.ResponseRecorder {
+func doGet(m *Mux, path string) *httptest.ResponseRecorder {
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, path, nil)
 	m.ServeHTTP(w, r)
@@ -62,7 +58,7 @@ func doGet(m *Mux[testDP], path string) *httptest.ResponseRecorder {
 // --- tests ---
 
 func TestMux_StaticRoute(t *testing.T) {
-	m := newMux(map[string]Route[testDP]{
+	m := newMux(map[string]Route{
 		"/home": testRoute{body: "home page"},
 	}, Options{})
 
@@ -80,7 +76,7 @@ func TestMux_StaticRoute(t *testing.T) {
 }
 
 func TestMux_NotFound(t *testing.T) {
-	m := newMux(map[string]Route[testDP]{
+	m := newMux(map[string]Route{
 		"/home": testRoute{body: "home page"},
 	}, Options{})
 
@@ -93,7 +89,7 @@ func TestMux_NotFound(t *testing.T) {
 
 func TestMux_DynamicParam(t *testing.T) {
 	paramRoute := &paramCapturingRoute{body: "user page"}
-	m := newMux(map[string]Route[testDP]{
+	m := newMux(map[string]Route{
 		"/users/_userId_": paramRoute,
 	}, Options{})
 
@@ -112,17 +108,17 @@ type paramCapturingRoute struct {
 	capturedParam string
 }
 
-func (r *paramCapturingRoute) GetDataContext(_ context.Context, req *Request, _ ResponseWriter, _ testDP, child DataContext) (DataContext, error) {
+func (r *paramCapturingRoute) GetDataContext(_ context.Context, req *Request, _ ResponseWriter, child DataContext) (DataContext, error) {
 	r.capturedParam = req.URLParam("userId")
 	return &testDataContext{body: r.body}, nil
 }
 
-func (r *paramCapturingRoute) GetDefaultSubRoute(_ context.Context, _ *Request, _ testDP) (string, error) {
+func (r *paramCapturingRoute) GetDefaultRoute(_ context.Context, _ *Request) (string, error) {
 	return "", nil
 }
 
 func TestMux_DefaultSubRoute_Redirect(t *testing.T) {
-	m := newMux(map[string]Route[testDP]{
+	m := newMux(map[string]Route{
 		"/users":      testRoute{defaultSubRoute: "list"},
 		"/users/list": testRoute{body: "user list"},
 	}, Options{})
@@ -139,7 +135,7 @@ func TestMux_DefaultSubRoute_Redirect(t *testing.T) {
 }
 
 func TestMux_TrailingSlashStripped(t *testing.T) {
-	m := newMux(map[string]Route[testDP]{
+	m := newMux(map[string]Route{
 		"/home": testRoute{body: "home page"},
 	}, Options{})
 
@@ -151,7 +147,7 @@ func TestMux_TrailingSlashStripped(t *testing.T) {
 }
 
 func TestMux_RouteError_DefaultHandler(t *testing.T) {
-	m := newMux(map[string]Route[testDP]{
+	m := newMux(map[string]Route{
 		"/fail": testRoute{err: NewHttpError(http.StatusForbidden, "forbidden")},
 	}, Options{})
 
@@ -164,7 +160,7 @@ func TestMux_RouteError_DefaultHandler(t *testing.T) {
 
 func TestMux_RouteError_CustomHandler(t *testing.T) {
 	var capturedErr error
-	m := newMux(map[string]Route[testDP]{
+	m := newMux(map[string]Route{
 		"/fail": testRoute{err: errors.New("boom")},
 	}, Options{
 		ErrorHandler: func(w http.ResponseWriter, r *Request, err error) {
@@ -184,7 +180,7 @@ func TestMux_RouteError_CustomHandler(t *testing.T) {
 }
 
 func TestMux_Redirect_DefaultHandler(t *testing.T) {
-	m := newMux(map[string]Route[testDP]{
+	m := newMux(map[string]Route{
 		"/old": testRoute{err: Redirect(http.StatusMovedPermanently, "/new")},
 	}, Options{})
 
@@ -199,7 +195,7 @@ func TestMux_Redirect_DefaultHandler(t *testing.T) {
 }
 
 func TestMux_NestedRoutes(t *testing.T) {
-	m := newMux(map[string]Route[testDP]{
+	m := newMux(map[string]Route{
 		"/users":      testRoute{body: "users", defaultSubRoute: "list"},
 		"/users/_id_": testRoute{body: "user detail"},
 	}, Options{})
@@ -218,7 +214,7 @@ func TestMux_NestedRoutes(t *testing.T) {
 }
 
 func TestMux_RootPath(t *testing.T) {
-	m := newMux(map[string]Route[testDP]{
+	m := newMux(map[string]Route{
 		"/": testRoute{body: "root"},
 	}, Options{})
 
@@ -233,7 +229,7 @@ func TestMux_RootPath(t *testing.T) {
 
 func TestMux_MultipleDynamicSegments(t *testing.T) {
 	route := &multiParamRoute{body: "post page"}
-	m := newMux(map[string]Route[testDP]{
+	m := newMux(map[string]Route{
 		"/users/_userId_/posts/_postId_": route,
 	}, Options{})
 
@@ -256,18 +252,18 @@ type multiParamRoute struct {
 	capturedPostId string
 }
 
-func (r *multiParamRoute) GetDataContext(_ context.Context, req *Request, _ ResponseWriter, _ testDP, child DataContext) (DataContext, error) {
+func (r *multiParamRoute) GetDataContext(_ context.Context, req *Request, _ ResponseWriter, child DataContext) (DataContext, error) {
 	r.capturedUserId = req.URLParam("userId")
 	r.capturedPostId = req.URLParam("postId")
 	return &testDataContext{body: r.body}, nil
 }
 
-func (r *multiParamRoute) GetDefaultSubRoute(_ context.Context, _ *Request, _ testDP) (string, error) {
+func (r *multiParamRoute) GetDefaultRoute(_ context.Context, _ *Request) (string, error) {
 	return "", nil
 }
 
 func TestMux_StaticRouteOverDynamic(t *testing.T) {
-	m := newMux(map[string]Route[testDP]{
+	m := newMux(map[string]Route{
 		"/users/_id_":  testRoute{body: "dynamic user"},
 		"/users/admin": testRoute{body: "admin page"},
 	}, Options{})
@@ -292,7 +288,7 @@ func TestMux_StaticRouteOverDynamic(t *testing.T) {
 }
 
 func TestMux_GenericError_Returns500(t *testing.T) {
-	m := newMux(map[string]Route[testDP]{
+	m := newMux(map[string]Route{
 		"/fail": testRoute{err: errors.New("unexpected")},
 	}, Options{})
 
@@ -305,7 +301,7 @@ func TestMux_GenericError_Returns500(t *testing.T) {
 
 func TestMux_ResponseWriter_HeadersFromRoute(t *testing.T) {
 	route := &headerSettingRoute{body: "with headers"}
-	m := newMux(map[string]Route[testDP]{
+	m := newMux(map[string]Route{
 		"/page": route,
 	}, Options{})
 
@@ -323,11 +319,11 @@ type headerSettingRoute struct {
 	body string
 }
 
-func (r *headerSettingRoute) GetDataContext(_ context.Context, _ *Request, w ResponseWriter, _ testDP, child DataContext) (DataContext, error) {
+func (r *headerSettingRoute) GetDataContext(_ context.Context, _ *Request, w ResponseWriter, child DataContext) (DataContext, error) {
 	w.Header().Set("X-Custom", "test-value")
 	return &testDataContext{body: r.body}, nil
 }
 
-func (r *headerSettingRoute) GetDefaultSubRoute(_ context.Context, _ *Request, _ testDP) (string, error) {
+func (r *headerSettingRoute) GetDefaultRoute(_ context.Context, _ *Request) (string, error) {
 	return "", nil
 }
