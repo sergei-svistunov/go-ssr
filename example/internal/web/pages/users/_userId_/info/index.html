@@ -4,7 +4,9 @@
 <h1>Age group:
     <span ssr:if="user.Age <= 18">0-18</span>
     <span ssr:else-if="user.Age <= 30">19-30</span>
+    <!-- Older age groups -->
     <span ssr:else-if="user.Age <= 60">31-60</span>
+    <!-- Default case -->
     <span ssr:else>60+</span>
 </h1>
 

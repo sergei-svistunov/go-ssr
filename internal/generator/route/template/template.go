@@ -342,12 +342,16 @@ func Parse(filename string, imageResolver func(string) string) (*Template, error
 							if lastChild == nil {
 								return nil, fmt.Errorf("invalid else condition place")
 							}
-							if nodeText, ok := lastChild.(*node.Text); ok && strings.TrimSpace(nodeText.Text) == "" {
+							for {
+								nodeText, ok := lastChild.(*node.Text)
+								if !ok || strings.TrimSpace(nodeText.Text) != "" {
+									break
+								}
 								stack.Top().PopChild()
-							}
-							lastChild = stack.Top().LastChild()
-							if lastChild == nil {
-								return nil, fmt.Errorf("invalid else condition place")
+								lastChild = stack.Top().LastChild()
+								if lastChild == nil {
+									return nil, fmt.Errorf("invalid else condition place")
+								}
 							}
 							nodeCond, ok := lastChild.(*node.SsrCondition)
 							if !ok {

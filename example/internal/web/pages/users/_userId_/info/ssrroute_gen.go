@@ -65,12 +65,12 @@ func (c *dataContext) Write(w io.Writer) error {
 		if _, err := w.Write(_g7sv295h764ok5m5537ahc6f232nq98bloviqv836491mb9h19p0); err != nil {
 			return err
 		}
-//line index.html:7
+//line index.html:8
 	} else if user.Age <= 60 {
 		if _, err := w.Write(_op9ioepv8l07155uf33djfn67q21vmlv19susgefh9vnirjmd78g); err != nil {
 			return err
 		}
-//line index.html:8
+//line index.html:10
 	} else {
 		if _, err := w.Write(_l31gs7l9bqjbb89garbu034qb1qhulh2obnf5g8mvdeobdousrhg); err != nil {
 			return err
@@ -79,7 +79,7 @@ func (c *dataContext) Write(w io.Writer) error {
 	if _, err := w.Write(_iqb8ohfm40348bk2ahvdpntkn5dmfdd2hbk997vdalt0t3lon340); err != nil {
 		return err
 	}
-//line index.html:11
+//line index.html:13
 	if _, err := mux.WriteHtmlEscaped(w, user.Info); err != nil {
 		return err
 	}
