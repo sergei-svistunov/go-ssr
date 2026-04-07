@@ -28,3 +28,8 @@ var LiteralElements = map[string]bool{
 	"style":     true,
 	"xmp":       true,
 }
+
+var PreserveWhitespaceElements = map[string]bool{
+	"pre":      true,
+	"textarea": true,
+}

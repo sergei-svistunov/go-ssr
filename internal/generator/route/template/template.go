@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -17,6 +18,8 @@ import (
 	"github.com/sergei-svistunov/go-ssr/internal/generator/route/template/htmlutils"
 	"github.com/sergei-svistunov/go-ssr/internal/generator/route/template/node"
 )
+
+var reWhitespace = regexp.MustCompile(`\s+`)
 
 type Template struct {
 	nodes       []node.Node
@@ -116,7 +119,14 @@ func Parse(filename string, imageResolver func(string) string) (*Template, error
 			}
 			return nil, fmt.Errorf("%s:%d: cannot parse HTML: %v", filename, curLine, tok.Err())
 		case html.TextToken:
-			nodes, err := parseText(string(tok.Text()), filename, curLine, false)
+			text := string(tok.Text())
+			if !stack.isWhitespacePreserved() {
+				if strings.TrimSpace(text) == "" {
+					break
+				}
+				text = reWhitespace.ReplaceAllString(text, " ")
+			}
+			nodes, err := parseText(text, filename, curLine, false)
 			if err != nil {
 				return nil, err
 			}
