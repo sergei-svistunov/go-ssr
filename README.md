@@ -18,6 +18,9 @@ server-side rendering (SSR).
   to all route data providers via constructor injection. No composite interfaces or manual wiring needed.
 - **Static asset management**: Seamlessly integrate with `gossr-assets-webpack-plugin` to manage static assets (CSS,
   JavaScript, images) and dynamically replace paths with hashed filenames.
+- **Embedded static serving**: Webpack output is gzip-precompressed at generate time and embedded directly into the
+  binary via `//go:embed`. The generated handler serves static assets with ETags, `Cache-Control: immutable`,
+  conditional 304s, and gzip content-negotiation — no separate file server or filesystem dependency at runtime.
 - **Automatic rebuild**: Watches for file changes, rebuilding assets and templates as needed, and automatically restarts
   the project.
 - **Form Handling**: Automatically generate Go code to handle HTML forms, including validation and error management.
@@ -181,6 +184,32 @@ features include:
 <img src="./logo.png">
 <!-- becomes -->
 <img src="/static/images/logo.<hash>.png">
+```
+
+### Embedded static handler
+
+The generator inspects the webpack `outputPath` (e.g. `internal/web/dist/`) and, for each emitted file, stages a copy
+under `pages/static_embed/` — gzip-precompressed for compressible types (CSS, JS, JSON, SVG, …) and stored verbatim for
+already-compressed formats (PNG, JPEG, WOFF, WOFF2, MP4, …). It then writes `pages/ssrstaticfiles_gen.go` containing an
+`embed.FS` (`//go:embed all:static_embed`) and a URL→file map. `NewSsrHandler` serves these assets first, falling
+through to the SSR mux on miss — so no `http.FileServer` wiring is needed in user code.
+
+Runtime behavior provided by `pkg/static`:
+
+- Strong ETag header derived from the stored bytes; conditional `If-None-Match` returns `304 Not Modified`.
+- `Cache-Control: public, max-age=31536000, immutable` (safe given hashed filenames).
+- `Vary: Accept-Encoding` and gzip pass-through when the client accepts gzip; on-the-fly decompression otherwise.
+- `405 Method Not Allowed` for non-GET/HEAD requests, with an `Allow` header.
+
+Caching at generate time uses an `.etags.json` manifest keyed by source-file MD5, so unchanged sources skip
+re-compression on subsequent builds. The `static_embed/` directory is reserved (it cannot be a route name) and is
+ignored by the watcher to avoid feedback loops. If a static URL key would collide with a registered route path —
+including dynamic `_param_` segments — generation fails with an explicit error instead of silently shadowing the route.
+
+The `static_embed/` staging directory is build output and should be added to `.gitignore`:
+
+```gitignore
+**/pages/static_embed/
 ```
 
 ## Template syntax

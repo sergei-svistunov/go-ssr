@@ -21,8 +21,6 @@ func New(d *model.Model) http.Handler {
 		ssrHandler.ServeHTTP(w, r.WithContext(ctxdata.ToContext(r.Context(), &ctxdata.Data{})))
 	}))
 
-	mux.Handle("/static/", http.FileServer(http.Dir("internal/web"))) // ToDo: disable directory listing
-
 	return mux
 }
 

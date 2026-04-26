@@ -138,7 +138,8 @@ func (g *Generator) Shutdown() {
 
 func (g *Generator) ignoreFile(file string) bool {
 	return filepathHasPrefix(file, filepath.Join(g.webDir, g.assets.outputPath)) ||
-		filepathHasPrefix(file, filepath.Join(g.webDir, "node_modules/.cache"))
+		filepathHasPrefix(file, filepath.Join(g.webDir, "node_modules/.cache")) ||
+		filepathHasPrefix(file, filepath.Join(g.webDir, "pages", staticEmbedDirName))
 }
 
 func needWebpack(fileExt string) bool {

@@ -61,6 +61,12 @@ func (g *Generator) Analyze() error {
 
 	pagesDir := filepath.Join(g.webDir, "pages")
 	if err := filepath.WalkDir(pagesDir, func(p string, d fs.DirEntry, err error) error {
+		// staticEmbedDirName is a reserved top-level directory under pages/ used
+		// as the staging dir for the embedded static-file blob. A real route
+		// folder cannot share this name.
+		if d.IsDir() && d.Name() == staticEmbedDirName && filepath.Dir(p) == pagesDir {
+			return filepath.SkipDir
+		}
 		if !d.IsDir() || isDirEmpty(p) {
 			return nil
 		}
@@ -96,7 +102,21 @@ func (g *Generator) Analyze() error {
 }
 
 func (g *Generator) Generate() error {
-	if err := g.genHandler(); err != nil {
+	hasStatic, staticURLs, err := g.genStaticFiles()
+	if err != nil {
+		return fmt.Errorf("could not generate static files: %w", err)
+	}
+
+	if hasStatic {
+		if collisions := g.collisionsWithRoutes(staticURLs); len(collisions) > 0 {
+			return fmt.Errorf(
+				"static asset URL(s) collide with route path(s): %s — these routes would be silently shadowed by the embedded static handler. Rename the route(s) or change the webpack outputPath to disambiguate",
+				strings.Join(collisions, ", "),
+			)
+		}
+	}
+
+	if err := g.genHandler(hasStatic); err != nil {
 		return fmt.Errorf("could not generate handler: %w", err)
 	}
 
@@ -127,7 +147,60 @@ func (g *Generator) depsPackageName() string {
 	return path.Base(g.depsPackage)
 }
 
-func (g *Generator) genHandler() error {
+// collisionsWithRoutes returns any static URL keys that the SSR mux would
+// route to a registered route — accounting for dynamic-param segments
+// (folders named `_paramName_`). The generated handler tries the static
+// handler first, so a colliding route would be silently shadowed.
+func (g *Generator) collisionsWithRoutes(staticURLs []string) []string {
+	if len(staticURLs) == 0 || len(g.routes) == 0 {
+		return nil
+	}
+	routeSegs := make([][]string, 0, len(g.routes))
+	for rp := range g.routes {
+		routeSegs = append(routeSegs, splitRoutePath(rp))
+	}
+	var collisions []string
+	for _, u := range staticURLs {
+		us := splitRoutePath(u)
+		for _, rs := range routeSegs {
+			if routeMatchesSegments(rs, us) {
+				collisions = append(collisions, u)
+				break
+			}
+		}
+	}
+	sort.Strings(collisions)
+	return collisions
+}
+
+func splitRoutePath(p string) []string {
+	p = strings.TrimSuffix(p, "/")
+	if p == "" {
+		return nil
+	}
+	return strings.Split(strings.TrimPrefix(p, "/"), "/")
+}
+
+func routeMatchesSegments(routeSegs, urlSegs []string) bool {
+	if len(routeSegs) != len(urlSegs) {
+		return false
+	}
+	for i, rs := range routeSegs {
+		if isParamSegment(rs) {
+			continue
+		}
+		if rs != urlSegs[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func isParamSegment(s string) bool {
+	return len(s) >= 3 && s[0] == '_' && s[len(s)-1] == '_' && !strings.Contains(s[1:len(s)-1], "_")
+}
+
+func (g *Generator) genHandler(hasStatic bool) error {
 	buf := gobuf.New()
 
 	buf.WriteStringLn(goFileHeader)
@@ -156,7 +229,11 @@ func (g *Generator) genHandler() error {
 	} else {
 		buf.WriteStringLn("func NewSsrHandler(opts mux.Options) http.Handler {")
 	}
-	buf.WriteStringLn("return mux.New(map[string]mux.Route{")
+	if hasStatic {
+		buf.WriteStringLn("ssrH := mux.New(map[string]mux.Route{")
+	} else {
+		buf.WriteStringLn("return mux.New(map[string]mux.Route{")
+	}
 	for _, rPath := range g.getRoutesPaths() {
 		buf.WriteQuotedString(rPath)
 		buf.WriteString(": ")
@@ -172,6 +249,12 @@ func (g *Generator) genHandler() error {
 	}
 
 	buf.WriteStringLn("}, opts)")
+	if hasStatic {
+		buf.WriteStringLn("return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {")
+		buf.WriteStringLn("if ssrServeStatic(w, r) { return }")
+		buf.WriteStringLn("ssrH.ServeHTTP(w, r)")
+		buf.WriteStringLn("})")
+	}
 	buf.WriteStringLn("}")
 
 	formattedCode, err := buf.Formatted()

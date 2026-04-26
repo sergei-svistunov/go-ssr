@@ -100,3 +100,9 @@ fabric.properties
 # Go workspace file
 go.work
 
+# go-ssr generated static-embed staging dirs
+**/pages/static_embed/
+
+# qdevrunner local config
+qdevrunner.ini
+
