@@ -17,7 +17,7 @@ import (
 )
 
 func NewSsrHandler(d *model.Model, opts mux.Options) http.Handler {
-	return mux.New(map[string]mux.Route{
+	ssrH := mux.New(map[string]mux.Route{
 		"/":                        NewRoute(NewDP(d)),
 		"/home":                    routeHome.NewRoute(routeHome.NewDP(d)),
 		"/users":                   routeUsers.NewRoute(routeUsers.NewDP(d)),
@@ -26,4 +26,10 @@ func NewSsrHandler(d *model.Model, opts mux.Options) http.Handler {
 		"/users/_userId_/info":     routeUsers_userId_Info.NewRoute(routeUsers_userId_Info.NewDP(d)),
 		"/users/add":               routeUsersAdd.NewRoute(routeUsersAdd.NewDP(d)),
 	}, opts)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if ssrServeStatic(w, r) {
+			return
+		}
+		ssrH.ServeHTTP(w, r)
+	})
 }
