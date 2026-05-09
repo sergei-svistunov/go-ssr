@@ -20,3 +20,12 @@ func (n *Operator) WriteGoCode(buf *gobuf.GoBuf) {
 	buf.WriteString(n.Op)
 	n.Right.WriteGoCode(buf)
 }
+
+func (n *Operator) CollectVarRefs(reactive map[string]bool) []string {
+	var sets [][]string
+	if n.Left != nil {
+		sets = append(sets, n.Left.CollectVarRefs(reactive))
+	}
+	sets = append(sets, n.Right.CollectVarRefs(reactive))
+	return UnionRefs(sets...)
+}

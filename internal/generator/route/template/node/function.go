@@ -18,3 +18,7 @@ func (n *Function) WriteGoCode(buf *gobuf.GoBuf) {
 	n.Arguments.WriteGoCode(buf)
 	buf.WriteString(")")
 }
+
+func (n *Function) CollectVarRefs(reactive map[string]bool) []string {
+	return UnionRefs(n.Expr.CollectVarRefs(reactive), n.Arguments.CollectVarRefs(reactive))
+}

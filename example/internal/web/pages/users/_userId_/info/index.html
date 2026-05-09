@@ -1,5 +1,5 @@
 <ssr:var name="user" type="struct{Age uint8; Info string}"/>
-
+<ssr:var name="lastSeen" type="string" reactive="true"/>
 
 <h1>Age group:
     <span ssr:if="user.Age <= 18">0-18</span>
@@ -11,3 +11,5 @@
 </h1>
 
 <p class="mt-3">{{ user.Info }}</p>
+
+<p class="text-muted small mt-2">Last seen: <span>{{ lastSeen }}</span></p>

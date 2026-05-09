@@ -542,13 +542,13 @@ yydefault:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line text.y:33
 		{
-			yyVAL.NodeContent = &node.Content{bn(yylex), []node.Node{&node.Expression{bn(yylex), yyDollar[2].Node}}}
+			yyVAL.NodeContent = &node.Content{bn(yylex), []node.Node{&node.Expression{BaseNode: bn(yylex), Value: yyDollar[2].Node}}}
 		}
 	case 4:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line text.y:34
 		{
-			yyVAL.NodeContent = &node.Content{bn(yylex), []node.Node{&node.RawExpression{bn(yylex), yyDollar[2].Node}}}
+			yyVAL.NodeContent = &node.Content{bn(yylex), []node.Node{&node.RawExpression{BaseNode: bn(yylex), Value: yyDollar[2].Node}}}
 		}
 	case 5:
 		yyDollar = yyS[yypt-2 : yypt+1]
@@ -561,14 +561,14 @@ yydefault:
 		yyDollar = yyS[yypt-4 : yypt+1]
 //line text.y:36
 		{
-			yyDollar[1].NodeContent.Children = append(yyDollar[1].NodeContent.Children, &node.Expression{bn(yylex), yyDollar[3].Node})
+			yyDollar[1].NodeContent.Children = append(yyDollar[1].NodeContent.Children, &node.Expression{BaseNode: bn(yylex), Value: yyDollar[3].Node})
 			yyVAL.NodeContent = yyDollar[1].NodeContent
 		}
 	case 7:
 		yyDollar = yyS[yypt-4 : yypt+1]
 //line text.y:37
 		{
-			yyDollar[1].NodeContent.Children = append(yyDollar[1].NodeContent.Children, &node.RawExpression{bn(yylex), yyDollar[3].Node})
+			yyDollar[1].NodeContent.Children = append(yyDollar[1].NodeContent.Children, &node.RawExpression{BaseNode: bn(yylex), Value: yyDollar[3].Node})
 			yyVAL.NodeContent = yyDollar[1].NodeContent
 		}
 	case 8:
@@ -738,13 +738,13 @@ yydefault:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line text.y:68
 		{
-			yyVAL.Node = &node.Loop{bn(yylex), "", yyDollar[1].string, yyDollar[3].Node, nil}
+			yyVAL.Node = &node.Loop{bn(yylex), "", yyDollar[1].string, yyDollar[3].Node, nil, ""}
 		}
 	case 36:
 		yyDollar = yyS[yypt-5 : yypt+1]
 //line text.y:69
 		{
-			yyVAL.Node = &node.Loop{bn(yylex), yyDollar[1].string, yyDollar[3].string, yyDollar[5].Node, nil}
+			yyVAL.Node = &node.Loop{bn(yylex), yyDollar[1].string, yyDollar[3].string, yyDollar[5].Node, nil, ""}
 		}
 	}
 	goto yystack /* stack new state and value */

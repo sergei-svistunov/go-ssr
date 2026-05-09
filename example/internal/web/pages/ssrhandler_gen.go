@@ -3,11 +3,17 @@
 package pages
 
 import (
+	"context"
+	"fmt"
 	"net/http"
+	"sync"
 
+	"github.com/coder/websocket"
 	"github.com/sergei-svistunov/go-ssr/example/internal/model"
 	"github.com/sergei-svistunov/go-ssr/pkg/mux"
+	"github.com/sergei-svistunov/go-ssr/pkg/reactive"
 
+	routeContact "github.com/sergei-svistunov/go-ssr/example/internal/web/pages/contact"
 	routeHome "github.com/sergei-svistunov/go-ssr/example/internal/web/pages/home"
 	routeUsers "github.com/sergei-svistunov/go-ssr/example/internal/web/pages/users"
 	routeUsers_userId_ "github.com/sergei-svistunov/go-ssr/example/internal/web/pages/users/_userId_"
@@ -19,6 +25,7 @@ import (
 func NewSsrHandler(d *model.Model, opts mux.Options) http.Handler {
 	ssrH := mux.New(map[string]mux.Route{
 		"/":                        NewRoute(NewDP(d)),
+		"/contact":                 routeContact.NewRoute(routeContact.NewDP(d)),
 		"/home":                    routeHome.NewRoute(routeHome.NewDP(d)),
 		"/users":                   routeUsers.NewRoute(routeUsers.NewDP(d)),
 		"/users/_userId_":          routeUsers_userId_.NewRoute(routeUsers_userId_.NewDP(d)),
@@ -26,6 +33,563 @@ func NewSsrHandler(d *model.Model, opts mux.Options) http.Handler {
 		"/users/_userId_/info":     routeUsers_userId_Info.NewRoute(routeUsers_userId_Info.NewDP(d)),
 		"/users/add":               routeUsersAdd.NewRoute(routeUsersAdd.NewDP(d)),
 	}, opts)
+	wsHandlerContact := reactive.NewHandler(func(ctx context.Context, r *http.Request, conn *reactive.Conn) {
+		muxReq := mux.NewRequest(r)
+		if wsParams := mux.URLParamsFromContext(r.Context()); wsParams != nil {
+			for k, v := range wsParams {
+				muxReq.URLParams[k] = v
+			}
+		}
+		dp_ := NewDP(d)
+		var data_ RouteData
+		// Data is called on initial page load AND on every WebSocket reconnect.
+		// Do not rely on r.Method, POST body, or response headers here.
+		if err := dp_.Data(ctx, muxReq, mux.NoopResponseWriter{}, &data_); err != nil {
+			return
+		}
+		state_ := NewReactiveState(conn, &data_)
+		combinedBindings := map[string]string{}
+		for k, v := range Snapshot(&data_) {
+			combinedBindings[k] = v
+		}
+		initMsg := reactive.NewInitMsg("8a5edab2", combinedBindings)
+		if err := conn.SendJSON(initMsg); err != nil {
+			return
+		}
+		conn.StartSendLoop()
+		dispatchWrite := map[string]func(reactive.WriteMsg){
+			"8a5edab2": func(msg reactive.WriteMsg) {
+				HandleWrite(ctx, muxReq, conn, dp_, state_, &msg)
+			},
+		}
+		wsCtx, wsCancel := context.WithCancel(ctx)
+		defer wsCancel()
+		errCh := make(chan error, 2)
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					select {
+					case errCh <- fmt.Errorf("subscribe panic: %v", r):
+					default:
+					}
+					wsCancel()
+				}
+			}()
+			if err := dp_.Subscribe(wsCtx, muxReq, state_); err != nil {
+				select {
+				case errCh <- err:
+				default:
+				}
+				wsCancel()
+			}
+		}()
+		go func() {
+			if err := conn.HandleWrites(wsCtx, func(msg reactive.WriteMsg) {
+				if fn, ok := dispatchWrite[msg.RouteKey]; ok {
+					fn(msg)
+				} else {
+					conn.SendJSON(reactive.NewErrMsg("", msg.Var, "unknown route", "unknown_route"))
+				}
+			}); err != nil {
+				select {
+				case errCh <- err:
+				default:
+				}
+				wsCancel()
+			}
+		}()
+		wg.Wait()
+		select {
+		case <-errCh:
+			conn.CloseWithError(websocket.StatusInternalError, "subscribe error")
+		default:
+		}
+	})
+
+	wsHandlerHome := reactive.NewHandler(func(ctx context.Context, r *http.Request, conn *reactive.Conn) {
+		muxReq := mux.NewRequest(r)
+		if wsParams := mux.URLParamsFromContext(r.Context()); wsParams != nil {
+			for k, v := range wsParams {
+				muxReq.URLParams[k] = v
+			}
+		}
+		dp_ := NewDP(d)
+		var data_ RouteData
+		// Data is called on initial page load AND on every WebSocket reconnect.
+		// Do not rely on r.Method, POST body, or response headers here.
+		if err := dp_.Data(ctx, muxReq, mux.NoopResponseWriter{}, &data_); err != nil {
+			return
+		}
+		state_ := NewReactiveState(conn, &data_)
+		dpHome := routeHome.NewDP(d)
+		var dataHome routeHome.RouteData
+		// Data is called on initial page load AND on every WebSocket reconnect.
+		// Do not rely on r.Method, POST body, or response headers here.
+		if err := dpHome.Data(ctx, muxReq, mux.NoopResponseWriter{}, &dataHome); err != nil {
+			return
+		}
+		stateHome := routeHome.NewReactiveState(conn, &dataHome)
+		combinedBindings := map[string]string{}
+		for k, v := range Snapshot(&data_) {
+			combinedBindings[k] = v
+		}
+		for k, v := range routeHome.Snapshot(&dataHome) {
+			combinedBindings[k] = v
+		}
+		initMsg := reactive.NewInitMsg("2cc974af", combinedBindings)
+		if err := conn.SendJSON(initMsg); err != nil {
+			return
+		}
+		conn.StartSendLoop()
+		dispatchWrite := map[string]func(reactive.WriteMsg){
+			"8a5edab2": func(msg reactive.WriteMsg) {
+				HandleWrite(ctx, muxReq, conn, dp_, state_, &msg)
+			},
+			"2cc974af": func(msg reactive.WriteMsg) {
+				routeHome.HandleWrite(ctx, muxReq, conn, dpHome, stateHome, &msg)
+			},
+		}
+		wsCtx, wsCancel := context.WithCancel(ctx)
+		defer wsCancel()
+		errCh := make(chan error, 3)
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					select {
+					case errCh <- fmt.Errorf("subscribe panic: %v", r):
+					default:
+					}
+					wsCancel()
+				}
+			}()
+			if err := dp_.Subscribe(wsCtx, muxReq, state_); err != nil {
+				select {
+				case errCh <- err:
+				default:
+				}
+				wsCancel()
+			}
+		}()
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					select {
+					case errCh <- fmt.Errorf("subscribe panic: %v", r):
+					default:
+					}
+					wsCancel()
+				}
+			}()
+			if err := dpHome.Subscribe(wsCtx, muxReq, stateHome); err != nil {
+				select {
+				case errCh <- err:
+				default:
+				}
+				wsCancel()
+			}
+		}()
+		go func() {
+			if err := conn.HandleWrites(wsCtx, func(msg reactive.WriteMsg) {
+				if fn, ok := dispatchWrite[msg.RouteKey]; ok {
+					fn(msg)
+				} else {
+					conn.SendJSON(reactive.NewErrMsg("", msg.Var, "unknown route", "unknown_route"))
+				}
+			}); err != nil {
+				select {
+				case errCh <- err:
+				default:
+				}
+				wsCancel()
+			}
+		}()
+		wg.Wait()
+		select {
+		case <-errCh:
+			conn.CloseWithError(websocket.StatusInternalError, "subscribe error")
+		default:
+		}
+	})
+
+	wsHandlerUsers_userId_Contacts := reactive.NewHandler(func(ctx context.Context, r *http.Request, conn *reactive.Conn) {
+		muxReq := mux.NewRequest(r)
+		if wsParams := mux.URLParamsFromContext(r.Context()); wsParams != nil {
+			for k, v := range wsParams {
+				muxReq.URLParams[k] = v
+			}
+		}
+		dp_ := NewDP(d)
+		var data_ RouteData
+		// Data is called on initial page load AND on every WebSocket reconnect.
+		// Do not rely on r.Method, POST body, or response headers here.
+		if err := dp_.Data(ctx, muxReq, mux.NoopResponseWriter{}, &data_); err != nil {
+			return
+		}
+		state_ := NewReactiveState(conn, &data_)
+		dpUsers := routeUsers.NewDP(d)
+		var dataUsers routeUsers.RouteData
+		// Data is called on initial page load AND on every WebSocket reconnect.
+		// Do not rely on r.Method, POST body, or response headers here.
+		if err := dpUsers.Data(ctx, muxReq, mux.NoopResponseWriter{}, &dataUsers); err != nil {
+			return
+		}
+		stateUsers := routeUsers.NewReactiveState(conn, &dataUsers)
+		combinedBindings := map[string]string{}
+		for k, v := range Snapshot(&data_) {
+			combinedBindings[k] = v
+		}
+		for k, v := range routeUsers.Snapshot(&dataUsers) {
+			combinedBindings[k] = v
+		}
+		initMsg := reactive.NewInitMsg("954dac29", combinedBindings)
+		if err := conn.SendJSON(initMsg); err != nil {
+			return
+		}
+		conn.StartSendLoop()
+		dispatchWrite := map[string]func(reactive.WriteMsg){
+			"8a5edab2": func(msg reactive.WriteMsg) {
+				HandleWrite(ctx, muxReq, conn, dp_, state_, &msg)
+			},
+			"954dac29": func(msg reactive.WriteMsg) {
+				routeUsers.HandleWrite(ctx, muxReq, conn, dpUsers, stateUsers, &msg)
+			},
+		}
+		wsCtx, wsCancel := context.WithCancel(ctx)
+		defer wsCancel()
+		errCh := make(chan error, 3)
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					select {
+					case errCh <- fmt.Errorf("subscribe panic: %v", r):
+					default:
+					}
+					wsCancel()
+				}
+			}()
+			if err := dp_.Subscribe(wsCtx, muxReq, state_); err != nil {
+				select {
+				case errCh <- err:
+				default:
+				}
+				wsCancel()
+			}
+		}()
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					select {
+					case errCh <- fmt.Errorf("subscribe panic: %v", r):
+					default:
+					}
+					wsCancel()
+				}
+			}()
+			if err := dpUsers.Subscribe(wsCtx, muxReq, stateUsers); err != nil {
+				select {
+				case errCh <- err:
+				default:
+				}
+				wsCancel()
+			}
+		}()
+		go func() {
+			if err := conn.HandleWrites(wsCtx, func(msg reactive.WriteMsg) {
+				if fn, ok := dispatchWrite[msg.RouteKey]; ok {
+					fn(msg)
+				} else {
+					conn.SendJSON(reactive.NewErrMsg("", msg.Var, "unknown route", "unknown_route"))
+				}
+			}); err != nil {
+				select {
+				case errCh <- err:
+				default:
+				}
+				wsCancel()
+			}
+		}()
+		wg.Wait()
+		select {
+		case <-errCh:
+			conn.CloseWithError(websocket.StatusInternalError, "subscribe error")
+		default:
+		}
+	})
+
+	wsHandlerUsers_userId_Info := reactive.NewHandler(func(ctx context.Context, r *http.Request, conn *reactive.Conn) {
+		muxReq := mux.NewRequest(r)
+		if wsParams := mux.URLParamsFromContext(r.Context()); wsParams != nil {
+			for k, v := range wsParams {
+				muxReq.URLParams[k] = v
+			}
+		}
+		dp_ := NewDP(d)
+		var data_ RouteData
+		// Data is called on initial page load AND on every WebSocket reconnect.
+		// Do not rely on r.Method, POST body, or response headers here.
+		if err := dp_.Data(ctx, muxReq, mux.NoopResponseWriter{}, &data_); err != nil {
+			return
+		}
+		state_ := NewReactiveState(conn, &data_)
+		dpUsers := routeUsers.NewDP(d)
+		var dataUsers routeUsers.RouteData
+		// Data is called on initial page load AND on every WebSocket reconnect.
+		// Do not rely on r.Method, POST body, or response headers here.
+		if err := dpUsers.Data(ctx, muxReq, mux.NoopResponseWriter{}, &dataUsers); err != nil {
+			return
+		}
+		stateUsers := routeUsers.NewReactiveState(conn, &dataUsers)
+		dpUsers_userId_Info := routeUsers_userId_Info.NewDP(d)
+		var dataUsers_userId_Info routeUsers_userId_Info.RouteData
+		// Data is called on initial page load AND on every WebSocket reconnect.
+		// Do not rely on r.Method, POST body, or response headers here.
+		if err := dpUsers_userId_Info.Data(ctx, muxReq, mux.NoopResponseWriter{}, &dataUsers_userId_Info); err != nil {
+			return
+		}
+		stateUsers_userId_Info := routeUsers_userId_Info.NewReactiveState(conn, &dataUsers_userId_Info)
+		combinedBindings := map[string]string{}
+		for k, v := range Snapshot(&data_) {
+			combinedBindings[k] = v
+		}
+		for k, v := range routeUsers.Snapshot(&dataUsers) {
+			combinedBindings[k] = v
+		}
+		for k, v := range routeUsers_userId_Info.Snapshot(&dataUsers_userId_Info) {
+			combinedBindings[k] = v
+		}
+		initMsg := reactive.NewInitMsg("2b2f214e", combinedBindings)
+		if err := conn.SendJSON(initMsg); err != nil {
+			return
+		}
+		conn.StartSendLoop()
+		dispatchWrite := map[string]func(reactive.WriteMsg){
+			"8a5edab2": func(msg reactive.WriteMsg) {
+				HandleWrite(ctx, muxReq, conn, dp_, state_, &msg)
+			},
+			"954dac29": func(msg reactive.WriteMsg) {
+				routeUsers.HandleWrite(ctx, muxReq, conn, dpUsers, stateUsers, &msg)
+			},
+			"2b2f214e": func(msg reactive.WriteMsg) {
+				routeUsers_userId_Info.HandleWrite(ctx, muxReq, conn, dpUsers_userId_Info, stateUsers_userId_Info, &msg)
+			},
+		}
+		wsCtx, wsCancel := context.WithCancel(ctx)
+		defer wsCancel()
+		errCh := make(chan error, 4)
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					select {
+					case errCh <- fmt.Errorf("subscribe panic: %v", r):
+					default:
+					}
+					wsCancel()
+				}
+			}()
+			if err := dp_.Subscribe(wsCtx, muxReq, state_); err != nil {
+				select {
+				case errCh <- err:
+				default:
+				}
+				wsCancel()
+			}
+		}()
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					select {
+					case errCh <- fmt.Errorf("subscribe panic: %v", r):
+					default:
+					}
+					wsCancel()
+				}
+			}()
+			if err := dpUsers.Subscribe(wsCtx, muxReq, stateUsers); err != nil {
+				select {
+				case errCh <- err:
+				default:
+				}
+				wsCancel()
+			}
+		}()
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					select {
+					case errCh <- fmt.Errorf("subscribe panic: %v", r):
+					default:
+					}
+					wsCancel()
+				}
+			}()
+			if err := dpUsers_userId_Info.Subscribe(wsCtx, muxReq, stateUsers_userId_Info); err != nil {
+				select {
+				case errCh <- err:
+				default:
+				}
+				wsCancel()
+			}
+		}()
+		go func() {
+			if err := conn.HandleWrites(wsCtx, func(msg reactive.WriteMsg) {
+				if fn, ok := dispatchWrite[msg.RouteKey]; ok {
+					fn(msg)
+				} else {
+					conn.SendJSON(reactive.NewErrMsg("", msg.Var, "unknown route", "unknown_route"))
+				}
+			}); err != nil {
+				select {
+				case errCh <- err:
+				default:
+				}
+				wsCancel()
+			}
+		}()
+		wg.Wait()
+		select {
+		case <-errCh:
+			conn.CloseWithError(websocket.StatusInternalError, "subscribe error")
+		default:
+		}
+	})
+
+	wsHandlerUsersAdd := reactive.NewHandler(func(ctx context.Context, r *http.Request, conn *reactive.Conn) {
+		muxReq := mux.NewRequest(r)
+		if wsParams := mux.URLParamsFromContext(r.Context()); wsParams != nil {
+			for k, v := range wsParams {
+				muxReq.URLParams[k] = v
+			}
+		}
+		dp_ := NewDP(d)
+		var data_ RouteData
+		// Data is called on initial page load AND on every WebSocket reconnect.
+		// Do not rely on r.Method, POST body, or response headers here.
+		if err := dp_.Data(ctx, muxReq, mux.NoopResponseWriter{}, &data_); err != nil {
+			return
+		}
+		state_ := NewReactiveState(conn, &data_)
+		dpUsers := routeUsers.NewDP(d)
+		var dataUsers routeUsers.RouteData
+		// Data is called on initial page load AND on every WebSocket reconnect.
+		// Do not rely on r.Method, POST body, or response headers here.
+		if err := dpUsers.Data(ctx, muxReq, mux.NoopResponseWriter{}, &dataUsers); err != nil {
+			return
+		}
+		stateUsers := routeUsers.NewReactiveState(conn, &dataUsers)
+		combinedBindings := map[string]string{}
+		for k, v := range Snapshot(&data_) {
+			combinedBindings[k] = v
+		}
+		for k, v := range routeUsers.Snapshot(&dataUsers) {
+			combinedBindings[k] = v
+		}
+		initMsg := reactive.NewInitMsg("954dac29", combinedBindings)
+		if err := conn.SendJSON(initMsg); err != nil {
+			return
+		}
+		conn.StartSendLoop()
+		dispatchWrite := map[string]func(reactive.WriteMsg){
+			"8a5edab2": func(msg reactive.WriteMsg) {
+				HandleWrite(ctx, muxReq, conn, dp_, state_, &msg)
+			},
+			"954dac29": func(msg reactive.WriteMsg) {
+				routeUsers.HandleWrite(ctx, muxReq, conn, dpUsers, stateUsers, &msg)
+			},
+		}
+		wsCtx, wsCancel := context.WithCancel(ctx)
+		defer wsCancel()
+		errCh := make(chan error, 3)
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					select {
+					case errCh <- fmt.Errorf("subscribe panic: %v", r):
+					default:
+					}
+					wsCancel()
+				}
+			}()
+			if err := dp_.Subscribe(wsCtx, muxReq, state_); err != nil {
+				select {
+				case errCh <- err:
+				default:
+				}
+				wsCancel()
+			}
+		}()
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					select {
+					case errCh <- fmt.Errorf("subscribe panic: %v", r):
+					default:
+					}
+					wsCancel()
+				}
+			}()
+			if err := dpUsers.Subscribe(wsCtx, muxReq, stateUsers); err != nil {
+				select {
+				case errCh <- err:
+				default:
+				}
+				wsCancel()
+			}
+		}()
+		go func() {
+			if err := conn.HandleWrites(wsCtx, func(msg reactive.WriteMsg) {
+				if fn, ok := dispatchWrite[msg.RouteKey]; ok {
+					fn(msg)
+				} else {
+					conn.SendJSON(reactive.NewErrMsg("", msg.Var, "unknown route", "unknown_route"))
+				}
+			}); err != nil {
+				select {
+				case errCh <- err:
+				default:
+				}
+				wsCancel()
+			}
+		}()
+		wg.Wait()
+		select {
+		case <-errCh:
+			conn.CloseWithError(websocket.StatusInternalError, "subscribe error")
+		default:
+		}
+	})
+
+	mux.WithWSHandlers(map[string]http.Handler{
+		"/contact/__ws":                 wsHandlerContact,
+		"/home/__ws":                    wsHandlerHome,
+		"/users/_userId_/contacts/__ws": wsHandlerUsers_userId_Contacts,
+		"/users/_userId_/info/__ws":     wsHandlerUsers_userId_Info,
+		"/users/add/__ws":               wsHandlerUsersAdd,
+	})(ssrH)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if ssrServeStatic(w, r) {
 			return

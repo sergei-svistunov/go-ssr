@@ -16,3 +16,7 @@ func (n *Parentheses) WriteGoCode(buf *gobuf.GoBuf) {
 	n.Value.WriteGoCode(buf)
 	buf.WriteString(")")
 }
+
+func (n *Parentheses) CollectVarRefs(reactive map[string]bool) []string {
+	return n.Value.CollectVarRefs(reactive)
+}

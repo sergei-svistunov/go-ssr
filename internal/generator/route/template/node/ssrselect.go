@@ -21,6 +21,9 @@ var selectReservedAttrs = map[string]bool{
 	"gotype": true,
 }
 
+// CollectVarRefs returns [] — form fields are not reactive.
+func (n *SsrSelect) CollectVarRefs(_ map[string]bool) []string { return []string{} }
+
 func (n *SsrSelect) WriteGoCode(buf *gobuf.GoBuf) {
 	buf.WriteStringLn("{")
 	buf.WriteStringLn(n.FilePos())

@@ -19,3 +19,11 @@ func (n *ExpressionsList) WriteGoCode(buf *gobuf.GoBuf) {
 		value.WriteGoCode(buf)
 	}
 }
+
+func (n *ExpressionsList) CollectVarRefs(reactive map[string]bool) []string {
+	sets := make([][]string, len(n.Values))
+	for i, v := range n.Values {
+		sets[i] = v.CollectVarRefs(reactive)
+	}
+	return UnionRefs(sets...)
+}

@@ -13,3 +13,96 @@
     <img src="https://upload.wikimedia.org/wikipedia/commons/b/b9/2023_Facebook_icon.svg" width="50px" height="50"
          alt="facebook">
 </div>
+
+<div class="row mt-3">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <ssr:var name="visitorsOnline" type="int" reactive="true"/>
+                <ssr:var name="visitorsBadgeColor" type="string" reactive="true"/>
+                <p class="mb-1">👀 <strong style="color: {{ visitorsBadgeColor }}">{{ visitorsOnline }}</strong> visitors online right now</p>
+                <p class="text-muted small mb-0">Counter and its colour both update live; the colour is driven by a separate reactive variable applied to the <code>style</code> attribute.</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <ssr:var name="displayName" type="string" reactive="true" client-writable="true"/>
+                <label class="form-label">Your display name</label>
+                <input ssr:bind="displayName" type="text" class="form-control" placeholder="Your name"/>
+                <div id="display-name-error" class="text-danger small mt-1"></div>
+                <p class="mt-2 mb-0">Hi, {{ displayName }}!</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-12">
+        <h2>Template Feature Showcase</h2>
+    </div>
+</div>
+
+<!-- Arithmetic and field accessor expressions -->
+<ssr:var name="price" type="float64"/>
+<ssr:var name="quantity" type="float64"/>
+<ssr:var name="userAge" type="int"/>
+<ssr:var name="userName" type="string"/>
+
+<div class="row mt-3">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header"><strong>Arithmetic &amp; Field Accessors</strong></div>
+            <div class="card-body">
+                <ul class="list-unstyled mb-0">
+                    <li>Price: <code>{{ price }}</code></li>
+                    <li>Quantity: <code>{{ quantity }}</code></li>
+                    <li>Total (price * quantity): <strong>{{ price * quantity }}</strong></li>
+                    <li>User: <code>{{ userName }}</code>, Age: <code>{{ userAge }}</code></li>
+                    <li>Age check (ternary): <strong>{{ userAge >= 18 ? 'Adult' : 'Minor' }}</strong></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Conditional rendering -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header"><strong>Conditional Rendering (ssr:if / ssr:else-if / ssr:else)</strong></div>
+            <div class="card-body">
+                <ssr:var name="status" type="string"/>
+                <p>Current status: <code>{{ status }}</code></p>
+                <span class="badge bg-success" ssr:if="status == 'active'">Active</span>
+                <span class="badge bg-warning text-dark" ssr:else-if="status == 'pending'">Pending</span>
+                <span class="badge bg-danger" ssr:else>Inactive</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Loop rendering -->
+<div class="row mt-3">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header"><strong>Loops — index-less (ssr:for x in xs)</strong></div>
+            <div class="card-body">
+                <ssr:var name="fruits" type="[]string"/>
+                <ul class="mb-0">
+                    <li ssr:for="fruit in fruits">{{ fruit }}</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header"><strong>Loops — indexed (ssr:for i, x in xs)</strong></div>
+            <div class="card-body">
+                <ssr:var name="langs" type="[]string"/>
+                <ol class="mb-0">
+                    <li ssr:for="i, lang in langs">#{{ i }}: {{ lang }}</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>

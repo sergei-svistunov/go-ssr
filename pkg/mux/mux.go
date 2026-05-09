@@ -18,6 +18,20 @@ type Route interface {
 type Mux struct {
 	rootRoute    *muxRoute
 	errorHandler ErrorHandler
+	wsHandlers   map[string]http.Handler
+}
+
+// WithWSHandlers returns a functional option that registers WebSocket handlers
+// for specific paths. When a request with "Upgrade: websocket" matches a key
+// in the handlers map, the call is delegated to the registered handler and the
+// normal SSR rendering path is bypassed.
+//
+// This option is additive and non-breaking: callers that do not use WebSocket
+// functionality pass no options and mux.New's signature is unchanged.
+func WithWSHandlers(handlers map[string]http.Handler) func(*Mux) {
+	return func(m *Mux) {
+		m.wsHandlers = handlers
+	}
 }
 
 type muxRoute struct {
@@ -69,6 +83,20 @@ func New(routes map[string]Route, opts Options) *Mux {
 }
 
 func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Check WebSocket upgrade requests first when WS handlers are registered.
+	if len(m.wsHandlers) > 0 && r.Header.Get("Upgrade") == "websocket" {
+		if h, pattern := m.matchWSHandler(r.URL.Path); h != nil {
+			// Extract URL params from the matched WS pattern so that
+			// r.UrlParam(…) works inside the WS handler / Subscribe.
+			params := extractWSURLParams(pattern, r.URL.Path)
+			if len(params) > 0 {
+				r = r.WithContext(context.WithValue(r.Context(), urlParamsKey{}, params))
+			}
+			h.ServeHTTP(w, r)
+			return
+		}
+	}
+
 	routePath := r.URL.Path
 	if len(routePath) > 0 && routePath[len(routePath)-1] == '/' {
 		routePath = routePath[:len(routePath)-1]
@@ -135,6 +163,63 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		log.Println(err)
 	}
 }
+
+// matchWSHandler finds the WS handler for the given request path. It supports
+// dynamic segments (using the same _paramName_ convention as SSR routes).
+// Returns (nil, "") if no handler matches.
+// Returns (handler, pattern) on a match so the caller can extract URL params.
+func (m *Mux) matchWSHandler(requestPath string) (http.Handler, string) {
+	// Fast path: exact match (no dynamic segments, no extraction needed).
+	if h, ok := m.wsHandlers[requestPath]; ok {
+		return h, requestPath
+	}
+	// Slow path: pattern match (for dynamic segments like _userId_).
+	reDynParam := reDynParamGlobal
+	reqParts := strings.Split(strings.TrimSuffix(requestPath, "/"), "/")
+	for pattern, h := range m.wsHandlers {
+		patParts := strings.Split(strings.TrimSuffix(pattern, "/"), "/")
+		if len(patParts) != len(reqParts) {
+			continue
+		}
+		match := true
+		for i, pp := range patParts {
+			if reDynParam.MatchString(pp) {
+				continue // dynamic segment matches anything
+			}
+			if pp != reqParts[i] {
+				match = false
+				break
+			}
+		}
+		if match {
+			return h, pattern
+		}
+	}
+	return nil, ""
+}
+
+// extractWSURLParams walks the matched WS pattern and the actual request path
+// in parallel, extracting values for each dynamic segment (_paramName_).
+// Returns an empty map (not nil) when there are no dynamic segments.
+func extractWSURLParams(pattern, requestPath string) map[string]string {
+	params := map[string]string{}
+	patParts := strings.Split(strings.TrimSuffix(pattern, "/"), "/")
+	reqParts := strings.Split(strings.TrimSuffix(requestPath, "/"), "/")
+	if len(patParts) != len(reqParts) {
+		return params
+	}
+	reDynParam := reDynParamGlobal
+	for i, pp := range patParts {
+		if reDynParam.MatchString(pp) {
+			// pp is "_paramName_"; strip the underscores to get the key.
+			key := pp[1 : len(pp)-1]
+			params[key] = reqParts[i]
+		}
+	}
+	return params
+}
+
+var reDynParamGlobal = regexp.MustCompile("^_[^_]+_$")
 
 func defaultErrorHandler(w http.ResponseWriter, r *Request, err error) {
 	var (

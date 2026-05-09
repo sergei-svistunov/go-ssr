@@ -13,17 +13,21 @@ server-side rendering (SSR).
 - **Dynamic URL parameters**: Use folder names to define dynamic parts of URLs, which are passed as parameters to the
   corresponding handlers.
 - **Data providers**: Each route has its own `RouteDataProvider` interface with short method names (`Data`,
-  `DefaultRoute`, `Init*`, `Process*`). Routes are self-contained — each carries its own data provider.
+  `DefaultRoute`, `Init*`, `Process*`). Routes are self-contained - each carries its own data provider.
 - **Dependency injection**: Optionally configure a `depsPackage` in `gossr.yaml` to pass a shared dependencies struct
   to all route data providers via constructor injection. No composite interfaces or manual wiring needed.
 - **Static asset management**: Seamlessly integrate with `gossr-assets-webpack-plugin` to manage static assets (CSS,
   JavaScript, images) and dynamically replace paths with hashed filenames.
 - **Embedded static serving**: Webpack output is gzip-precompressed at generate time and embedded directly into the
   binary via `//go:embed`. The generated handler serves static assets with ETags, `Cache-Control: immutable`,
-  conditional 304s, and gzip content-negotiation — no separate file server or filesystem dependency at runtime.
+  conditional 304s, and gzip content-negotiation - no separate file server or filesystem dependency at runtime.
 - **Automatic rebuild**: Watches for file changes, rebuilding assets and templates as needed, and automatically restarts
   the project.
 - **Form Handling**: Automatically generate Go code to handle HTML forms, including validation and error management.
+- **Reactive Bindings**: Opt-in, Vue-like live bindings. Mark a variable `reactive="true"` and the server pushes DOM
+  patches to every connected client over WebSocket whenever the value changes. TypeScript can write back to
+  server-validated state with `ssr.set()` or a declarative `ssr:bind` attribute on any native input element. No
+  WebSocket boilerplate required.
 
 ## It's very fast
 
@@ -175,8 +179,10 @@ Create a directory for all GoSSR files, such as `internal/web`. This directory m
 GoSSR integrates with Webpack for managing JavaScript, CSS, and images using the `gossr-assets-webpack-plugin`. Key
 features include:
 
-- **JavaScript & styles**: The plugin automatically includes `index.ts` and `styles.scss` as entry point dependencies if
-  they exist in the directory.
+- **JavaScript & styles**: The plugin automatically includes `index.ts`, `styles.scss`, and the
+  generator-emitted `__ssr_gen__.ts` (for reactive routes) as entry point dependencies when they exist in the
+  directory. The reactive client therefore loads automatically on every reactive route — no manual import is
+  required in `index.ts`.
 - **Image management**: Images are copied to the `/static` folder, and their paths are updated to use hashed filenames.
   For example:
 
@@ -189,10 +195,10 @@ features include:
 ### Embedded static handler
 
 The generator inspects the webpack `outputPath` (e.g. `internal/web/dist/`) and, for each emitted file, stages a copy
-under `pages/static_embed/` — gzip-precompressed for compressible types (CSS, JS, JSON, SVG, …) and stored verbatim for
+under `pages/static_embed/` - gzip-precompressed for compressible types (CSS, JS, JSON, SVG, …) and stored verbatim for
 already-compressed formats (PNG, JPEG, WOFF, WOFF2, MP4, …). It then writes `pages/ssrstaticfiles_gen.go` containing an
 `embed.FS` (`//go:embed all:static_embed`) and a URL→file map. `NewSsrHandler` serves these assets first, falling
-through to the SSR mux on miss — so no `http.FileServer` wiring is needed in user code.
+through to the SSR mux on miss - so no `http.FileServer` wiring is needed in user code.
 
 Runtime behavior provided by `pkg/static`:
 
@@ -203,8 +209,8 @@ Runtime behavior provided by `pkg/static`:
 
 Caching at generate time uses an `.etags.json` manifest keyed by source-file MD5, so unchanged sources skip
 re-compression on subsequent builds. The `static_embed/` directory is reserved (it cannot be a route name) and is
-ignored by the watcher to avoid feedback loops. If a static URL key would collide with a registered route path —
-including dynamic `_param_` segments — generation fails with an explicit error instead of silently shadowing the route.
+ignored by the watcher to avoid feedback loops. If a static URL key would collide with a registered route path -
+including dynamic `_param_` segments - generation fails with an explicit error instead of silently shadowing the route.
 
 The `static_embed/` staging directory is build output and should be added to `.gitignore`:
 
@@ -222,6 +228,16 @@ GoSSR templates support expressions for inserting dynamic data between HTML tags
 <p>Some text: {{ textValue }}</p>
 <span class="name {{ dynamicClass }}">Text</span>
 ```
+
+If any variable in an expression is declared `reactive="true"`, the expression site becomes a live binding: the
+server re-renders the expression and pushes a DOM patch over WebSocket whenever any of its inputs changes.
+Composite sites like `{{ a + b }}` work the same way - both `a` and `b` are tracked, and changing either patches
+the rendered HTML.
+
+The same applies to expressions inside attribute values. When at least one attribute value references a reactive
+variable (for example `style="color: {{ userColor }}"` or `class="badge {{ tone }}"`), the whole element is
+wrapped in an invisible block and re-rendered with its updated attributes on every change. Any other reactive
+expressions inside that element are covered by the same patch and are not double-rendered.
 
 ### Operators
 
@@ -249,6 +265,75 @@ Variables in GoSSR templates must have explicitly defined types. Declare them us
 <ssr:var name="varName" type="varType"/>
 ```
 
+A variable can opt into live, server-pushed updates by adding `reactive="true"`. Adding `client-writable="true"`
+also allows TypeScript to write the value back to the server (validated by a generated `Validate<Name>` hook):
+
+```html
+<ssr:var name="count" type="int" reactive="true" client-writable="true"/>
+```
+
+| Attribute | Values | Notes |
+|-----------|--------|-------|
+| `reactive` | `"true"` | Opts the variable into live binding. Any Go type is supported (structs, slices, maps, pointers, primitives). |
+| `client-writable` | `"true"` | Allows TypeScript to write via `ssr.set()` or `ssr:bind`. Requires a `Validate<Name>` hook. |
+
+For each reactive route the generator adds a `Subscribe(ctx, r, state)` stub plus a `Validate<Name>` stub for
+each `client-writable` variable. Fill them in `dataprovider.go`:
+
+```go
+func (p *DP) Subscribe(ctx context.Context, r *mux.Request, state *ReactiveState) error {
+    // Called once when a WebSocket connects; runs for the connection's lifetime.
+    // Data() is also re-invoked on every reconnect, so do not rely on r.Method or response headers here.
+    ticker := time.NewTicker(time.Second)
+    defer ticker.Stop()
+    for {
+        select {
+        case <-ctx.Done():
+            return nil
+        case <-ticker.C:
+            state.SetCount(state.Count + 1)
+        }
+    }
+}
+
+func (p *DP) ValidateCount(_ context.Context, _ *mux.Request, val int) (int, error) {
+    if val < 0 {
+        return 0, errors.New("count cannot be negative")
+    }
+    return val, nil
+}
+```
+
+The generated WebSocket handler is mounted at the deepest reactive route's path, e.g. `/dashboard/users/__ws`.
+The `__ws` segment is reserved: using it as a folder name in `pages/` is a generator error.
+
+Nested reactive routes are supported: a parent and a child can both declare `reactive="true"` variables. The
+generator emits a single WebSocket handler at the leaf path that runs each route's `Subscribe` concurrently
+and multiplexes patches over one connection. From the developer's perspective each route works with its own
+`*ReactiveState` and never sees the other route's variables. Binding keys are namespaced internally so
+parent and child can both declare a variable named `count` without collision.
+
+`ssr:bind` references must be local to the route declaring the variable; binding to a parent's variable from
+a child template is a generator error. Subscribe goroutines are isolated by `recover()`: a panic in one
+route's Subscribe closes the connection (clients reconnect via standard backoff) but does not crash the
+server.
+
+Reactive declarations are governed by these rules:
+
+| Code | Trigger | Aborts generation |
+|------|---------|-------------------|
+| E01 | A folder in `pages/` is named `__ws` | yes |
+| E05 | `ssr:bind` on a variable without `client-writable="true"`, undeclared, or declared in a different route | yes |
+| E06 | `ssr:bind` on a GoSSR form primitive (`<ssr:input>`, `<ssr:select>`, `<ssr:textarea>`) | yes |
+| E07 | `ssr:bind` on a non-scalar variable (struct, slice, map, etc.) | yes |
+
+Any Go type works with `reactive="true"` (scalars, structs, slices, maps, pointers, `time.Time`, custom types). The
+`ssr:bind` attribute itself is restricted to scalars because native HTML element values are strings; use `ssr.set()`
+in TypeScript for non-scalar writes.
+
+A note on loop reactivity: `<ssr:for>` over a reactive collection re-renders the whole loop body on every
+change. Keyed list diffing is planned but not yet implemented.
+
 ### Embedding content
 
 For routes with nested sub-routes, use the `<ssr:content/>` tag to embed child templates. You can also specify a default
@@ -268,6 +353,12 @@ Render elements conditionally using `ssr:if`, `ssr:else-if`, and `ssr:else` attr
 <span ssr:else>60+</span>
 ```
 
+When a condition references a reactive variable, the entire conditional chain becomes reactive: the generator
+wraps the chain in an `<ssr-block>` element, and any change to an input variable re-renders the active branch
+server-side and pushes one HTML patch. If no branch matches (no `ssr:else`), the block collapses to empty
+content. Reactive `{{ expr }}` sites inside such a block are not double-patched: the outer block's re-render
+covers them.
+
 ### Loops
 
 Use loops to iterate over arrays:
@@ -282,6 +373,137 @@ With an index variable:
 
 ```html
 <p ssr:for="i, phone in phones">{{ i }}: {{ phone }}</p>
+```
+
+When the iterated collection is reactive, or when any reactive variable is referenced inside the loop body,
+the whole loop becomes a reactive block: any change re-renders all iterations and patches the DOM. The loop
+variable (`phone` above) is per-iteration and is not itself reactive. The full loop body is re-rendered on
+every change; keyed list diffing is planned but not yet implemented.
+
+### Two-way input binding
+
+Native `<input>`, `<select>`, and `<textarea>` elements can be bound to a `client-writable` reactive variable
+using the `ssr:bind` attribute:
+
+```html
+<input ssr:bind="count" type="number"/>
+```
+
+The element's value stays in sync with the server variable in both directions: user input fires `ssr.set`
+(validated by `Validate<Name>` server-side); a server push sets `element.value`. No TypeScript event handler
+is required. `ssr:bind` is invalid on `<ssr:input>`/`<ssr:select>`/`<ssr:textarea>` (those are form-submission
+primitives, not reactive bindings - see error E06).
+
+### TypeScript API
+
+For each reactive route the generator emits `__ssr_gen__.ts` containing the route's typed variable map and a
+fully-wired `ssr` client. The route key, WebSocket URL, and `createSsrClient` call are all generator-managed.
+The webpack plugin (`gossr-assets-webpack-plugin`) bundles `__ssr_gen__.ts` into the route's chunk
+automatically, so the WebSocket connects on every reactive route regardless of whether you author an `index.ts`
+or what it contains.
+
+You only need to import `ssr` if you want to drive the runtime from your own code:
+
+```typescript
+import { ssr } from './__ssr_gen__';
+
+// Read the last-received rendered HTML string for a binding.
+const rendered = ssr.get('count'); // string | undefined
+
+// Write a value to the server (fire-and-forget; validated server-side).
+ssr.set('count', 42);
+
+// Subscribe to server-pushed updates. The callback receives a pre-rendered HTML string.
+// The generated runtime patches the DOM automatically; ssr.on() is for custom side-effects.
+const unsub = ssr.on('count', (renderedHtml) => {
+    console.log('count changed to', renderedHtml);
+});
+
+// React to validation errors from the server.
+ssr.onError((varName, message) => {
+    const el = document.getElementById(`${varName}-error`);
+    if (el) el.textContent = message;
+});
+```
+
+`ssr.set` is only callable on variables declared `client-writable="true"`; calling it on a read-only variable
+is a TypeScript compile error. `ssr.get` and `ssr.on` accept any reactive variable name.
+
+The runtime is published as `gossr-runtime`. Add it to your `package.json` alongside `gossr-assets-webpack-plugin`.
+TypeScript's `moduleResolution` must be `"bundler"` or `"nodenext"` to honour the runtime package's `exports` map.
+
+### Driving Subscribe goroutines from elsewhere in the process
+
+A reactive route's `Subscribe(ctx, r, state)` is a long-lived goroutine. The hard part is usually waking it up
+when something changes outside the route — a different HTTP handler, a background worker, another service inside
+the same process. `pkg/reactive` exposes a small generic pub/sub for that:
+
+```go
+import "github.com/sergei-svistunov/go-ssr/pkg/reactive"
+
+// Per-user fan-out. Publish carries the new value so the subscriber doesn't
+// need to re-query (avoids read-your-own-write races against the publisher's
+// transaction).
+var balances = reactive.NewTopic[uint32, float64]()
+
+// Global fan-out, e.g. for a "users online" counter shown in every navbar.
+var presence = reactive.NewBroadcast[int]()
+```
+
+Publisher side (any goroutine — typically inside an HTTP handler or worker):
+
+```go
+balances.Publish(userId, newBalance)
+presence.Publish(currentOnline)
+```
+
+Subscriber side (the route's `Subscribe` loop):
+
+```go
+func (p *DP) Subscribe(ctx context.Context, r *mux.Request, state *ReactiveState) error {
+    userId := currentUserID(r)
+    sub := balances.Subscribe(userId)
+    defer sub.Close()
+
+    presenceSub := presence.Subscribe()
+    defer presenceSub.Close()
+
+    for {
+        select {
+        case <-ctx.Done():
+            return nil
+        case bal := <-sub.Updates():
+            state.SetBalance(bal)
+        case n := <-presenceSub.Updates():
+            state.SetOnline(n)
+        }
+    }
+}
+```
+
+Semantics:
+
+- **`Publish` is non-blocking.** Each subscription has a cap-1 channel. If a buffered value is already pending,
+  the old value is replaced with the new one (freshest-wins). Publishers are safe to call from inside database
+  transactions; a slow subscriber can never block them, and a missed intermediate value doesn't matter because
+  the subscriber always reads the latest.
+- **`Close` is idempotent.** Once a key's subscription set is empty, the key is removed from the underlying map
+  so a churning user-id space doesn't grow forever.
+- **All methods are safe for concurrent use.**
+
+The "dirty bit" pattern (signal that *something* changed and let the subscriber re-query the source of truth)
+falls out naturally: parameterise `V` as `struct{}` and ignore the value:
+
+```go
+var notifyDirty = reactive.NewTopic[uint32, struct{}]()
+
+// Publisher:
+notifyDirty.Publish(userId, struct{}{})
+
+// Subscriber:
+case <-notifySub.Updates():
+    count := db.UnreadCount(userId)
+    state.SetUnread(count)
 ```
 
 ## Form Handling with Server-Side Rendering
@@ -418,8 +640,31 @@ func (p *DP) ProcessAddUser(ctx context.Context, r *mux.Request, w mux.ResponseW
 
 ## Example
 
-For a working example, refer to the [example folder](/example). It demonstrates directory-based routing, template
-embedding, dynamic URL parameters, dependency injection, and asset management with Webpack.
+The [example folder](/example) demonstrates every feature of the framework woven into a small running app:
+
+- Directory-based routing, dynamic URL params, embedded layouts, dependency injection, webpack-managed assets
+- A live navbar balance pushed from the root layout's `Subscribe`
+- A live visitor counter and a two-way bound `displayName` input on `/home`, with a server-side `Validate*`
+  hook that logs and rejects oversized values
+- A live user count on `/users` and a relative-time "last seen" indicator on `/users/<id>/info`, all updating
+  simultaneously over a single multiplexed WebSocket connection
+- A traditional form at `/contact` covering `<ssr:form>`, validation, and `Process*`
+
+Run the app on `:18080`:
+
+```bash
+cd example
+go run .
+```
+
+End-to-end browser tests live in `example/tests/` (Playwright, Chromium):
+
+```bash
+cd example/tests
+npm install
+npx playwright install chromium
+npx playwright test
+```
 
 ## Contributing
 

@@ -22,3 +22,11 @@ func (n *TernaryIf) WriteGoCode(buf *gobuf.GoBuf) {
 	n.F.WriteGoCode(buf)
 	buf.WriteString(")")
 }
+
+func (n *TernaryIf) CollectVarRefs(reactive map[string]bool) []string {
+	return UnionRefs(
+		n.Cond.CollectVarRefs(reactive),
+		n.T.CollectVarRefs(reactive),
+		n.F.CollectVarRefs(reactive),
+	)
+}

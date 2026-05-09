@@ -10,6 +10,8 @@ type SsrAssets struct {
 	BaseNode
 }
 
+func (n *SsrAssets) CollectVarRefs(_ map[string]bool) []string { return []string{} }
+
 func (n *SsrAssets) WriteGoCode(buf *gobuf.GoBuf) {
 	buf.WriteStringLn("if err := c.WriteAssets(w, map[string]struct{}{}); err != nil {")
 	buf.WriteStringLn("	return err")

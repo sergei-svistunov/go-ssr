@@ -1,0 +1,46 @@
+<div class="row mt-4">
+    <div class="col-md-6 col-xl-4">
+        <h2>Contact Us</h2>
+        <p class="text-muted">Demonstrates <code>ssr:form</code>, <code>ssr:input</code>, <code>ssr:select</code>,
+            <code>ssr:textarea</code>, validation errors, and success state.</p>
+
+        <ssr:var name="success" type="bool"/>
+        <div class="alert alert-success" ssr:if="success">
+            Message sent successfully!
+        </div>
+
+        <ssr:form name="contact">
+            <div class="form-floating mb-3">
+                <ssr:input name="name" type="text" required id="contact-name" placeholder="Your Name"
+                           class="form-control {{ form.IsValidated() ? input.HasError() ? 'is-invalid' : 'is-valid' : '' }}"/>
+                <label for="contact-name">Your Name</label>
+                <div class="invalid-feedback" ssr:if="form.Name.HasError()">{{ form.Name.GetError() }}</div>
+            </div>
+
+            <div class="form-floating mb-3">
+                <ssr:input name="email" type="text" required id="contact-email" placeholder="Email"
+                           class="form-control {{ form.IsValidated() ? input.HasError() ? 'is-invalid' : 'is-valid' : '' }}"/>
+                <label for="contact-email">Email Address</label>
+                <div class="invalid-feedback" ssr:if="form.Email.HasError()">{{ form.Email.GetError() }}</div>
+            </div>
+
+            <div class="form-floating mb-3">
+                <ssr:select name="topic" id="contact-topic"
+                            class="form-select {{ form.IsValidated() ? input.HasError() ? 'is-invalid' : 'is-valid' : '' }}"/>
+                <label for="contact-topic">Topic</label>
+                <div class="invalid-feedback" ssr:if="form.Topic.HasError()">{{ form.Topic.GetError() }}</div>
+            </div>
+
+            <div class="form-floating mb-3">
+                <ssr:textarea name="message" required style="height: 120px" placeholder="Your message" id="contact-message"
+                              class="form-control {{ form.IsValidated() ? textarea.HasError() ? 'is-invalid' : 'is-valid' : '' }}"/>
+                <label for="contact-message">Message</label>
+                <div class="invalid-feedback" ssr:if="form.Message.HasError()">{{ form.Message.GetError() }}</div>
+            </div>
+
+            <div class="alert alert-danger" ssr:if="form.GetError() != ''">{{ form.GetError() }}</div>
+
+            <button type="submit" class="btn btn-primary">Send Message</button>
+        </ssr:form>
+    </div>
+</div>

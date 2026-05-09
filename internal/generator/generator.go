@@ -71,6 +71,24 @@ func (g *Generator) Analyze() error {
 			return nil
 		}
 
+		// E01 — reserved path segment __ws.
+		// This check runs unconditionally — not only when reactive vars are present.
+		if d.Name() == "__ws" {
+			// Construct a user-friendly path relative to the module root.
+			relPath, _ := filepath.Rel(g.dir, p)
+			if runtime.GOOS == "windows" {
+				relPath = strings.Replace(relPath, "\\", "/", -1)
+			}
+			// Use the index.html path as the error location (conventional format).
+			indexPath := filepath.Join(p, "index.html")
+			relIndex, _ := filepath.Rel(g.dir, indexPath)
+			if runtime.GOOS == "windows" {
+				relIndex = strings.Replace(relIndex, "\\", "/", -1)
+			}
+			return fmt.Errorf("%s:1:1: reactive-bindings: route folder \"__ws\" (at %s) is reserved for WebSocket endpoints; rename the folder",
+				relIndex, relPath)
+		}
+
 		routePath, err := filepath.Rel(pagesDir, p)
 		if err != nil {
 			return fmt.Errorf("could not determine relative path for route: %w", err)
@@ -116,6 +134,11 @@ func (g *Generator) Generate() error {
 		}
 	}
 
+	// Run all reactive-bindings validation checks before writing any files.
+	if err := g.validateReactiveBindings(); err != nil {
+		return err
+	}
+
 	if err := g.genHandler(hasStatic); err != nil {
 		return fmt.Errorf("could not generate handler: %w", err)
 	}
@@ -128,9 +151,74 @@ func (g *Generator) Generate() error {
 		if err := g.genRouteDP(rPath, r); err != nil {
 			return fmt.Errorf("could not generate route dataprovider %s: %w", rPath, err)
 		}
+
+		if err := g.genRouteTSTypes(rPath, r); err != nil {
+			return fmt.Errorf("could not generate TS types for route %s: %w", rPath, err)
+		}
 	}
 
 	return nil
+}
+
+// validateReactiveBindings runs all compile-time checks for the reactive-bindings
+// feature (E01–E06). Returns the first error encountered.
+func (g *Generator) validateReactiveBindings() error {
+	// Build a cross-route variable map used by validateSsrBindRefs to distinguish
+	// "variable not in this route but in another route" from "variable not declared
+	// anywhere". Map: routePath → varName → Variable.
+	allRouteVarMaps := make(map[string]map[string]template.Variable, len(g.routes))
+	for rPath, r := range g.routes {
+		tmpl := r.Template()
+		if tmpl == nil {
+			continue
+		}
+		vm := make(map[string]template.Variable, len(tmpl.GetVariables()))
+		for _, v := range tmpl.GetVariables() {
+			vm[v.Name] = v
+		}
+		allRouteVarMaps[rPath] = vm
+	}
+
+	for _, rPath := range g.getRoutesPaths() {
+		r := g.routes[rPath]
+		tmpl := r.Template()
+		if tmpl == nil {
+			continue
+		}
+
+		// Build this route's name→Variable map for E07 lookup.
+		varMap := allRouteVarMaps[rPath]
+		if varMap == nil {
+			varMap = make(map[string]template.Variable)
+		}
+
+		// E07: ssr:bind on a non-scalar variable type. Must run before
+		// E05 so that a non-scalar bind produces the more specific E07 error
+		// rather than the generic E05 client-writable error.
+		if err := validateSsrBindE07(rPath, tmpl, varMap); err != nil {
+			return err
+		}
+
+		// E05 + cross-route constraint: ssr:bind without client-writable or
+		// ssr:bind referencing a variable in a different route.
+		if err := validateSsrBindRefs(rPath, tmpl, allRouteVarMaps); err != nil {
+			return err
+		}
+
+	}
+	return nil
+}
+
+// buildReactiveMap builds a map[name]bool of reactive variable names from a
+// list of template variables.
+func buildReactiveMap(vars []template.Variable) map[string]bool {
+	m := make(map[string]bool)
+	for _, v := range vars {
+		if v.Reactive {
+			m[v.Name] = true
+		}
+	}
+	return m
 }
 
 func (g *Generator) getRoutesPaths() []string {
@@ -203,11 +291,30 @@ func isParamSegment(s string) bool {
 func (g *Generator) genHandler(hasStatic bool) error {
 	buf := gobuf.New()
 
+	// Determine if any route is reactive (needs WS handler registration).
+	var reactiveRoutePaths []string
+	for _, rPath := range g.getRoutesPaths() {
+		if isReactiveRoute(g.routes[rPath]) {
+			reactiveRoutePaths = append(reactiveRoutePaths, rPath)
+		}
+	}
+	hasReactive := len(reactiveRoutePaths) > 0
+
 	buf.WriteStringLn(goFileHeader)
 	buf.WriteStringLn("package pages")
 
 	buf.WriteStringLn("import (")
-	buf.WriteQuotedString("net/http", "\n\n")
+	buf.WriteQuotedString("net/http", "\n")
+	if hasReactive {
+		buf.WriteQuotedString("context", "\n")
+		buf.WriteQuotedString("fmt", "\n")
+		buf.WriteQuotedString("sync", "\n")
+	}
+	buf.WriteString("\n")
+	if hasReactive {
+		buf.WriteQuotedString("github.com/coder/websocket", "\n")
+		buf.WriteQuotedString("github.com/sergei-svistunov/go-ssr/pkg/reactive", "\n")
+	}
 	buf.WriteQuotedString("github.com/sergei-svistunov/go-ssr/pkg/mux", "\n")
 	if g.depsPackage != "" {
 		buf.WriteQuotedString(g.depsPackage, "\n")
@@ -229,11 +336,9 @@ func (g *Generator) genHandler(hasStatic bool) error {
 	} else {
 		buf.WriteStringLn("func NewSsrHandler(opts mux.Options) http.Handler {")
 	}
-	if hasStatic {
-		buf.WriteStringLn("ssrH := mux.New(map[string]mux.Route{")
-	} else {
-		buf.WriteStringLn("return mux.New(map[string]mux.Route{")
-	}
+
+	// Always use a named variable for the Mux so we can apply WithWSHandlers.
+	buf.WriteStringLn("ssrH := mux.New(map[string]mux.Route{")
 	for _, rPath := range g.getRoutesPaths() {
 		buf.WriteQuotedString(rPath)
 		buf.WriteString(": ")
@@ -247,13 +352,40 @@ func (g *Generator) genHandler(hasStatic bool) error {
 			buf.WriteStringLn(pkgPrefix + "NewRoute(" + pkgPrefix + "NewDP()),")
 		}
 	}
-
 	buf.WriteStringLn("}, opts)")
+
+	// Register WebSocket handlers for reactive routes.
+	// Multiplexing model: one WS handler per leaf page that has at
+	// least one reactive route in its ancestor stack. The handler at the leaf
+	// path muxes all reactive ancestors over one WS connection.
+	if hasReactive {
+		// Compute the set of leaf paths that need WS endpoints.
+		// A leaf path needs a WS endpoint if any route in its ancestor stack
+		// (including itself) is reactive.
+		wsLeafPaths := g.computeWSLeafPaths()
+
+		// Emit one WS handler constructor per leaf path.
+		for _, leafPath := range wsLeafPaths {
+			ancestors := g.ancestorStack(leafPath)
+			g.genWSHandlerCode(buf, leafPath, ancestors)
+		}
+
+		buf.WriteStringLn("mux.WithWSHandlers(map[string]http.Handler{")
+		for _, leafPath := range wsLeafPaths {
+			routeVar := pathToVariable(leafPath)
+			buf.WriteQuotedString(wsEndpointPath(leafPath))
+			buf.WriteStringLn(": wsHandler" + routeVar + ",")
+		}
+		buf.WriteStringLn("})(ssrH)")
+	}
+
 	if hasStatic {
 		buf.WriteStringLn("return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {")
 		buf.WriteStringLn("if ssrServeStatic(w, r) { return }")
 		buf.WriteStringLn("ssrH.ServeHTTP(w, r)")
 		buf.WriteStringLn("})")
+	} else {
+		buf.WriteStringLn("return ssrH")
 	}
 	buf.WriteStringLn("}")
 
@@ -270,23 +402,49 @@ func (g *Generator) genHandler(hasStatic bool) error {
 }
 
 func (g *Generator) genRoute(rPath string, r *route.Route) error {
+	if r.Template() == nil {
+		return nil
+	}
 	buf := gobuf.New()
+
+	reactive := isReactiveRoute(r)
+
+	// Pre-compute reactive import requirements before emitting the import block.
+	// These depend on the template structure but must be known before code emission.
+	reactiveMap := buildReactiveMap(r.Template().GetVariables())
+	needsStrings := reactive && routeNeedsStringsBuilder(r.Template(), reactiveMap)
 
 	buf.WriteStringLn(goFileHeader)
 	buf.WriteString("package ")
 	buf.WriteStringLn(path.Base(path.Join("pages", rPath)))
 
+	// Determine whether the reactive write dispatcher will use json.Unmarshal
+	// (only when there are client-writable variables).
+	hasClientWritableVars := reactive && len(clientWritableVars(r.Template().GetVariables())) > 0
+
 	buf.WriteStringLn("import (")
 	buf.WriteQuotedString("context", "\n")
+	if hasClientWritableVars {
+		buf.WriteQuotedString("encoding/json", "\n")
+	}
 	buf.WriteQuotedString("io", "\n")
 	if len(r.Template().GetForms()) > 0 {
 		buf.WriteQuotedString("net/http", "\n")
+	}
+	if reactive {
+		buf.WriteQuotedString("sync", "\n")
+	}
+	if needsStrings {
+		buf.WriteQuotedString("strings", "\n")
 	}
 	buf.WriteString("\n")
 	if len(r.Template().GetForms()) > 0 {
 		buf.WriteQuotedString("github.com/sergei-svistunov/go-ssr/pkg/form", "\n")
 	}
 	buf.WriteQuotedString("github.com/sergei-svistunov/go-ssr/pkg/mux", "\n")
+	if reactive {
+		buf.WriteQuotedString("github.com/sergei-svistunov/go-ssr/pkg/reactive", "\n")
+	}
 	buf.WriteStringLn(")")
 
 	routeVariables := r.Template().GetVariables()
@@ -366,7 +524,35 @@ func (g *Generator) genRoute(rPath string, r *route.Route) error {
 		buf.WriteStringLn(getFormInitMethod(form.Name) + "(ctx context.Context, r *mux.Request, w mux.ResponseWriter, data *" + getFormValuesTypeName(form.Name) + ") error")
 		buf.WriteStringLn(getFormProcessMethod(form.Name) + "(ctx context.Context, r *mux.Request, w mux.ResponseWriter, data *" + getFormValuesTypeName(form.Name) + ") error")
 	}
+
+	// Reactive: Subscribe method and Validate<VarName> methods.
+	if reactive {
+		buf.WriteStringLn("// Subscribe is called once when the WebSocket connection is established.")
+		buf.WriteStringLn("// It runs for the connection's lifetime. Respect ctx.Done() for clean shutdown.")
+		buf.WriteStringLn("Subscribe(ctx context.Context, r *mux.Request, state *ReactiveState) error")
+
+		for _, v := range clientWritableVars(r.Template().GetVariables()) {
+			exportedName := getExportedName(v.Name)
+			buf.WriteStringLn("// Validate" + exportedName + " validates a client-initiated write to the " + v.Name + " variable.")
+			buf.WriteStringLn("// Return a non-nil error to reject the write; the client receives an err frame.")
+			buf.WriteStringLn("Validate" + exportedName + "(ctx context.Context, r *mux.Request, val " + v.Type + ") (" + v.Type + ", error)")
+		}
+	}
+
 	buf.WriteStringLn("}\n")
+
+	// Reactive: emit ReactiveState struct, renderBlock_KEY helpers, Set<VarName>
+	// methods, snapshot, and handleWrite dispatch function.
+	// genReactiveStateCode also runs AnnotateBindings (mutating the AST), so
+	// routeHasReactiveBlocks can be checked after this call.
+	var hasReactiveBlockSites bool
+	if reactive {
+		if _, err := g.genReactiveStateCode(buf, rPath, r); err != nil {
+			return err
+		}
+		g.genHandleWriteCode(buf, r)
+		hasReactiveBlockSites = routeHasReactiveBlocks(r.Template())
+	}
 
 	// type ssrRoute
 	buf.WriteStringLn("type ssrRoute struct { dp RouteDataProvider }")
@@ -503,6 +689,11 @@ func (g *Generator) genRoute(rPath string, r *route.Route) error {
 		buf.WriteString(":=c.RouteData.")
 		buf.WriteStringLn(getExportedName(variable.Name))
 	}
+	// Inject the ssr-block CSS rule for routes that use reactive block wrappers.
+	// Emitted once at the top of the route's HTML output.
+	if hasReactiveBlockSites {
+		buf.WritePrintString("<style>ssr-block { display: contents; }</style>")
+	}
 	r.Template().WriteGoCode(buf)
 	buf.WriteStringLn("return nil")
 	buf.WriteStringLn("}")
@@ -522,6 +713,10 @@ func (g *Generator) genRoute(rPath string, r *route.Route) error {
 }
 
 func (g *Generator) genRouteDP(rPath string, r *route.Route) error {
+	if r.Template() == nil {
+		return nil
+	}
+
 	filename := filepath.Join(g.webDir, "pages", rPath, "dataprovider.go")
 	if fileExists(filename) {
 		// Already exists, skip
@@ -533,8 +728,14 @@ func (g *Generator) genRouteDP(rPath string, r *route.Route) error {
 	buf.WriteString("package ")
 	buf.WriteStringLn(path.Base(path.Join("pages", rPath)))
 
+	hasClientWritable := len(clientWritableVars(r.Template().GetVariables())) > 0
+
 	buf.WriteStringLn("import (")
-	buf.WriteQuotedString("context", "\n\n")
+	buf.WriteQuotedString("context", "\n")
+	if hasClientWritable {
+		buf.WriteQuotedString("errors", "\n")
+	}
+	buf.WriteString("\n")
 	buf.WriteQuotedString("github.com/sergei-svistunov/go-ssr/pkg/mux", "\n")
 	if g.depsPackage != "" {
 		buf.WriteQuotedString(g.depsPackage, "\n")
@@ -559,9 +760,35 @@ func (g *Generator) genRouteDP(rPath string, r *route.Route) error {
 		buf.WriteStringLn("}\n")
 	}
 
+	buf.WriteStringLn("// Data is called on initial page load AND on every WebSocket reconnect.")
+	buf.WriteStringLn("// Do not rely on r.Method, POST body, or response headers here.")
 	buf.WriteStringLn("func (p *DP) Data(ctx context.Context, r *mux.Request, w mux.ResponseWriter, data *RouteData) error {")
-	buf.WriteStringLn("	return  nil")
+	buf.WriteStringLn("	return nil")
 	buf.WriteStringLn("}")
+
+	// Reactive stubs.
+	if isReactiveRoute(r) {
+		buf.WriteString("\n")
+		// Subscribe stub.
+		buf.WriteStringLn("// Subscribe is called once when the WebSocket connection is established.")
+		buf.WriteStringLn("// It runs for the connection's lifetime. Respect ctx.Done() for clean shutdown.")
+		buf.WriteStringLn("func (p *DP) Subscribe(ctx context.Context, r *mux.Request, state *ReactiveState) error {")
+		buf.WriteStringLn("	// TODO: push state updates here")
+		buf.WriteStringLn("	return nil")
+		buf.WriteStringLn("}")
+		buf.WriteString("\n")
+
+		// Validate stubs for client-writable vars.
+		for _, v := range clientWritableVars(r.Template().GetVariables()) {
+			exportedName := getExportedName(v.Name)
+			buf.WriteStringLn("// Validate" + exportedName + " validates a client-initiated write to " + v.Name + ".")
+			buf.WriteStringLn("// The generated default rejects all writes — override to permit them.")
+			buf.WriteStringLn("func (p *DP) Validate" + exportedName + "(ctx context.Context, r *mux.Request, val " + v.Type + ") (" + v.Type + ", error) {")
+			buf.WriteStringLn(`	return ` + zeroValueForType(v.Type) + `, errors.New("write not implemented")`)
+			buf.WriteStringLn("}")
+			buf.WriteString("\n")
+		}
+	}
 
 	formattedCode, err := buf.Formatted()
 	if err != nil {
@@ -573,6 +800,77 @@ func (g *Generator) genRouteDP(rPath string, r *route.Route) error {
 	}
 
 	return nil
+}
+
+// computeWSLeafPaths returns the sorted set of route paths that should have a
+// WS endpoint emitted. A route path qualifies when:
+//  1. It is a "leaf" — no other route in g.routes is a strict child of it.
+//  2. At least one route in its ancestor stack (including itself) is reactive.
+//
+// Non-reactive-only subtrees produce no WS endpoint.
+func (g *Generator) computeWSLeafPaths() []string {
+	routePaths := g.getRoutesPaths()
+
+	// Build a set for quick child-lookup.
+	routeSet := make(map[string]bool, len(routePaths))
+	for _, p := range routePaths {
+		routeSet[p] = true
+	}
+
+	isLeaf := func(rPath string) bool {
+		prefix := rPath
+		if prefix != "/" {
+			prefix = rPath + "/"
+		}
+		for _, p := range routePaths {
+			if p != rPath && strings.HasPrefix(p, prefix) {
+				return false
+			}
+		}
+		return true
+	}
+
+	var wsLeafs []string
+	for _, rPath := range routePaths {
+		if !isLeaf(rPath) {
+			continue
+		}
+		// Check if any route in the ancestor stack (including this leaf) is reactive.
+		ancestors := g.ancestorStack(rPath)
+		for _, ancestor := range ancestors {
+			if isReactiveRoute(ancestor) {
+				wsLeafs = append(wsLeafs, rPath)
+				break
+			}
+		}
+	}
+	sort.Strings(wsLeafs)
+	return wsLeafs
+}
+
+// ancestorStack returns the route stack for the given leaf path in root-to-leaf
+// order: [root, ...intermediates, leaf]. Only routes present in g.routes are
+// included (some intermediate directories may not have their own routes).
+func (g *Generator) ancestorStack(leafPath string) []*route.Route {
+	var stack []*route.Route
+	segments := strings.Split(strings.TrimPrefix(leafPath, "/"), "/")
+	if leafPath == "/" {
+		segments = []string{}
+	}
+
+	// Walk from root to leaf.
+	for i := 0; i <= len(segments); i++ {
+		var p string
+		if i == 0 {
+			p = "/"
+		} else {
+			p = "/" + strings.Join(segments[:i], "/")
+		}
+		if r, ok := g.routes[p]; ok {
+			stack = append(stack, r)
+		}
+	}
+	return stack
 }
 
 func pathToVariable(path string) string {
@@ -618,6 +916,37 @@ func getExportedName(name string) string {
 		return ""
 	}
 	return strings.ToUpper(string(name[0])) + name[1:]
+}
+
+// zeroValueForType returns the Go zero-value literal for a type used in
+// Validate<VarName> stubs.
+func zeroValueForType(t string) string {
+	switch t {
+	case "string":
+		return `""`
+	case "bool":
+		return "false"
+	default:
+		if strings.HasPrefix(t, "*") || strings.HasPrefix(t, "[]") || strings.HasPrefix(t, "map[") {
+			// Pointer, slice, and map types have a nil zero value.
+			return "nil"
+		}
+		// Numeric scalar types and named struct types.
+		// For numeric types "0" is valid; for structs the caller emits "<Type>{}"
+		// but we use a type-specific expression. Struct zero: <Type>{}.
+		// Detect if this looks like a numeric type by checking the scalar set.
+		numericTypes := map[string]bool{
+			"int": true, "int8": true, "int16": true, "int32": true, "int64": true,
+			"uint": true, "uint8": true, "uint16": true, "uint32": true, "uint64": true,
+			"uintptr": true, "byte": true, "rune": true,
+			"float32": true, "float64": true, "complex64": true, "complex128": true,
+		}
+		if numericTypes[t] {
+			return "0"
+		}
+		// Named struct or type alias: emit a composite literal zero.
+		return t + "{}"
+	}
 }
 
 func fileExists(filename string) bool {

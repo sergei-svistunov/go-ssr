@@ -37,6 +37,11 @@ func (errRouteDataProvider) Data(ctx context.Context, r *mux.Request, w mux.Resp
 	return nil
 }
 
+func (errRouteDataProvider) Subscribe(ctx context.Context, r *mux.Request, state *ReactiveState) error {
+	<-ctx.Done()
+	return nil
+}
+
 func WriteError(w http.ResponseWriter, r *mux.Request, err error) {
 	rt := &ssrRoute{dp: errRouteDataProvider{}}
 	dc, err := rt.GetDataContext(r.Context(), r, w, &errDataContext{err})

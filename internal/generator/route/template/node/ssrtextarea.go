@@ -18,6 +18,9 @@ var textareaReservedAttrs = map[string]bool{
 	"value": true,
 }
 
+// CollectVarRefs returns [] — form fields are not reactive.
+func (n *SsrTextarea) CollectVarRefs(_ map[string]bool) []string { return []string{} }
+
 func (n *SsrTextarea) WriteGoCode(buf *gobuf.GoBuf) {
 	buf.WriteStringLn("{")
 	buf.WriteStringLn(n.FilePos())
