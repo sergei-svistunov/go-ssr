@@ -2,28 +2,30 @@
   "outputPath": "static",
   "entrypoints": {
     "pages/home": [
-      "/static/js/pages/home.5f13d36dca3eb49dffe2.js"
+      "/static/js/vendors.bd957e3da610c60058ff.js",
+      "/static/js/pages/home.ee578a93bb012732938a.js"
     ],
     "pages/users/_userId_/contacts": [
-      "/static/css/pages/users/_userId_/contacts.ebaa73568a9350e8216c.css",
-      "/static/js/pages/users/_userId_/contacts.ebaa73568a9350e8216c.js"
+      "/static/css/pages/users/_userId_/contacts.abeaff4fff07f99844b6.css",
+      "/static/js/pages/users/_userId_/contacts.abeaff4fff07f99844b6.js"
     ],
     "pages/users/_userId_/info": [
-      "/static/js/pages/users/_userId_/info.a2435ab41912ef57ab27.js"
+      "/static/js/vendors.bd957e3da610c60058ff.js",
+      "/static/js/pages/users/_userId_/info.771d1318f84196f63385.js"
     ],
     "pages/users": [
-      "/static/js/bootstrap.9e956bb5a71942fc3218.js",
-      "/static/js/vendors.c44cd0e6d374429cb0f9.js",
-      "/static/js/luxon.1ed077e024362cfc6deb.js",
-      "/static/css/pages/users.1794bf4ad6e6eacffefd.css",
-      "/static/js/pages/users.1794bf4ad6e6eacffefd.js"
+      "/static/js/vendors.bd957e3da610c60058ff.js",
+      "/static/js/bootstrap.e47cb26e34a916f4c2f2.js",
+      "/static/js/luxon.942aca0b9b25e5a111aa.js",
+      "/static/css/pages/users.523e7c5125edd484ecf1.css",
+      "/static/js/pages/users.523e7c5125edd484ecf1.js"
     ],
     "main": [
-      "/static/js/bootstrap.9e956bb5a71942fc3218.js",
-      "/static/js/vendors.c44cd0e6d374429cb0f9.js",
-      "/static/css/vendors-node_modules_bootstrap-icons_font_bootstrap-icons_min_css.89597b09c5e69f3d5f80.css",
-      "/static/css/main.a39f9b1eb5039bcdef96.css",
-      "/static/js/main.a39f9b1eb5039bcdef96.js"
+      "/static/js/vendors.bd957e3da610c60058ff.js",
+      "/static/js/bootstrap.e47cb26e34a916f4c2f2.js",
+      "/static/css/vendors-node_modules_bootstrap-icons_font_bootstrap-icons_min_css.5987f184b9dd5c571cda.css",
+      "/static/css/main.be79b52a23e6471cbf06.css",
+      "/static/js/main.be79b52a23e6471cbf06.js"
     ]
   },
   "images": {

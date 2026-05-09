@@ -16,3 +16,5 @@ type Text struct {
 func (n *Text) WriteGoCode(buf *gobuf.GoBuf) {
 	buf.WritePrintString(html.EscapeString(n.Text))
 }
+
+func (n *Text) CollectVarRefs(_ map[string]bool) []string { return []string{} }

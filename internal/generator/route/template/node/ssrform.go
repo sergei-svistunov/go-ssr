@@ -27,6 +27,9 @@ const (
 	FormEncUrlEncoded    = "application/x-www-form-urlencoded"
 )
 
+// CollectVarRefs returns [] — form fields are not reactive.
+func (n *SsrForm) CollectVarRefs(_ map[string]bool) []string { return []string{} }
+
 func (n *SsrForm) AddChildren(children ...Node) {
 	n.Children = append(n.Children, children...)
 }

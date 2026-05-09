@@ -5,17 +5,77 @@ package users
 import (
 	"context"
 	"io"
+	"sync"
 
 	"github.com/sergei-svistunov/go-ssr/pkg/mux"
+	"github.com/sergei-svistunov/go-ssr/pkg/reactive"
 )
 
 type RouteData struct {
-	Users []User
+	UserCount int
+	Users     []User
 }
 
 type RouteDataProvider interface {
 	Data(ctx context.Context, r *mux.Request, w mux.ResponseWriter, data *RouteData) error
 	DefaultRoute(ctx context.Context, r *mux.Request) (string, error)
+	// Subscribe is called once when the WebSocket connection is established.
+	// It runs for the connection's lifetime. Respect ctx.Done() for clean shutdown.
+	Subscribe(ctx context.Context, r *mux.Request, state *ReactiveState) error
+}
+
+// routeKey is the 8-hex route path hash used to namespace binding keys
+// on the wire. Stable for a given route path.
+const routeKey = "954dac29"
+
+// renderBlock_userCount returns the current rendered HTML for the userCount binding site.
+func renderBlock_userCount(data *RouteData) string {
+	return reactive.RenderValue(data.UserCount)
+}
+
+// ReactiveState holds the current live values for all reactive variables
+// in this route. Call Set<VarName> to push an update to the connected client.
+type ReactiveState struct {
+	conn        *reactive.Conn
+	routeKey    string     // owning route's 8-hex path hash (for patch frames)
+	data        *RouteData // current route data; Set* methods update this in-place
+	muUserCount sync.Mutex
+}
+
+func NewReactiveState(conn *reactive.Conn, data *RouteData) *ReactiveState {
+	return &ReactiveState{conn: conn, routeKey: routeKey, data: data}
+}
+
+// SetUserCount pushes a new value for the userCount binding.
+// It is non-blocking and safe to call from any goroutine.
+func (s *ReactiveState) SetUserCount(v int) {
+	if s.conn.Ctx().Err() != nil {
+		return
+	}
+	s.muUserCount.Lock()
+	s.data.UserCount = v
+	s.muUserCount.Unlock()
+	s.conn.Enqueue(s.routeKey, "954dac29.userCount", renderBlock_userCount(s.data))
+}
+
+// Snapshot returns the current rendered values for all reactive binding sites.
+// It is called to build the init message sent to newly connected clients.
+// Exported so ssrhandler_gen.go can call it with a package prefix.
+func Snapshot(data *RouteData) map[string]string {
+	m := map[string]string{}
+	m["954dac29.userCount"] = renderBlock_userCount(data)
+	return m
+}
+
+// HandleWrite processes a client→server write message for this route.
+// It validates the value and, if valid, updates the ReactiveState.
+// msg.RouteKey is echoed back in ack/err frames.
+// Exported so ssrhandler_gen.go can call it with a package prefix.
+func HandleWrite(ctx context.Context, r *mux.Request, conn *reactive.Conn, dp RouteDataProvider, state *ReactiveState, msg *reactive.WriteMsg) {
+	switch msg.Var {
+	default:
+		conn.SendJSON(reactive.NewErrMsg(msg.RouteKey, msg.Var, "unknown variable", "validation_failed"))
+	}
 }
 
 type ssrRoute struct{ dp RouteDataProvider }
@@ -26,11 +86,11 @@ func (rt *ssrRoute) GetDataContext(ctx context.Context, r *mux.Request, w mux.Re
 		RouteDataContext: mux.RouteDataContext{
 			Child: child,
 			Assets: []string{
-				"<script defer=\"defer\" src=\"/static/js/bootstrap.9e956bb5a71942fc3218.js\"></script>",
-				"<script defer=\"defer\" src=\"/static/js/vendors.c44cd0e6d374429cb0f9.js\"></script>",
-				"<script defer=\"defer\" src=\"/static/js/luxon.1ed077e024362cfc6deb.js\"></script>",
-				"<link href=\"/static/css/pages/users.1794bf4ad6e6eacffefd.css\" rel=\"stylesheet\">",
-				"<script defer=\"defer\" src=\"/static/js/pages/users.1794bf4ad6e6eacffefd.js\"></script>",
+				"<script defer=\"defer\" src=\"/static/js/vendors.bd957e3da610c60058ff.js\"></script>",
+				"<script defer=\"defer\" src=\"/static/js/bootstrap.e47cb26e34a916f4c2f2.js\"></script>",
+				"<script defer=\"defer\" src=\"/static/js/luxon.942aca0b9b25e5a111aa.js\"></script>",
+				"<link href=\"/static/css/pages/users.523e7c5125edd484ecf1.css\" rel=\"stylesheet\">",
+				"<script defer=\"defer\" src=\"/static/js/pages/users.523e7c5125edd484ecf1.js\"></script>",
 			},
 		},
 	}
@@ -52,31 +112,43 @@ type dataContext struct {
 }
 
 func (c *dataContext) Write(w io.Writer) error {
+//line index.html:2
+	userCount := c.RouteData.UserCount
 //line index.html:1
 	users := c.RouteData.Users
-	if _, err := w.Write(_djhhl9ivkgbi8a18833a7p3sism3e4hu2f4inlfa2qrjs2ctengg); err != nil {
+	if _, err := w.Write(_20la2o95dls67r6t3eiqvdh6rsctr8cvsmd82q66oc8gaahuf56g); err != nil {
 		return err
 	}
 //line index.html:12
+	if _, err := w.Write(_l06kspbe5opjqr66oqjjs8cqir7qlmhnnfqnvmi0fb1i4m7592bg); err != nil {
+		return err
+	}
+	if _, err := mux.WriteHtmlEscaped(w, userCount); err != nil {
+		return err
+	}
+	if _, err := w.Write(_b6b21srlg21530j9s8vtq7c1lkhpq3m96osltl8v1mp1nkuugsn0); err != nil {
+		return err
+	}
+//line index.html:14
 	for _, user := range users {
 		if _, err := w.Write(_roqgonsl8b0do77d2udspi1gk5cok1c6ds4rcuku9kaoi4dslo00); err != nil {
 			return err
 		}
-//line index.html:13
+//line index.html:15
 		if _, err := mux.WriteHtmlEscaped(w, user.NavTabClass); err != nil {
 			return err
 		}
 		if _, err := w.Write(_abqfj6andhh8alnn7ftvgs8c9klofcd31bs4vq0bpaecj078ad9g); err != nil {
 			return err
 		}
-//line index.html:13
+//line index.html:15
 		if _, err := mux.WriteHtmlEscaped(w, user.Login); err != nil {
 			return err
 		}
 		if _, err := w.Write(_lcmdet48ia9q0oam521uudg1jkg3li09sdb2shbhi1v9i6kec5og); err != nil {
 			return err
 		}
-//line index.html:13
+//line index.html:15
 		if _, err := mux.WriteHtmlEscaped(w, user.Name); err != nil {
 			return err
 		}
@@ -100,11 +172,7 @@ func (c *dataContext) Write(w io.Writer) error {
 }
 
 var (
-	_abqfj6andhh8alnn7ftvgs8c9klofcd31bs4vq0bpaecj078ad9g = []byte{
-		0x22, 0x20, 0x61, 0x72, 0x69, 0x61, 0x2d, 0x63, 0x75, 0x72, 0x72, 0x65, 0x6e, 0x74, 0x3d, 0x22, 0x70, 0x61, 0x67, 0x65, 0x22, 0x20, 0x68, 0x72,
-		0x65, 0x66, 0x3d, 0x22, 0x2f, 0x75, 0x73, 0x65, 0x72, 0x73, 0x2f,
-	}
-	_djhhl9ivkgbi8a18833a7p3sism3e4hu2f4inlfa2qrjs2ctengg = []byte{
+	_20la2o95dls67r6t3eiqvdh6rsctr8cvsmd82q66oc8gaahuf56g = []byte{
 		0x3c, 0x64, 0x69, 0x76, 0x20, 0x63, 0x6c, 0x61, 0x73, 0x73, 0x3d, 0x22, 0x72, 0x6f, 0x77, 0x22, 0x3e, 0x3c, 0x64, 0x69, 0x76, 0x20, 0x63, 0x6c,
 		0x61, 0x73, 0x73, 0x3d, 0x22, 0x63, 0x6f, 0x6c, 0x2d, 0x6d, 0x64, 0x2d, 0x34, 0x20, 0x63, 0x6f, 0x6c, 0x2d, 0x78, 0x6c, 0x2d, 0x32, 0x20, 0x75,
 		0x73, 0x65, 0x72, 0x73, 0x2d, 0x6c, 0x65, 0x66, 0x74, 0x2d, 0x6d, 0x65, 0x6e, 0x75, 0x22, 0x3e, 0x3c, 0x68, 0x32, 0x20, 0x63, 0x6c, 0x61, 0x73,
@@ -113,9 +181,17 @@ var (
 		0x6f, 0x75, 0x74, 0x6c, 0x69, 0x6e, 0x65, 0x2d, 0x70, 0x72, 0x69, 0x6d, 0x61, 0x72, 0x79, 0x20, 0x62, 0x74, 0x6e, 0x2d, 0x73, 0x6d, 0x22, 0x20,
 		0x68, 0x72, 0x65, 0x66, 0x3d, 0x22, 0x2f, 0x75, 0x73, 0x65, 0x72, 0x73, 0x2f, 0x61, 0x64, 0x64, 0x22, 0x3e, 0x3c, 0x69, 0x20, 0x63, 0x6c, 0x61,
 		0x73, 0x73, 0x3d, 0x22, 0x62, 0x69, 0x20, 0x62, 0x69, 0x2d, 0x70, 0x65, 0x72, 0x73, 0x6f, 0x6e, 0x2d, 0x70, 0x6c, 0x75, 0x73, 0x22, 0x3e, 0x3c,
-		0x2f, 0x69, 0x3e, 0x3c, 0x2f, 0x61, 0x3e, 0x3c, 0x2f, 0x68, 0x32, 0x3e, 0x3c, 0x75, 0x6c, 0x20, 0x63, 0x6c, 0x61, 0x73, 0x73, 0x3d, 0x22, 0x6e,
-		0x61, 0x76, 0x20, 0x6e, 0x61, 0x76, 0x2d, 0x70, 0x69, 0x6c, 0x6c, 0x73, 0x20, 0x66, 0x6c, 0x65, 0x78, 0x2d, 0x63, 0x6f, 0x6c, 0x75, 0x6d, 0x6e,
-		0x22, 0x3e,
+		0x2f, 0x69, 0x3e, 0x3c, 0x2f, 0x61, 0x3e, 0x3c, 0x2f, 0x68, 0x32, 0x3e, 0x3c, 0x70, 0x20, 0x63, 0x6c, 0x61, 0x73, 0x73, 0x3d, 0x22, 0x74, 0x65,
+		0x78, 0x74, 0x2d, 0x6d, 0x75, 0x74, 0x65, 0x64, 0x20, 0x73, 0x6d, 0x61, 0x6c, 0x6c, 0x20, 0x6d, 0x62, 0x2d, 0x31, 0x22, 0x3e,
+	}
+	_abqfj6andhh8alnn7ftvgs8c9klofcd31bs4vq0bpaecj078ad9g = []byte{
+		0x22, 0x20, 0x61, 0x72, 0x69, 0x61, 0x2d, 0x63, 0x75, 0x72, 0x72, 0x65, 0x6e, 0x74, 0x3d, 0x22, 0x70, 0x61, 0x67, 0x65, 0x22, 0x20, 0x68, 0x72,
+		0x65, 0x66, 0x3d, 0x22, 0x2f, 0x75, 0x73, 0x65, 0x72, 0x73, 0x2f,
+	}
+	_b6b21srlg21530j9s8vtq7c1lkhpq3m96osltl8v1mp1nkuugsn0 = []byte{
+		0x3c, 0x2f, 0x73, 0x70, 0x61, 0x6e, 0x3e, 0x20, 0x72, 0x65, 0x67, 0x69, 0x73, 0x74, 0x65, 0x72, 0x65, 0x64, 0x3c, 0x2f, 0x70, 0x3e, 0x3c, 0x75,
+		0x6c, 0x20, 0x63, 0x6c, 0x61, 0x73, 0x73, 0x3d, 0x22, 0x6e, 0x61, 0x76, 0x20, 0x6e, 0x61, 0x76, 0x2d, 0x70, 0x69, 0x6c, 0x6c, 0x73, 0x20, 0x66,
+		0x6c, 0x65, 0x78, 0x2d, 0x63, 0x6f, 0x6c, 0x75, 0x6d, 0x6e, 0x22, 0x3e,
 	}
 	_e5ppjpltgb6tcdaqius92k3nnp6ah25em7776ub8q4vo370uv7kg = []byte{
 		0x3c, 0x2f, 0x64, 0x69, 0x76, 0x3e, 0x3c, 0x2f, 0x64, 0x69, 0x76, 0x3e, 0x3c, 0x64, 0x69, 0x76, 0x20, 0x69, 0x64, 0x3d, 0x22, 0x74, 0x65, 0x73,
@@ -123,6 +199,10 @@ var (
 	}
 	_hq646ifh911k5rn23l8tjsgn4mi3nsfcoouqkv3q58bqaa10k9og = []byte{
 		0x3c, 0x2f, 0x61, 0x3e, 0x3c, 0x2f, 0x6c, 0x69, 0x3e,
+	}
+	_l06kspbe5opjqr66oqjjs8cqir7qlmhnnfqnvmi0fb1i4m7592bg = []byte{
+		0x3c, 0x73, 0x70, 0x61, 0x6e, 0x20, 0x64, 0x61, 0x74, 0x61, 0x2d, 0x73, 0x73, 0x72, 0x2d, 0x62, 0x69, 0x6e, 0x64, 0x3d, 0x22, 0x39, 0x35, 0x34,
+		0x64, 0x61, 0x63, 0x32, 0x39, 0x2e, 0x75, 0x73, 0x65, 0x72, 0x43, 0x6f, 0x75, 0x6e, 0x74, 0x22, 0x3e,
 	}
 	_lcmdet48ia9q0oam521uudg1jkg3li09sdb2shbhi1v9i6kec5og = []byte{
 		0x22, 0x3e,

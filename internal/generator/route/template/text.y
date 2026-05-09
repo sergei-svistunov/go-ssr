@@ -30,11 +30,11 @@ import (
 top:            content                                 { yylex.(*exprLex).result = $$  }
 
 content:        TEXT                                    { $$ = &node.Content{bn(yylex), []node.Node{&node.Text{bn(yylex), $1}}} }
-|               EXPR_START expr EXPR_END                { $$ = &node.Content{bn(yylex), []node.Node{&node.Expression{bn(yylex), $2}}} }
-|               RAW_EXPR_START expr EXPR_END            { $$ = &node.Content{bn(yylex), []node.Node{&node.RawExpression{bn(yylex), $2}}} }
+|               EXPR_START expr EXPR_END                { $$ = &node.Content{bn(yylex), []node.Node{&node.Expression{BaseNode: bn(yylex), Value: $2}}} }
+|               RAW_EXPR_START expr EXPR_END            { $$ = &node.Content{bn(yylex), []node.Node{&node.RawExpression{BaseNode: bn(yylex), Value: $2}}} }
 |               content TEXT                            { $1.Children = append($1.Children, &node.Text{bn(yylex), $2}); $$ = $1 }
-|               content EXPR_START expr EXPR_END        { $1.Children = append($1.Children, &node.Expression{bn(yylex), $3}); $$ = $1 }
-|               content RAW_EXPR_START expr EXPR_END    { $1.Children = append($1.Children, &node.RawExpression{bn(yylex), $3}); $$ = $1 }
+|               content EXPR_START expr EXPR_END        { $1.Children = append($1.Children, &node.Expression{BaseNode: bn(yylex), Value: $3}); $$ = $1 }
+|               content RAW_EXPR_START expr EXPR_END    { $1.Children = append($1.Children, &node.RawExpression{BaseNode: bn(yylex), Value: $3}); $$ = $1 }
 |               loop                                    { $$ = &node.Content{bn(yylex), []node.Node{$1}} }
 |               expr                                    { $$ = &node.Content{bn(yylex), []node.Node{$1}} }
 

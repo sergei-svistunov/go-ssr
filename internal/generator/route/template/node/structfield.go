@@ -17,3 +17,9 @@ func (n *StructField) WriteGoCode(buf *gobuf.GoBuf) {
 	buf.WriteString(".")
 	buf.WriteString(n.FieldName)
 }
+
+// CollectVarRefs passes through to the expression. This method is a
+// pass-through for non-reactive structs.
+func (n *StructField) CollectVarRefs(reactive map[string]bool) []string {
+	return n.Expr.CollectVarRefs(reactive)
+}

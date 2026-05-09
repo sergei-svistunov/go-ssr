@@ -5,12 +5,15 @@ package info
 import (
 	"context"
 	"io"
+	"sync"
 
 	"github.com/sergei-svistunov/go-ssr/pkg/mux"
+	"github.com/sergei-svistunov/go-ssr/pkg/reactive"
 )
 
 type RouteData struct {
-	User struct {
+	LastSeen string
+	User     struct {
 		Age  uint8
 		Info string
 	}
@@ -18,6 +21,63 @@ type RouteData struct {
 
 type RouteDataProvider interface {
 	Data(ctx context.Context, r *mux.Request, w mux.ResponseWriter, data *RouteData) error
+	// Subscribe is called once when the WebSocket connection is established.
+	// It runs for the connection's lifetime. Respect ctx.Done() for clean shutdown.
+	Subscribe(ctx context.Context, r *mux.Request, state *ReactiveState) error
+}
+
+// routeKey is the 8-hex route path hash used to namespace binding keys
+// on the wire. Stable for a given route path.
+const routeKey = "2b2f214e"
+
+// renderBlock_lastSeen returns the current rendered HTML for the lastSeen binding site.
+func renderBlock_lastSeen(data *RouteData) string {
+	return reactive.RenderValue(data.LastSeen)
+}
+
+// ReactiveState holds the current live values for all reactive variables
+// in this route. Call Set<VarName> to push an update to the connected client.
+type ReactiveState struct {
+	conn       *reactive.Conn
+	routeKey   string     // owning route's 8-hex path hash (for patch frames)
+	data       *RouteData // current route data; Set* methods update this in-place
+	muLastSeen sync.Mutex
+}
+
+func NewReactiveState(conn *reactive.Conn, data *RouteData) *ReactiveState {
+	return &ReactiveState{conn: conn, routeKey: routeKey, data: data}
+}
+
+// SetLastSeen pushes a new value for the lastSeen binding.
+// It is non-blocking and safe to call from any goroutine.
+func (s *ReactiveState) SetLastSeen(v string) {
+	if s.conn.Ctx().Err() != nil {
+		return
+	}
+	s.muLastSeen.Lock()
+	s.data.LastSeen = v
+	s.muLastSeen.Unlock()
+	s.conn.Enqueue(s.routeKey, "2b2f214e.lastSeen", renderBlock_lastSeen(s.data))
+}
+
+// Snapshot returns the current rendered values for all reactive binding sites.
+// It is called to build the init message sent to newly connected clients.
+// Exported so ssrhandler_gen.go can call it with a package prefix.
+func Snapshot(data *RouteData) map[string]string {
+	m := map[string]string{}
+	m["2b2f214e.lastSeen"] = renderBlock_lastSeen(data)
+	return m
+}
+
+// HandleWrite processes a client→server write message for this route.
+// It validates the value and, if valid, updates the ReactiveState.
+// msg.RouteKey is echoed back in ack/err frames.
+// Exported so ssrhandler_gen.go can call it with a package prefix.
+func HandleWrite(ctx context.Context, r *mux.Request, conn *reactive.Conn, dp RouteDataProvider, state *ReactiveState, msg *reactive.WriteMsg) {
+	switch msg.Var {
+	default:
+		conn.SendJSON(reactive.NewErrMsg(msg.RouteKey, msg.Var, "unknown variable", "validation_failed"))
+	}
 }
 
 type ssrRoute struct{ dp RouteDataProvider }
@@ -28,7 +88,8 @@ func (rt *ssrRoute) GetDataContext(ctx context.Context, r *mux.Request, w mux.Re
 		RouteDataContext: mux.RouteDataContext{
 			Child: child,
 			Assets: []string{
-				"<script defer=\"defer\" src=\"/static/js/pages/users/_userId_/info.a2435ab41912ef57ab27.js\"></script>",
+				"<script defer=\"defer\" src=\"/static/js/vendors.bd957e3da610c60058ff.js\"></script>",
+				"<script defer=\"defer\" src=\"/static/js/pages/users/_userId_/info.771d1318f84196f63385.js\"></script>",
 			},
 		},
 	}
@@ -50,6 +111,8 @@ type dataContext struct {
 }
 
 func (c *dataContext) Write(w io.Writer) error {
+//line index.html:2
+	lastSeen := c.RouteData.LastSeen
 //line index.html:1
 	user := c.RouteData.User
 	if _, err := w.Write(_a9ttvkip3aga8apcvpseunur3345djdi51n2pk10bfdfjgnsal1g); err != nil {
@@ -83,7 +146,17 @@ func (c *dataContext) Write(w io.Writer) error {
 	if _, err := mux.WriteHtmlEscaped(w, user.Info); err != nil {
 		return err
 	}
-	if _, err := w.Write(_ekjmuf6g35568v78a31kgnldi42g4lfi7ml600gsshsrae2efbb0); err != nil {
+	if _, err := w.Write(_apb214iuk992aku56e7ajgclpcfqiblr1h901fb6t0h9edsrh50g); err != nil {
+		return err
+	}
+//line index.html:15
+	if _, err := w.Write(_lh228iu5knv235bekmfgfm7koq6hd703f1lb5p1kqn8d77b1uli0); err != nil {
+		return err
+	}
+	if _, err := mux.WriteHtmlEscaped(w, lastSeen); err != nil {
+		return err
+	}
+	if _, err := w.Write(_v2cd3kubj42vsk1uu52vm10e14jj3ttea083i0eg05j4nmj7gr20); err != nil {
 		return err
 	}
 	return nil
@@ -96,8 +169,10 @@ var (
 	_a9ttvkip3aga8apcvpseunur3345djdi51n2pk10bfdfjgnsal1g = []byte{
 		0x3c, 0x68, 0x31, 0x3e, 0x41, 0x67, 0x65, 0x20, 0x67, 0x72, 0x6f, 0x75, 0x70, 0x3a, 0x20,
 	}
-	_ekjmuf6g35568v78a31kgnldi42g4lfi7ml600gsshsrae2efbb0 = []byte{
-		0x3c, 0x2f, 0x70, 0x3e,
+	_apb214iuk992aku56e7ajgclpcfqiblr1h901fb6t0h9edsrh50g = []byte{
+		0x3c, 0x2f, 0x70, 0x3e, 0x3c, 0x70, 0x20, 0x63, 0x6c, 0x61, 0x73, 0x73, 0x3d, 0x22, 0x74, 0x65, 0x78, 0x74, 0x2d, 0x6d, 0x75, 0x74, 0x65, 0x64,
+		0x20, 0x73, 0x6d, 0x61, 0x6c, 0x6c, 0x20, 0x6d, 0x74, 0x2d, 0x32, 0x22, 0x3e, 0x4c, 0x61, 0x73, 0x74, 0x20, 0x73, 0x65, 0x65, 0x6e, 0x3a, 0x20,
+		0x3c, 0x73, 0x70, 0x61, 0x6e, 0x3e,
 	}
 	_g7sv295h764ok5m5537ahc6f232nq98bloviqv836491mb9h19p0 = []byte{
 		0x3c, 0x73, 0x70, 0x61, 0x6e, 0x3e, 0x31, 0x39, 0x2d, 0x33, 0x30, 0x3c, 0x2f, 0x73, 0x70, 0x61, 0x6e, 0x3e,
@@ -105,8 +180,15 @@ var (
 	_l31gs7l9bqjbb89garbu034qb1qhulh2obnf5g8mvdeobdousrhg = []byte{
 		0x3c, 0x73, 0x70, 0x61, 0x6e, 0x3e, 0x36, 0x30, 0x2b, 0x3c, 0x2f, 0x73, 0x70, 0x61, 0x6e, 0x3e,
 	}
+	_lh228iu5knv235bekmfgfm7koq6hd703f1lb5p1kqn8d77b1uli0 = []byte{
+		0x3c, 0x73, 0x70, 0x61, 0x6e, 0x20, 0x64, 0x61, 0x74, 0x61, 0x2d, 0x73, 0x73, 0x72, 0x2d, 0x62, 0x69, 0x6e, 0x64, 0x3d, 0x22, 0x32, 0x62, 0x32,
+		0x66, 0x32, 0x31, 0x34, 0x65, 0x2e, 0x6c, 0x61, 0x73, 0x74, 0x53, 0x65, 0x65, 0x6e, 0x22, 0x3e,
+	}
 	_op9ioepv8l07155uf33djfn67q21vmlv19susgefh9vnirjmd78g = []byte{
 		0x3c, 0x73, 0x70, 0x61, 0x6e, 0x3e, 0x33, 0x31, 0x2d, 0x36, 0x30, 0x3c, 0x2f, 0x73, 0x70, 0x61, 0x6e, 0x3e,
+	}
+	_v2cd3kubj42vsk1uu52vm10e14jj3ttea083i0eg05j4nmj7gr20 = []byte{
+		0x3c, 0x2f, 0x73, 0x70, 0x61, 0x6e, 0x3e, 0x3c, 0x2f, 0x73, 0x70, 0x61, 0x6e, 0x3e, 0x3c, 0x2f, 0x70, 0x3e,
 	}
 	_vpdk5heaer24etml7ge9711a0mvj4ahrr8p51418dielc0v9la4g = []byte{
 		0x3c, 0x73, 0x70, 0x61, 0x6e, 0x3e, 0x30, 0x2d, 0x31, 0x38, 0x3c, 0x2f, 0x73, 0x70, 0x61, 0x6e, 0x3e,

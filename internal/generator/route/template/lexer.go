@@ -17,6 +17,14 @@ type exprLex struct {
 	curLine    int
 	err        *SyntaxError
 	result     *node.Content
+
+	// exprSources accumulates the raw source text of each {{ ... }} and {{$ ... }}
+	// expression in lexing order. After yyParse, parseText walks the AST in the
+	// same order and assigns each source to the corresponding Expression or
+	// RawExpression node so that the reactive analysis pass can compute per-site
+	// SHA-256 binding keys without hash collisions.
+	exprSources    []string
+	exprTextAtOpen string // snapshot of x.text just after the opening {{ delimiter
 }
 
 type SyntaxError struct {
@@ -68,6 +76,16 @@ func (x *exprLex) Lex(yylval *yySymType) int {
 		if x.insideExpr {
 			for _, token := range simpleTokens {
 				if strings.HasPrefix(x.text, token.token) {
+					if token.value == EXPR_END {
+						// Capture the expression source: everything consumed since
+						// exprTextAtOpen up to (but not including) the current "}}"
+						// position. The source is what was between {{ and }}.
+						consumed := len(x.exprTextAtOpen) - len(x.text)
+						src := strings.TrimSpace(x.exprTextAtOpen[:consumed])
+						x.exprSources = append(x.exprSources, src)
+						x.exprTextAtOpen = ""
+					}
+
 					x.text = x.text[len(token.token):]
 					yylval.string = token.token
 
@@ -119,6 +137,7 @@ func (x *exprLex) Lex(yylval *yySymType) int {
 					yylval.string = "{{$"
 					x.text = x.text[3:]
 					x.insideExpr = true
+					x.exprTextAtOpen = x.text // record text right after {{$
 
 					if YyLexDebug {
 						fmt.Println("RAW_EXPR_START ", yylval.string)
@@ -129,6 +148,7 @@ func (x *exprLex) Lex(yylval *yySymType) int {
 				yylval.string = "{{"
 				x.text = x.text[2:]
 				x.insideExpr = true
+				x.exprTextAtOpen = x.text // record text right after {{
 
 				if YyLexDebug {
 					fmt.Println("EXPR_START ", yylval.string)

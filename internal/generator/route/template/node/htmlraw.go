@@ -14,3 +14,5 @@ type HtmlRaw struct {
 func (n *HtmlRaw) WriteGoCode(buf *gobuf.GoBuf) {
 	buf.WritePrintString(n.Data)
 }
+
+func (n *HtmlRaw) CollectVarRefs(_ map[string]bool) []string { return []string{} }

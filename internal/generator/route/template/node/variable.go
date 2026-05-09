@@ -14,3 +14,10 @@ type Variable struct {
 func (n *Variable) WriteGoCode(buf *gobuf.GoBuf) {
 	buf.WriteString(n.Name)
 }
+
+func (n *Variable) CollectVarRefs(reactive map[string]bool) []string {
+	if reactive[n.Name] {
+		return []string{n.Name}
+	}
+	return []string{}
+}

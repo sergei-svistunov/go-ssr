@@ -16,3 +16,11 @@ func (n *Content) WriteGoCode(buf *gobuf.GoBuf) {
 		child.WriteGoCode(buf)
 	}
 }
+
+func (n *Content) CollectVarRefs(reactive map[string]bool) []string {
+	sets := make([][]string, len(n.Children))
+	for i, c := range n.Children {
+		sets[i] = c.CollectVarRefs(reactive)
+	}
+	return UnionRefs(sets...)
+}

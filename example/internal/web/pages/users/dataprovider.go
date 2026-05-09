@@ -2,6 +2,7 @@ package users
 
 import (
 	"context"
+	"time"
 
 	"github.com/sergei-svistunov/go-ssr/example/internal/model"
 	"github.com/sergei-svistunov/go-ssr/example/internal/web/ctxdata"
@@ -46,5 +47,22 @@ func (p *DP) Data(ctx context.Context, r *mux.Request, w mux.ResponseWriter, dat
 		})
 	}
 
+	data.UserCount = p.model.UserCount()
+
 	return nil
+}
+
+// Subscribe periodically increments the user count, simulating new sign-ups.
+func (p *DP) Subscribe(ctx context.Context, r *mux.Request, state *ReactiveState) error {
+	ticker := time.NewTicker(7 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			n := p.model.IncUserCount()
+			state.SetUserCount(n)
+		}
+	}
 }

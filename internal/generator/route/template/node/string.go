@@ -14,3 +14,5 @@ type String struct {
 func (n *String) WriteGoCode(buf *gobuf.GoBuf) {
 	buf.WriteQuotedString(n.Text[1 : len(n.Text)-1])
 }
+
+func (n *String) CollectVarRefs(_ map[string]bool) []string { return []string{} }
