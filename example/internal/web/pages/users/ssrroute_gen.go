@@ -86,11 +86,12 @@ func (rt *ssrRoute) GetDataContext(ctx context.Context, r *mux.Request, w mux.Re
 		RouteDataContext: mux.RouteDataContext{
 			Child: child,
 			Assets: []string{
-				"<script defer=\"defer\" src=\"/static/js/vendors.bd957e3da610c60058ff.js\"></script>",
+				"<link href=\"/static/css/vendors.a03457e107c5d94b1b74.css\" rel=\"stylesheet\">",
+				"<script defer=\"defer\" src=\"/static/js/vendors.a03457e107c5d94b1b74.js\"></script>",
 				"<script defer=\"defer\" src=\"/static/js/bootstrap.e47cb26e34a916f4c2f2.js\"></script>",
 				"<script defer=\"defer\" src=\"/static/js/luxon.942aca0b9b25e5a111aa.js\"></script>",
-				"<link href=\"/static/css/pages/users.523e7c5125edd484ecf1.css\" rel=\"stylesheet\">",
-				"<script defer=\"defer\" src=\"/static/js/pages/users.523e7c5125edd484ecf1.js\"></script>",
+				"<link href=\"/static/css/pages/users.be13d494c23b013704e8.css\" rel=\"stylesheet\">",
+				"<script defer=\"defer\" src=\"/static/js/pages/users.be13d494c23b013704e8.js\"></script>",
 			},
 		},
 	}

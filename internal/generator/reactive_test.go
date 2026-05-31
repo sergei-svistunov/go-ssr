@@ -1178,40 +1178,11 @@ func TestSnapshot_IncludesAllBindings(t *testing.T) {
 	}
 }
 
-// ---- AC inline style ----
+// ---- CSS delivery via __ssr_gen__.ts ----
 
-// TestInlineStyleEmittedOnce verifies that the <style>ssr-block{display:contents}</style>
-// rule is emitted exactly once for a route with reactive blocks.
-func TestInlineStyleEmittedOnce(t *testing.T) {
-	webDir := filepath.Join(t.TempDir(), "web")
-	writeTemplate(t, webDir, "styled",
-		`<ssr:var name="flag" type="bool" reactive="true"/>
-<div ssr:if="flag"><p>On</p></div>`)
-
-	g := makeGen(t, webDir)
-	if err := g.Analyze(); err != nil {
-		t.Fatalf("Analyze: %v", err)
-	}
-	if err := g.Generate(); err != nil {
-		t.Fatalf("Generate: %v", err)
-	}
-
-	genFile := filepath.Join(webDir, "pages", "styled", "ssrroute_gen.go")
-	data, err := os.ReadFile(genFile)
-	if err != nil {
-		t.Fatalf("ReadFile: %v", err)
-	}
-	content := string(data)
-
-	// The style tag must be present.
-	if !containsHTMLSnippet(content, "<style>ssr-block") {
-		t.Errorf("expected <style>ssr-block{ display: contents; } in generated file\n%s", content)
-	}
-}
-
-// TestInlineStyleNotEmittedForNonReactive verifies that non-reactive routes
-// do NOT get the <style>ssr-block{...}</style> injection.
-func TestInlineStyleNotEmittedForNonReactive(t *testing.T) {
+// TestNonReactiveRouteHasNoSsrBlockStyle verifies that non-reactive routes
+// do not contain any ssr-block style in the generated Go output.
+func TestNonReactiveRouteHasNoSsrBlockStyle(t *testing.T) {
 	webDir := filepath.Join(t.TempDir(), "web")
 	writeTemplate(t, webDir, "plain",
 		`<ssr:var name="title" type="string"/>
@@ -1237,9 +1208,9 @@ func TestInlineStyleNotEmittedForNonReactive(t *testing.T) {
 	}
 }
 
-// TestInlineStyleNotEmittedForScalarReactive verifies that a reactive route
-// with only scalar bindings (no block sites) does NOT get the style injection.
-func TestInlineStyleNotEmittedForScalarReactive(t *testing.T) {
+// TestScalarReactiveRouteHasNoSsrBlockStyle verifies that a reactive route
+// with only scalar bindings does not contain any ssr-block inline style.
+func TestScalarReactiveRouteHasNoSsrBlockStyle(t *testing.T) {
 	webDir := filepath.Join(t.TempDir(), "web")
 	writeTemplate(t, webDir, "scalar",
 		`<ssr:var name="count" type="int" reactive="true"/>
@@ -1262,6 +1233,67 @@ func TestInlineStyleNotEmittedForScalarReactive(t *testing.T) {
 
 	if containsHTMLSnippet(content, "<style>ssr-block") {
 		t.Errorf("scalar-only reactive route should NOT have ssr-block style injection\n%s", content)
+	}
+}
+
+// TestReactiveBlockRouteHasNoSsrBlockStyle verifies that even a route with
+// reactive block wrappers (ssr:if on a reactive var) does not emit the old
+// inline style. The CSS rule is now delivered via __ssr_gen__.ts so that
+// webpack can extract it into a <head>-linked stylesheet, avoiding the
+// quirks-mode trap caused by emitting a <style> before <!doctype html>.
+func TestReactiveBlockRouteHasNoSsrBlockStyle(t *testing.T) {
+	webDir := filepath.Join(t.TempDir(), "web")
+	writeTemplate(t, webDir, "block",
+		`<ssr:var name="flag" type="bool" reactive="true"/>
+<div ssr:if="flag"><p>On</p></div>`)
+
+	g := makeGen(t, webDir)
+	if err := g.Analyze(); err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if err := g.Generate(); err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+
+	genFile := filepath.Join(webDir, "pages", "block", "ssrroute_gen.go")
+	data, err := os.ReadFile(genFile)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	content := string(data)
+
+	if containsHTMLSnippet(content, "<style>ssr-block") {
+		t.Errorf("reactive block route must NOT have inline ssr-block style; CSS is delivered via __ssr_gen__.ts\n%s", content)
+	}
+}
+
+// TestCSSImportInGenTS verifies that __ssr_gen__.ts contains the
+// gossr-runtime/ssr-block.css import for reactive routes. Webpack extracts
+// this rule into a stylesheet that is linked from <head>, keeping the page in
+// standards mode.
+func TestCSSImportInGenTS(t *testing.T) {
+	webDir := filepath.Join(t.TempDir(), "web")
+	writeTemplate(t, webDir, "live",
+		`<ssr:var name="count" type="int" reactive="true"/>
+<p>{{ count }}</p>`)
+
+	g := makeGen(t, webDir)
+	if err := g.Analyze(); err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if err := g.Generate(); err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+
+	tsFile := filepath.Join(webDir, "pages", "live", "__ssr_gen__.ts")
+	data, err := os.ReadFile(tsFile)
+	if err != nil {
+		t.Fatalf("ReadFile __ssr_gen__.ts: %v", err)
+	}
+	content := string(data)
+
+	if !strings.Contains(content, "import 'gossr-runtime/ssr-block.css';") {
+		t.Errorf("expected CSS import in __ssr_gen__.ts\n%s", content)
 	}
 }
 

@@ -2,6 +2,7 @@
 // Typed reactive client for route /
 
 import { createSsrClient } from 'gossr-runtime';
+import 'gossr-runtime/ssr-block.css';
 
 export type ReadVars = {
   balance: number;

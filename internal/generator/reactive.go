@@ -178,29 +178,6 @@ func validateSsrBindRefs(rPath string, tmpl *template.Template, allRouteVarMaps 
 	return nil
 }
 
-// routeHasReactiveBlocks returns true if the route's template contains any
-// reactive SsrCondition or Loop block after AnnotateBindings has been run.
-// Used to decide whether to inject the inline <style>ssr-block{display:contents}
-// tag.
-//
-// Must be called after AnnotateBindings has been applied.
-func routeHasReactiveBlocks(tmpl *template.Template) bool {
-	if tmpl == nil {
-		return false
-	}
-	for _, n := range tmpl.CollectReactiveNodes() {
-		switch v := n.(type) {
-		case *node.SsrCondition, *node.Loop:
-			return true
-		case *node.HtmlElement:
-			if v.BlockKey != "" {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 // routeNeedsStringsBuilder returns true when the route is reactive and will
 // emit at least one writeBlock_KEY/renderBlock_KEY helper that uses
 // strings.Builder (i.e., any composite expression or block binding site).
@@ -953,7 +930,8 @@ func (g *Generator) genRouteTSTypes(rPath string, r *routepkg.Route) error {
 	sb.WriteString("// Typed reactive client for route ")
 	sb.WriteString(rPath)
 	sb.WriteString("\n\n")
-	sb.WriteString("import { createSsrClient } from 'gossr-runtime';\n\n")
+	sb.WriteString("import { createSsrClient } from 'gossr-runtime';\n")
+	sb.WriteString("import 'gossr-runtime/ssr-block.css';\n\n")
 
 	// Emit struct interface declarations in stable order.
 	sortedNames := make([]string, 0, len(structRegistry))

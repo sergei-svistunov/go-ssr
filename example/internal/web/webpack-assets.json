@@ -2,30 +2,34 @@
   "outputPath": "static",
   "entrypoints": {
     "pages/home": [
-      "/static/js/vendors.bd957e3da610c60058ff.js",
-      "/static/js/pages/home.ee578a93bb012732938a.js"
+      "/static/css/vendors.a03457e107c5d94b1b74.css",
+      "/static/js/vendors.a03457e107c5d94b1b74.js",
+      "/static/js/pages/home.49df4ebaf5d530323a02.js"
     ],
     "pages/users/_userId_/contacts": [
       "/static/css/pages/users/_userId_/contacts.abeaff4fff07f99844b6.css",
       "/static/js/pages/users/_userId_/contacts.abeaff4fff07f99844b6.js"
     ],
     "pages/users/_userId_/info": [
-      "/static/js/vendors.bd957e3da610c60058ff.js",
-      "/static/js/pages/users/_userId_/info.771d1318f84196f63385.js"
+      "/static/css/vendors.a03457e107c5d94b1b74.css",
+      "/static/js/vendors.a03457e107c5d94b1b74.js",
+      "/static/js/pages/users/_userId_/info.e58b0c57ee1e988795ef.js"
     ],
     "pages/users": [
-      "/static/js/vendors.bd957e3da610c60058ff.js",
+      "/static/css/vendors.a03457e107c5d94b1b74.css",
+      "/static/js/vendors.a03457e107c5d94b1b74.js",
       "/static/js/bootstrap.e47cb26e34a916f4c2f2.js",
       "/static/js/luxon.942aca0b9b25e5a111aa.js",
-      "/static/css/pages/users.523e7c5125edd484ecf1.css",
-      "/static/js/pages/users.523e7c5125edd484ecf1.js"
+      "/static/css/pages/users.be13d494c23b013704e8.css",
+      "/static/js/pages/users.be13d494c23b013704e8.js"
     ],
     "main": [
-      "/static/js/vendors.bd957e3da610c60058ff.js",
+      "/static/css/vendors.a03457e107c5d94b1b74.css",
+      "/static/js/vendors.a03457e107c5d94b1b74.js",
       "/static/js/bootstrap.e47cb26e34a916f4c2f2.js",
       "/static/css/vendors-node_modules_bootstrap-icons_font_bootstrap-icons_min_css.5987f184b9dd5c571cda.css",
-      "/static/css/main.be79b52a23e6471cbf06.css",
-      "/static/js/main.be79b52a23e6471cbf06.js"
+      "/static/css/main.2d7d8349e8d3c50d2d05.css",
+      "/static/js/main.2d7d8349e8d3c50d2d05.js"
     ]
   },
   "images": {

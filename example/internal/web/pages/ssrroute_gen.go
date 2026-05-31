@@ -87,11 +87,12 @@ func (rt *ssrRoute) GetDataContext(ctx context.Context, r *mux.Request, w mux.Re
 		RouteDataContext: mux.RouteDataContext{
 			Child: child,
 			Assets: []string{
-				"<script defer=\"defer\" src=\"/static/js/vendors.bd957e3da610c60058ff.js\"></script>",
+				"<link href=\"/static/css/vendors.a03457e107c5d94b1b74.css\" rel=\"stylesheet\">",
+				"<script defer=\"defer\" src=\"/static/js/vendors.a03457e107c5d94b1b74.js\"></script>",
 				"<script defer=\"defer\" src=\"/static/js/bootstrap.e47cb26e34a916f4c2f2.js\"></script>",
 				"<link href=\"/static/css/vendors-node_modules_bootstrap-icons_font_bootstrap-icons_min_css.5987f184b9dd5c571cda.css\" rel=\"stylesheet\">",
-				"<link href=\"/static/css/main.be79b52a23e6471cbf06.css\" rel=\"stylesheet\">",
-				"<script defer=\"defer\" src=\"/static/js/main.be79b52a23e6471cbf06.js\"></script>",
+				"<link href=\"/static/css/main.2d7d8349e8d3c50d2d05.css\" rel=\"stylesheet\">",
+				"<script defer=\"defer\" src=\"/static/js/main.2d7d8349e8d3c50d2d05.js\"></script>",
 			},
 		},
 	}

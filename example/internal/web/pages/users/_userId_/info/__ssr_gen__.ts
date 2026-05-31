@@ -2,6 +2,7 @@
 // Typed reactive client for route /users/_userId_/info
 
 import { createSsrClient } from 'gossr-runtime';
+import 'gossr-runtime/ssr-block.css';
 
 export type ReadVars = {
   lastSeen: string;

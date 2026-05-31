@@ -543,15 +543,11 @@ func (g *Generator) genRoute(rPath string, r *route.Route) error {
 
 	// Reactive: emit ReactiveState struct, renderBlock_KEY helpers, Set<VarName>
 	// methods, snapshot, and handleWrite dispatch function.
-	// genReactiveStateCode also runs AnnotateBindings (mutating the AST), so
-	// routeHasReactiveBlocks can be checked after this call.
-	var hasReactiveBlockSites bool
 	if reactive {
 		if _, err := g.genReactiveStateCode(buf, rPath, r); err != nil {
 			return err
 		}
 		g.genHandleWriteCode(buf, r)
-		hasReactiveBlockSites = routeHasReactiveBlocks(r.Template())
 	}
 
 	// type ssrRoute
@@ -688,11 +684,6 @@ func (g *Generator) genRoute(rPath string, r *route.Route) error {
 		buf.WriteString(variable.Name)
 		buf.WriteString(":=c.RouteData.")
 		buf.WriteStringLn(getExportedName(variable.Name))
-	}
-	// Inject the ssr-block CSS rule for routes that use reactive block wrappers.
-	// Emitted once at the top of the route's HTML output.
-	if hasReactiveBlockSites {
-		buf.WritePrintString("<style>ssr-block { display: contents; }</style>")
 	}
 	r.Template().WriteGoCode(buf)
 	buf.WriteStringLn("return nil")
