@@ -86,12 +86,12 @@ func (rt *ssrRoute) GetDataContext(ctx context.Context, r *mux.Request, w mux.Re
 		RouteDataContext: mux.RouteDataContext{
 			Child: child,
 			Assets: []string{
-				"<link href=\"/static/css/vendors.a03457e107c5d94b1b74.css\" rel=\"stylesheet\">",
-				"<script defer=\"defer\" src=\"/static/js/vendors.a03457e107c5d94b1b74.js\"></script>",
-				"<script defer=\"defer\" src=\"/static/js/bootstrap.e47cb26e34a916f4c2f2.js\"></script>",
-				"<script defer=\"defer\" src=\"/static/js/luxon.942aca0b9b25e5a111aa.js\"></script>",
-				"<link href=\"/static/css/pages/users.be13d494c23b013704e8.css\" rel=\"stylesheet\">",
-				"<script defer=\"defer\" src=\"/static/js/pages/users.be13d494c23b013704e8.js\"></script>",
+				"<link href=\"/static/css/vendors.01d2a6ec617e83aef053.css\" rel=\"stylesheet\">",
+				"<script defer=\"defer\" src=\"/static/js/vendors.01d2a6ec617e83aef053.js\"></script>",
+				"<script defer=\"defer\" src=\"/static/js/bootstrap.7eb7f8ba56d073f7cb8b.js\"></script>",
+				"<script defer=\"defer\" src=\"/static/js/luxon.111ed65163c5c5571bb7.js\"></script>",
+				"<link href=\"/static/css/pages/users.4789bb019e66041c8e22.css\" rel=\"stylesheet\">",
+				"<script defer=\"defer\" src=\"/static/js/pages/users.4789bb019e66041c8e22.js\"></script>",
 			},
 		},
 	}

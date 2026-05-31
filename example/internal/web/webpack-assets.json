@@ -2,34 +2,34 @@
   "outputPath": "static",
   "entrypoints": {
     "pages/home": [
-      "/static/css/vendors.a03457e107c5d94b1b74.css",
-      "/static/js/vendors.a03457e107c5d94b1b74.js",
-      "/static/js/pages/home.49df4ebaf5d530323a02.js"
+      "/static/css/vendors.01d2a6ec617e83aef053.css",
+      "/static/js/vendors.01d2a6ec617e83aef053.js",
+      "/static/js/pages/home.5e7dd2c7fdd2d1ed59b6.js"
     ],
     "pages/users/_userId_/contacts": [
-      "/static/css/pages/users/_userId_/contacts.abeaff4fff07f99844b6.css",
-      "/static/js/pages/users/_userId_/contacts.abeaff4fff07f99844b6.js"
+      "/static/css/pages/users/_userId_/contacts.0050cdcd5d388d6c8d02.css",
+      "/static/js/pages/users/_userId_/contacts.0050cdcd5d388d6c8d02.js"
     ],
     "pages/users/_userId_/info": [
-      "/static/css/vendors.a03457e107c5d94b1b74.css",
-      "/static/js/vendors.a03457e107c5d94b1b74.js",
-      "/static/js/pages/users/_userId_/info.e58b0c57ee1e988795ef.js"
+      "/static/css/vendors.01d2a6ec617e83aef053.css",
+      "/static/js/vendors.01d2a6ec617e83aef053.js",
+      "/static/js/pages/users/_userId_/info.89104f3b680bed7cc4d3.js"
     ],
     "pages/users": [
-      "/static/css/vendors.a03457e107c5d94b1b74.css",
-      "/static/js/vendors.a03457e107c5d94b1b74.js",
-      "/static/js/bootstrap.e47cb26e34a916f4c2f2.js",
-      "/static/js/luxon.942aca0b9b25e5a111aa.js",
-      "/static/css/pages/users.be13d494c23b013704e8.css",
-      "/static/js/pages/users.be13d494c23b013704e8.js"
+      "/static/css/vendors.01d2a6ec617e83aef053.css",
+      "/static/js/vendors.01d2a6ec617e83aef053.js",
+      "/static/js/bootstrap.7eb7f8ba56d073f7cb8b.js",
+      "/static/js/luxon.111ed65163c5c5571bb7.js",
+      "/static/css/pages/users.4789bb019e66041c8e22.css",
+      "/static/js/pages/users.4789bb019e66041c8e22.js"
     ],
     "main": [
-      "/static/css/vendors.a03457e107c5d94b1b74.css",
-      "/static/js/vendors.a03457e107c5d94b1b74.js",
-      "/static/js/bootstrap.e47cb26e34a916f4c2f2.js",
-      "/static/css/vendors-node_modules_bootstrap-icons_font_bootstrap-icons_min_css.5987f184b9dd5c571cda.css",
-      "/static/css/main.2d7d8349e8d3c50d2d05.css",
-      "/static/js/main.2d7d8349e8d3c50d2d05.js"
+      "/static/css/vendors.01d2a6ec617e83aef053.css",
+      "/static/js/vendors.01d2a6ec617e83aef053.js",
+      "/static/js/bootstrap.7eb7f8ba56d073f7cb8b.js",
+      "/static/css/713.c2b68d57eaa496d90a5d.css",
+      "/static/css/main.f3f597d3fe9a600b89aa.css",
+      "/static/js/main.f3f597d3fe9a600b89aa.js"
     ]
   },
   "images": {

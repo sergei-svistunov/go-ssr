@@ -87,12 +87,12 @@ func (rt *ssrRoute) GetDataContext(ctx context.Context, r *mux.Request, w mux.Re
 		RouteDataContext: mux.RouteDataContext{
 			Child: child,
 			Assets: []string{
-				"<link href=\"/static/css/vendors.a03457e107c5d94b1b74.css\" rel=\"stylesheet\">",
-				"<script defer=\"defer\" src=\"/static/js/vendors.a03457e107c5d94b1b74.js\"></script>",
-				"<script defer=\"defer\" src=\"/static/js/bootstrap.e47cb26e34a916f4c2f2.js\"></script>",
-				"<link href=\"/static/css/vendors-node_modules_bootstrap-icons_font_bootstrap-icons_min_css.5987f184b9dd5c571cda.css\" rel=\"stylesheet\">",
-				"<link href=\"/static/css/main.2d7d8349e8d3c50d2d05.css\" rel=\"stylesheet\">",
-				"<script defer=\"defer\" src=\"/static/js/main.2d7d8349e8d3c50d2d05.js\"></script>",
+				"<link href=\"/static/css/vendors.01d2a6ec617e83aef053.css\" rel=\"stylesheet\">",
+				"<script defer=\"defer\" src=\"/static/js/vendors.01d2a6ec617e83aef053.js\"></script>",
+				"<script defer=\"defer\" src=\"/static/js/bootstrap.7eb7f8ba56d073f7cb8b.js\"></script>",
+				"<link href=\"/static/css/713.c2b68d57eaa496d90a5d.css\" rel=\"stylesheet\">",
+				"<link href=\"/static/css/main.f3f597d3fe9a600b89aa.css\" rel=\"stylesheet\">",
+				"<script defer=\"defer\" src=\"/static/js/main.f3f597d3fe9a600b89aa.js\"></script>",
 			},
 		},
 	}

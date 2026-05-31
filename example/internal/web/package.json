@@ -20,10 +20,10 @@
     "webpack-cli": "^5.1.4"
   },
   "dependencies": {
-    "gossr-runtime": "^0.1.0",
     "@popperjs/core": "^2.11.8",
     "bootstrap": "^5.3.3",
     "bootstrap-icons": "^1.11.3",
+    "gossr-runtime": "^0.1.1",
     "luxon": "^3.5.0"
   }
 }

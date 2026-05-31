@@ -174,9 +174,9 @@ func (rt *ssrRoute) GetDataContext(ctx context.Context, r *mux.Request, w mux.Re
 		RouteDataContext: mux.RouteDataContext{
 			Child: child,
 			Assets: []string{
-				"<link href=\"/static/css/vendors.a03457e107c5d94b1b74.css\" rel=\"stylesheet\">",
-				"<script defer=\"defer\" src=\"/static/js/vendors.a03457e107c5d94b1b74.js\"></script>",
-				"<script defer=\"defer\" src=\"/static/js/pages/home.49df4ebaf5d530323a02.js\"></script>",
+				"<link href=\"/static/css/vendors.01d2a6ec617e83aef053.css\" rel=\"stylesheet\">",
+				"<script defer=\"defer\" src=\"/static/js/vendors.01d2a6ec617e83aef053.js\"></script>",
+				"<script defer=\"defer\" src=\"/static/js/pages/home.5e7dd2c7fdd2d1ed59b6.js\"></script>",
 			},
 		},
 	}

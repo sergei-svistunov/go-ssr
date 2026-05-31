@@ -26,8 +26,8 @@ func (rt *ssrRoute) GetDataContext(ctx context.Context, r *mux.Request, w mux.Re
 		RouteDataContext: mux.RouteDataContext{
 			Child: child,
 			Assets: []string{
-				"<link href=\"/static/css/pages/users/_userId_/contacts.abeaff4fff07f99844b6.css\" rel=\"stylesheet\">",
-				"<script defer=\"defer\" src=\"/static/js/pages/users/_userId_/contacts.abeaff4fff07f99844b6.js\"></script>",
+				"<link href=\"/static/css/pages/users/_userId_/contacts.0050cdcd5d388d6c8d02.css\" rel=\"stylesheet\">",
+				"<script defer=\"defer\" src=\"/static/js/pages/users/_userId_/contacts.0050cdcd5d388d6c8d02.js\"></script>",
 			},
 		},
 	}
