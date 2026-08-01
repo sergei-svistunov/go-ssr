@@ -1,6 +1,6 @@
 package generator_test
 
-// reactive_test.go — tests for reactive-bindings generator (E01–E06, AC18–AC22).
+// reactive_test.go — tests for reactive-bindings generator (E01–E06).
 //
 // Each test creates a minimal temporary pages directory tree and asserts that
 // generator.Generate() (via Analyze+Generate) produces the expected output or
@@ -135,7 +135,7 @@ func TestGenerator_NestedReactiveRoutes_Succeed(t *testing.T) {
 // TestGenerator_NestedReactiveRoutes_BindingKeysNamespaced verifies that each
 // reactive route's binding keys are namespaced with that route's routeKey
 // (routeKey.localKey), ensuring no collision when both routes use the same
-// variable name (e.g. "count"). AC23.
+// variable name (e.g. "count")..
 func TestGenerator_NestedReactiveRoutes_BindingKeysNamespaced(t *testing.T) {
 	webDir := filepath.Join(t.TempDir(), "web")
 	writeTemplate(t, webDir, "dashboard",
@@ -325,7 +325,7 @@ func TestGenerator_E03_ConditionOnlyReactiveVar_NowGeneratesBlock(t *testing.T) 
 // reactive="true". E04 is retired and must NOT fire for non-scalar types.
 
 // TestGenerator_E04_Retired_StructReactiveVar verifies that a struct-typed
-// reactive variable no longer triggers E04 (AC12(a,d)).
+// reactive variable no longer triggers E04.
 func TestGenerator_E04_Retired_StructReactiveVar(t *testing.T) {
 	webDir := filepath.Join(t.TempDir(), "web")
 	writeTemplate(t, webDir, "profile",
@@ -354,7 +354,7 @@ func TestGenerator_E04_Retired_StructReactiveVar(t *testing.T) {
 
 // TestGenerator_StructReactiveVar_Compiles verifies that a struct-typed
 // reactive variable compiles cleanly and emits a TS type in __ssr_gen__.ts
-// (AC12(a,b,c)).
+// .
 func TestGenerator_StructReactiveVar_Compiles(t *testing.T) {
 	webDir := filepath.Join(t.TempDir(), "web")
 	writeTemplate(t, webDir, "page",
@@ -396,7 +396,7 @@ func TestGenerator_StructReactiveVar_Compiles(t *testing.T) {
 }
 
 // TestGenerator_SliceReactiveVar verifies that a slice-typed reactive variable
-// generates correct code and emits the TS type T[] (AC12).
+// generates correct code and emits the TS type T[].
 func TestGenerator_SliceReactiveVar(t *testing.T) {
 	webDir := filepath.Join(t.TempDir(), "web")
 	writeTemplate(t, webDir, "items",
@@ -434,7 +434,7 @@ func TestGenerator_SliceReactiveVar(t *testing.T) {
 }
 
 // TestGenerator_MapReactiveVar verifies that a map[string]int reactive variable
-// generates correct code and emits Record<string, number> in TS (AC12).
+// generates correct code and emits Record<string, number> in TS.
 func TestGenerator_MapReactiveVar(t *testing.T) {
 	webDir := filepath.Join(t.TempDir(), "web")
 	writeTemplate(t, webDir, "scores",
@@ -471,7 +471,7 @@ func TestGenerator_MapReactiveVar(t *testing.T) {
 }
 
 // TestGenerator_PointerReactiveVar verifies that a *int reactive variable
-// generates correct code and emits "number | null" in TS (AC12).
+// generates correct code and emits "number | null" in TS.
 func TestGenerator_PointerReactiveVar(t *testing.T) {
 	webDir := filepath.Join(t.TempDir(), "web")
 	writeTemplate(t, webDir, "maybe",
@@ -543,7 +543,7 @@ func TestGenerator_RecursiveStructFallback(t *testing.T) {
 // ---- E07: ssr:bind on non-scalar variable type ----
 
 // TestGenerator_E07_SsrBindOnStruct verifies that ssr:bind on a struct-typed
-// reactive variable produces error E07 (AC27).
+// reactive variable produces error E07.
 func TestGenerator_E07_SsrBindOnStruct(t *testing.T) {
 	webDir := filepath.Join(t.TempDir(), "web")
 	writeTemplate(t, webDir, "form",
@@ -557,7 +557,7 @@ func TestGenerator_E07_SsrBindOnStruct(t *testing.T) {
 }
 
 // TestGenerator_E07_SsrBindOnSlice verifies that ssr:bind on a slice-typed
-// reactive variable produces error E07 (AC27).
+// reactive variable produces error E07.
 func TestGenerator_E07_SsrBindOnSlice(t *testing.T) {
 	webDir := filepath.Join(t.TempDir(), "web")
 	writeTemplate(t, webDir, "tags",
@@ -621,11 +621,11 @@ func TestGenerator_E07_NotFiredForScalar(t *testing.T) {
 	}
 }
 
-// ---- AC12(e): json.Unmarshal replaces ParseValue for ALL types ----
+// ---- json.Unmarshal replaces ParseValue for ALL types ----
 
 // TestHandleWrite_UsesJsonUnmarshal verifies that the generated handleWrite
 // dispatch uses json.Unmarshal(msg.Value, &val) and NOT reactive.ParseValue[T]
-// for all variable types including scalars (AC12(e)).
+// for all variable types including scalars.
 func TestHandleWrite_UsesJsonUnmarshal(t *testing.T) {
 	webDir := filepath.Join(t.TempDir(), "web")
 	writeTemplate(t, webDir, "counter",
@@ -648,7 +648,7 @@ func TestHandleWrite_UsesJsonUnmarshal(t *testing.T) {
 	}
 	content := string(data)
 
-	// Must use json.Unmarshal for write dispatch (AC12(e)).
+	// Must use json.Unmarshal for write dispatch.
 	if !strings.Contains(content, "json.Unmarshal(msg.Value") {
 		t.Errorf("expected json.Unmarshal(msg.Value...) in handleWrite\n%s", content)
 	}
@@ -658,7 +658,7 @@ func TestHandleWrite_UsesJsonUnmarshal(t *testing.T) {
 	}
 	// Must NOT use reactive.ParseValue (retired from reactive code paths).
 	if strings.Contains(content, "ParseValue") {
-		t.Errorf("ParseValue should not appear in generated code (AC12(e))\n%s", content)
+		t.Errorf("ParseValue should not appear in generated code\n%s", content)
 	}
 	// Must emit decode_error on unmarshal failure.
 	if !strings.Contains(content, `"decode_error"`) {
@@ -667,7 +667,7 @@ func TestHandleWrite_UsesJsonUnmarshal(t *testing.T) {
 }
 
 // TestHandleWrite_StructType_UsesJsonUnmarshal verifies that a struct-typed
-// client-writable variable also uses json.Unmarshal (not ParseValue) (AC12(e)).
+// client-writable variable also uses json.Unmarshal (not ParseValue).
 func TestHandleWrite_StructType_UsesJsonUnmarshal(t *testing.T) {
 	webDir := filepath.Join(t.TempDir(), "web")
 	writeTemplate(t, webDir, "edit",
@@ -881,10 +881,10 @@ func TestGenerator_SpanWrapperEmitted(t *testing.T) {
 	}
 }
 
-// ---- AC18: reactive ssr:if generates <ssr-block data-ssr-bind> wrapper ----
+// ---- reactive ssr:if generates <ssr-block data-ssr-bind> wrapper ----
 
 // TestReactiveConditional_BlockKeyEmitted verifies that a reactive ssr:if
-// block emits an <ssr-block data-ssr-bind="KEY"> wrapper (AC18a).
+// block emits an <ssr-block data-ssr-bind="KEY"> wrapper.
 func TestReactiveConditional_BlockKeyEmitted(t *testing.T) {
 	webDir := filepath.Join(t.TempDir(), "web")
 	writeTemplate(t, webDir, "vis",
@@ -922,7 +922,7 @@ func TestReactiveConditional_BlockKeyEmitted(t *testing.T) {
 
 // TestReactiveConditional_NoInnerSpan verifies that inner {{ flag }} inside a
 // reactive conditional branch does NOT get a <span data-ssr-bind> wrapper
-// (inner-wrapper suppression rule, AC18).
+// (inner-wrapper suppression rule).
 func TestReactiveConditional_NoInnerSpan(t *testing.T) {
 	webDir := filepath.Join(t.TempDir(), "web")
 	writeTemplate(t, webDir, "vis",
@@ -964,10 +964,10 @@ func TestReactiveConditional_NoInnerSpan(t *testing.T) {
 	}
 }
 
-// ---- AC19: reactive ssr:for (reactive collection) ----
+// ---- reactive ssr:for (reactive collection) ----
 
 // TestReactiveLoop_ReactiveCollection verifies that an ssr:for with a reactive
-// collection emits an <ssr-block data-ssr-bind="KEY"> wrapper (AC19a).
+// collection emits an <ssr-block data-ssr-bind="KEY"> wrapper.
 func TestReactiveLoop_ReactiveCollection(t *testing.T) {
 	webDir := filepath.Join(t.TempDir(), "web")
 	// Note: todos is a string slice.
@@ -1000,7 +1000,7 @@ func TestReactiveLoop_ReactiveCollection(t *testing.T) {
 }
 
 // TestReactiveLoop_ReactiveBody verifies that a static collection loop whose
-// body uses a reactive variable emits an <ssr-block> wrapper (AC20).
+// body uses a reactive variable emits an <ssr-block> wrapper.
 func TestReactiveLoop_ReactiveBody(t *testing.T) {
 	webDir := filepath.Join(t.TempDir(), "web")
 	writeTemplate(t, webDir, "tagged",
@@ -1028,7 +1028,7 @@ func TestReactiveLoop_ReactiveBody(t *testing.T) {
 	}
 }
 
-// TestReactiveLoop_BothReactive verifies the union dependency set case (AC22):
+// TestReactiveLoop_BothReactive verifies the union dependency set case:
 // a loop with both a reactive collection AND reactive body variables emits
 // exactly one <ssr-block> wrapper and both variables appear in the dep map.
 func TestReactiveLoop_BothReactive(t *testing.T) {
@@ -1073,7 +1073,7 @@ func TestReactiveLoop_BothReactive(t *testing.T) {
 	}
 }
 
-// ---- AC21: nested reactive conditionals ----
+// ---- nested reactive conditionals ----
 
 // TestNestedReactiveConditionals_OuterSubsumesInner verifies that when a
 // reactive conditional is nested inside another reactive conditional, only the
@@ -1137,7 +1137,7 @@ func TestNestedReactiveConditionals_OuterSubsumesInner(t *testing.T) {
 
 // TestSnapshot_IncludesAllBindings verifies that the generated snapshot()
 // function calls renderBlock_KEY for every reactive binding site, including
-// composite, conditional, and loop sites (AC18b, AC19b).
+// composite, conditional, and loop sites.
 func TestSnapshot_IncludesAllBindings(t *testing.T) {
 	webDir := filepath.Join(t.TempDir(), "web")
 	// Template with: scalar binding, block binding (conditional).
@@ -1371,8 +1371,9 @@ func TestRenderBlockHelper_BlockSite(t *testing.T) {
 // is used as the hash input so distinct expressions produce distinct keys.
 //
 // The template has two distinct composite expressions:
-//   {{ a + b }}   — should produce binding key sha256("a + b")[:16]
-//   {{ a - b }}   — should produce binding key sha256("a - b")[:16]
+//
+//	{{ a + b }}   — should produce binding key sha256("a + b")[:16]
+//	{{ a - b }}   — should produce binding key sha256("a - b")[:16]
 //
 // Both a and b are reactive. Each expression must generate its own renderBlock_KEY
 // function. Setting a or b must enqueue patches for BOTH keys (not just one).

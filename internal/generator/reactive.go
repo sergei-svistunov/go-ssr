@@ -27,6 +27,11 @@ import (
 	"github.com/sergei-svistunov/go-ssr/internal/generator/route/template/node"
 )
 
+// tsTypesFileName is the per-route TypeScript file the generator writes for a
+// reactive route. It is generated output living among hand-written sources, so
+// anything that inspects the route tree has to know to leave it alone.
+const tsTypesFileName = "__ssr_gen__.ts"
+
 // ssrBindScalarTypes is the exhaustive set of Go type-name tokens that are
 // accepted as scalar for ssr:bind validation (E07).
 //
@@ -106,7 +111,7 @@ func clientWritableVars(vars []template.Variable) []template.Variable {
 // .value is always a string.
 //
 // varMap is the route's name→Variable map (already built by validateReactiveBindings).
-func validateSsrBindE07(rPath string, tmpl *template.Template, varMap map[string]template.Variable) error {
+func validateSsrBindE07(rPath string, tmpl *template.Template, varMap map[string]template.Variable) *Diagnostic {
 	for _, ref := range tmpl.GetSsrBindRefs() {
 		v, ok := varMap[ref.VarName]
 		if !ok {
@@ -114,8 +119,14 @@ func validateSsrBindE07(rPath string, tmpl *template.Template, varMap map[string
 			continue
 		}
 		if !ssrBindScalarTypes[v.Type] {
-			return fmt.Errorf("%s:%d:1: reactive-bindings: ssr:bind=%q requires a scalar variable type; %q has type %q. Use ssr.set() in TypeScript for non-scalar reactive variables.",
-				ref.File, ref.Line, ref.VarName, ref.VarName, v.Type)
+			return &Diagnostic{
+				Route: rPath,
+				Line:  ref.Line,
+				Col:   1,
+				Code:  "E07",
+				Message: fmt.Sprintf("reactive-bindings: ssr:bind=%q requires a scalar variable type; %q has type %q. Use ssr.set() in TypeScript for non-scalar reactive variables.",
+					ref.VarName, ref.VarName, v.Type),
+			}
 		}
 	}
 	return nil
@@ -136,7 +147,7 @@ func validateSsrBindE07(rPath string, tmpl *template.Template, varMap map[string
 //
 // It does NOT check E06 here because E06 is detected at parse time and already
 // converted to a SsrBindOnPrimitiveError by the template parser.
-func validateSsrBindRefs(rPath string, tmpl *template.Template, allRouteVarMaps map[string]map[string]template.Variable) error {
+func validateSsrBindRefs(rPath string, tmpl *template.Template, allRouteVarMaps map[string]map[string]template.Variable) *Diagnostic {
 	varMap := make(map[string]template.Variable)
 	for _, v := range tmpl.GetVariables() {
 		varMap[v.Name] = v
@@ -146,8 +157,14 @@ func validateSsrBindRefs(rPath string, tmpl *template.Template, allRouteVarMaps 
 		if ok {
 			// Variable exists in this route.
 			if !v.ClientWritable {
-				return fmt.Errorf("%s:%d:1: reactive-bindings: ssr:bind=%q at route %q requires client-writable=\"true\" on the variable declaration; add client-writable=\"true\" to the <ssr:var> or remove ssr:bind",
-					ref.File, ref.Line, ref.VarName, rPath)
+				return &Diagnostic{
+					Route: rPath,
+					Line:  ref.Line,
+					Col:   1,
+					Code:  "E05",
+					Message: fmt.Sprintf("reactive-bindings: ssr:bind=%q at route %q requires client-writable=\"true\" on the variable declaration; add client-writable=\"true\" to the <ssr:var> or remove ssr:bind",
+						ref.VarName, rPath),
+				}
 			}
 			// client-writable=true — valid.
 			continue
@@ -167,13 +184,25 @@ func validateSsrBindRefs(rPath string, tmpl *template.Template, allRouteVarMaps 
 
 		if declaringRoute != "" {
 			// Found in a different route — cross-route binding is not allowed.
-			return fmt.Errorf("%s:%d:1: reactive-bindings: ssr:bind=%q at route %q references a variable declared in a different route (%q); ssr:bind references must be local to the declaring route",
-				ref.File, ref.Line, ref.VarName, rPath, declaringRoute)
+			return &Diagnostic{
+				Route: rPath,
+				Line:  ref.Line,
+				Col:   1,
+				Code:  "E05",
+				Message: fmt.Sprintf("reactive-bindings: ssr:bind=%q at route %q references a variable declared in a different route (%q); ssr:bind references must be local to the declaring route",
+					ref.VarName, rPath, declaringRoute),
+			}
 		}
 
 		// Not found anywhere — variable not declared.
-		return fmt.Errorf("%s:%d:1: reactive-bindings: ssr:bind=%q at route %q references variable %q which is not declared in any route; add <ssr:var name=%q .../> to this route's template",
-			ref.File, ref.Line, ref.VarName, rPath, ref.VarName, ref.VarName)
+		return &Diagnostic{
+			Route: rPath,
+			Line:  ref.Line,
+			Col:   1,
+			Code:  "E05",
+			Message: fmt.Sprintf("reactive-bindings: ssr:bind=%q at route %q references variable %q which is not declared in any route; add <ssr:var name=%q .../> to this route's template",
+				ref.VarName, rPath, ref.VarName, ref.VarName),
+		}
 	}
 	return nil
 }
@@ -470,7 +499,7 @@ func (g *Generator) genReactiveStateCode(buf *gobuf.GoBuf, rPath string, r *rout
 			localKey := localKeyOf(nsKey)
 			buf.WriteString("s.conn.Enqueue(s.routeKey, ")
 			buf.WriteQuotedString(nsKey)
-			buf.WriteStringLn(", renderBlock_"+localKey+"(s.data))")
+			buf.WriteStringLn(", renderBlock_" + localKey + "(s.data))")
 		}
 
 		buf.WriteStringLn("}")
@@ -844,7 +873,7 @@ func goTypeToTSType(goType string, structRegistry map[string]string, inProgress 
 		//
 		// NOTE: Full struct field introspection requires importing the Go type
 		// via go/types which is out of scope for this generator. We emit a
-		// placeholder comment interface so AC12(c) is satisfied structurally.
+		// placeholder comment interface for the interface shape.
 		// Developers can override or extend the generated __ssr_gen__.ts.
 		inProgress[goType] = true
 		// Emit an opaque interface for the struct. Field-accurate typing
@@ -989,7 +1018,7 @@ func (g *Generator) genRouteTSTypes(rPath string, r *routepkg.Route) error {
 	sb.WriteString("',\n")
 	sb.WriteString("});\n")
 
-	outPath := filepath.Join(g.webDir, "pages", rPath, "__ssr_gen__.ts")
+	outPath := filepath.Join(g.webDir, "pages", rPath, tsTypesFileName)
 	if err := os.WriteFile(outPath, []byte(sb.String()), 0644); err != nil {
 		return fmt.Errorf("could not write %s: %w", outPath, err)
 	}

@@ -1,7 +1,9 @@
 package generator
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -34,6 +36,10 @@ type Generator struct {
 	projectCmdDone chan struct{}
 	projectCmdEnv  map[string]string
 	goRunArgs      string
+
+	in     io.Reader
+	out    io.Writer
+	errOut io.Writer
 }
 
 func New(cfg *config.Config) *Generator {
@@ -47,7 +53,21 @@ func New(cfg *config.Config) *Generator {
 		routes:        make(map[string]*route.Route),
 		projectCmdEnv: cfg.Env,
 		goRunArgs:     cfg.GoRunArgs,
+		in:            os.Stdin,
+		out:           os.Stdout,
+		errOut:        os.Stderr,
 	}
+}
+
+// SetOutput redirects the output of the external tools the generator runs (npm,
+// webpack, the Go toolchain) and its own progress messages. Both default to the
+// process streams. A caller that owns stdout for something else — a server
+// speaking a protocol over it, for instance — must redirect them, and passing a
+// nil reader for stdin keeps subprocesses from consuming it.
+func (g *Generator) SetOutput(stdin io.Reader, stdout, stderr io.Writer) {
+	g.in = stdin
+	g.out = stdout
+	g.errOut = stderr
 }
 
 func (g *Generator) Analyze() error {
@@ -59,8 +79,24 @@ func (g *Generator) Analyze() error {
 	}
 	g.assets = assets
 
+	// Route failures are collected rather than returned immediately: a project
+	// with mistakes in three templates should report all three, not force three
+	// regenerate-and-fix rounds.
+	var diags Diagnostics
+
 	pagesDir := filepath.Join(g.webDir, "pages")
 	if err := filepath.WalkDir(pagesDir, func(p string, d fs.DirEntry, err error) error {
+		// WalkDir reports a read failure with a nil entry, including for the root
+		// itself when the directory does not exist. Handle it before touching d:
+		// a panic here would take down a long-running caller such as the MCP
+		// server, which has no way to recover a handler.
+		if err != nil {
+			if os.IsNotExist(err) && p == pagesDir {
+				return fmt.Errorf("route directory %s does not exist", g.relPath(pagesDir))
+			}
+			return err
+		}
+
 		// staticEmbedDirName is a reserved top-level directory under pages/ used
 		// as the staging dir for the embedded static-file blob. A real route
 		// folder cannot share this name.
@@ -69,24 +105,6 @@ func (g *Generator) Analyze() error {
 		}
 		if !d.IsDir() || isDirEmpty(p) {
 			return nil
-		}
-
-		// E01 — reserved path segment __ws.
-		// This check runs unconditionally — not only when reactive vars are present.
-		if d.Name() == "__ws" {
-			// Construct a user-friendly path relative to the module root.
-			relPath, _ := filepath.Rel(g.dir, p)
-			if runtime.GOOS == "windows" {
-				relPath = strings.Replace(relPath, "\\", "/", -1)
-			}
-			// Use the index.html path as the error location (conventional format).
-			indexPath := filepath.Join(p, "index.html")
-			relIndex, _ := filepath.Rel(g.dir, indexPath)
-			if runtime.GOOS == "windows" {
-				relIndex = strings.Replace(relIndex, "\\", "/", -1)
-			}
-			return fmt.Errorf("%s:1:1: reactive-bindings: route folder \"__ws\" (at %s) is reserved for WebSocket endpoints; rename the folder",
-				relIndex, relPath)
 		}
 
 		routePath, err := filepath.Rel(pagesDir, p)
@@ -98,6 +116,31 @@ func (g *Generator) Analyze() error {
 			routePath = strings.Replace(routePath, "\\", "/", -1)
 		}
 
+		// E01 — reserved path segment __ws.
+		// This check runs unconditionally — not only when reactive vars are present.
+		if d.Name() == "__ws" {
+			diags = append(diags, Diagnostic{
+				Route: path.Join("/", routePath),
+				File:  g.relPath(filepath.Join(p, "index.html")),
+				Line:  1,
+				Col:   1,
+				Code:  "E01",
+				Message: fmt.Sprintf("reactive-bindings: route folder \"__ws\" (at %s) is reserved for WebSocket endpoints; rename the folder",
+					g.relPath(p)),
+			})
+			return filepath.SkipDir
+		}
+
+		// A directory that only groups child routes is not a route itself.
+		// Registering one would put an entry in the generated handler for a
+		// package that has no Go files, and the project would stop compiling.
+		if _, statErr := os.Stat(filepath.Join(p, "index.html")); statErr != nil {
+			if os.IsNotExist(statErr) {
+				return nil
+			}
+			return statErr
+		}
+
 		r, err := route.FromDir(p, func(file string) string {
 			result := g.assets.GetImageAsset(path.Join(routePath, file))
 			if result == "" {
@@ -106,7 +149,8 @@ func (g *Generator) Analyze() error {
 			return result
 		})
 		if err != nil {
-			return err
+			diags = append(diags, g.diagnostic(path.Join("/", routePath), filepath.Join(p, "index.html"), err))
+			return nil
 		}
 
 		g.routes[path.Join("/", routePath)] = r
@@ -116,7 +160,36 @@ func (g *Generator) Analyze() error {
 		return err
 	}
 
-	return nil
+	return diags.ErrorOrNil()
+}
+
+// Validate analyzes the project and runs every template and binding check
+// without writing a single file, so a caller can report what is wrong before
+// deciding to regenerate. The returned error is reserved for failures that are
+// not about the project's content, such as an unreadable pages directory.
+func (g *Generator) Validate() ([]Diagnostic, error) {
+	var diags []Diagnostic
+
+	collect := func(err error) error {
+		if err == nil {
+			return nil
+		}
+		var ds Diagnostics
+		if !errors.As(err, &ds) {
+			return err
+		}
+		diags = append(diags, ds...)
+		return nil
+	}
+
+	if err := collect(g.Analyze()); err != nil {
+		return nil, err
+	}
+	if err := collect(g.validateReactiveBindings()); err != nil {
+		return nil, err
+	}
+
+	return diags, nil
 }
 
 func (g *Generator) Generate() error {
@@ -160,8 +233,9 @@ func (g *Generator) Generate() error {
 	return nil
 }
 
-// validateReactiveBindings runs all compile-time checks for the reactive-bindings
-// feature (E01–E06). Returns the first error encountered.
+// validateReactiveBindings runs the compile-time checks for reactive bindings,
+// collecting at most one diagnostic per route so every broken route is reported
+// in a single pass.
 func (g *Generator) validateReactiveBindings() error {
 	// Build a cross-route variable map used by validateSsrBindRefs to distinguish
 	// "variable not in this route but in another route" from "variable not declared
@@ -179,6 +253,8 @@ func (g *Generator) validateReactiveBindings() error {
 		allRouteVarMaps[rPath] = vm
 	}
 
+	var diags Diagnostics
+
 	for _, rPath := range g.getRoutesPaths() {
 		r := g.routes[rPath]
 		tmpl := r.Template()
@@ -195,18 +271,21 @@ func (g *Generator) validateReactiveBindings() error {
 		// E07: ssr:bind on a non-scalar variable type. Must run before
 		// E05 so that a non-scalar bind produces the more specific E07 error
 		// rather than the generic E05 client-writable error.
-		if err := validateSsrBindE07(rPath, tmpl, varMap); err != nil {
-			return err
+		if d := validateSsrBindE07(rPath, tmpl, varMap); d != nil {
+			d.File = g.relPath(g.routeIndexPath(rPath))
+			diags = append(diags, *d)
+			continue
 		}
 
 		// E05 + cross-route constraint: ssr:bind without client-writable or
 		// ssr:bind referencing a variable in a different route.
-		if err := validateSsrBindRefs(rPath, tmpl, allRouteVarMaps); err != nil {
-			return err
+		if d := validateSsrBindRefs(rPath, tmpl, allRouteVarMaps); d != nil {
+			d.File = g.relPath(g.routeIndexPath(rPath))
+			diags = append(diags, *d)
 		}
-
 	}
-	return nil
+
+	return diags.ErrorOrNil()
 }
 
 // buildReactiveMap builds a map[name]bool of reactive variable names from a

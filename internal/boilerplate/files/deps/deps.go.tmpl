@@ -1,0 +1,11 @@
+package <DEPS_PKG>
+
+// <DEPS_TYPE> holds everything the route data providers need: database handles,
+// clients, configuration. Every dataprovider.go receives a pointer to it, so
+// this package must not import anything from the pages tree.
+type <DEPS_TYPE> struct {
+}
+
+func New() *<DEPS_TYPE> {
+	return &<DEPS_TYPE>{}
+}

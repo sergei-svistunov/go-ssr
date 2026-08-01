@@ -1,3 +1,5 @@
+//go:build unix
+
 package generator
 
 import (
@@ -5,12 +7,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"regexp"
 	"syscall"
 	"time"
 )
-
-var reSpaces = regexp.MustCompile(`\s+`)
 
 func (g *Generator) runProject(ctx context.Context) {
 	args := append([]string{"run"}, reSpaces.Split(g.goRunArgs, -1)...)

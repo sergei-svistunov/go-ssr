@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <ssr:var name="title" type="string"/>
+    <title>{{ title }}</title>
+    <ssr:assets/>
+</head>
+<body>
+<h1>{{ title }}</h1>
+<ssr:content default="/users"/>
+</body>
+</html>

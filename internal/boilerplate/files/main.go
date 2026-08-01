@@ -4,7 +4,7 @@ import (
 	"log"
 	"net/http"
 
-	"<PKG_NAME>/internal/web"
+	"<PKG_NAME>/<WEB_DIR>"
 )
 
 func main() {

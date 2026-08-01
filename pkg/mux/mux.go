@@ -124,6 +124,13 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(currentRoute.children) > 0 {
+		if currentRoute.route == nil {
+			// The path only groups child routes; there is no template of its own
+			// to render and nothing to redirect to.
+			m.errorHandler(w, muxRequest, NewHttpError(http.StatusNotFound, http.StatusText(http.StatusNotFound)))
+			return
+		}
+
 		subRoute, err := currentRoute.route.GetDefaultRoute(r.Context(), muxRequest)
 		if err != nil {
 			m.errorHandler(w, muxRequest, err)

@@ -6,9 +6,8 @@ import (
 	"testing"
 )
 
-
 // TestWithWSHandlers_RoutesUnchanged verifies that adding WithWSHandlers does
-// not break existing non-reactive routes (AC7 — mux.New signature unchanged).
+// not break existing non-reactive routes (mux.New signature unchanged).
 func TestWithWSHandlers_RoutesUnchanged(t *testing.T) {
 	m := New(map[string]Route{
 		"/home": testRoute{body: "home page"},

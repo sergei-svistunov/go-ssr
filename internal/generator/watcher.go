@@ -6,11 +6,15 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
 )
+
+// reSpaces splits the configured goRunArgs into arguments.
+var reSpaces = regexp.MustCompile(`\s+`)
 
 func (g *Generator) Watch(ctx context.Context) error {
 	watcher, err := fsnotify.NewWatcher()

@@ -1,0 +1,3 @@
+webDir: ./internal/web
+webPackage: example.com/fixture/internal/web
+goRunArgs: .

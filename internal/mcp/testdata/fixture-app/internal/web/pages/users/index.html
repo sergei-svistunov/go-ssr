@@ -1,0 +1,11 @@
+<ssr:var name="users" type="[]string"/>
+<ssr:var name="count" type="int" reactive="true" client-writable="true"/>
+
+<p>{{ count }} users</p>
+<input ssr:bind="count" type="number"/>
+
+<ul>
+    <li ssr:for="u in users">{{ u }}</li>
+</ul>
+
+<ssr:content/>

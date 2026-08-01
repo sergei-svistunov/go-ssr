@@ -1,0 +1,19 @@
+package web
+
+import (
+	"net/http"
+
+	ssrMux "github.com/sergei-svistunov/go-ssr/pkg/mux"
+
+	"<DEPS_PACKAGE>"
+
+	"<PKG_NAME>/<WEB_DIR>/pages"
+)
+
+func New(d *<DEPS_PKG>.<DEPS_TYPE>) http.Handler {
+	mux := http.NewServeMux()
+
+	mux.Handle("/", pages.NewSsrHandler(d, ssrMux.Options{}))
+
+	return mux
+}

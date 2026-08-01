@@ -5,7 +5,7 @@ import (
 
 	ssrMux "github.com/sergei-svistunov/go-ssr/pkg/mux"
 
-	"<PKG_NAME>/internal/web/pages"
+	"<PKG_NAME>/<WEB_DIR>/pages"
 )
 
 func New() http.Handler {

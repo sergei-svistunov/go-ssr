@@ -37,6 +37,13 @@ func (e *SyntaxError) Error() string {
 	return fmt.Sprintf("%s:%d: %s", e.Filename, e.Line, e.Message)
 }
 
+// syntaxErrf builds a *SyntaxError carrying the position of the template
+// construct that failed, so every parse failure can be reported as
+// file:line rather than as a bare sentence.
+func syntaxErrf(filename string, line int, format string, args ...any) *SyntaxError {
+	return &SyntaxError{Filename: filename, Line: line, Message: fmt.Sprintf(format, args...)}
+}
+
 var simpleTokens = []struct {
 	token string
 	value int

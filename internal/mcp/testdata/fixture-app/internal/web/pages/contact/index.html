@@ -1,0 +1,9 @@
+<ssr:form name="contact">
+    <ssr:input name="email" type="email" required/>
+    <div ssr:if="form.Email.HasError()">{{ form.Email.GetError() }}</div>
+
+    <ssr:input name="age" type="number" gotype="uint8"/>
+    <ssr:textarea name="message" required/>
+
+    <button type="submit">Send</button>
+</ssr:form>

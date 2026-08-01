@@ -33,8 +33,14 @@ type SsrBindOnPrimitiveError struct {
 }
 
 func (e *SsrBindOnPrimitiveError) Error() string {
-	return fmt.Sprintf("%s:%d:1: reactive-bindings: ssr:bind is not valid on GoSSR form primitive <ssr:%s>; use a native HTML <%s> element instead",
-		e.File, e.Line, e.Element, e.Element)
+	return fmt.Sprintf("%s:%d:1: %s", e.File, e.Line, e.Message())
+}
+
+// Message returns the explanation without the position prefix, so callers that
+// report their own location do not duplicate it.
+func (e *SsrBindOnPrimitiveError) Message() string {
+	return fmt.Sprintf("reactive-bindings: ssr:bind is not valid on GoSSR form primitive <ssr:%s>; use a native HTML <%s> element instead",
+		e.Element, e.Element)
 }
 
 type Template struct {
@@ -146,7 +152,7 @@ func Parse(filename string, imageResolver func(string) string) (*Template, error
 					ssrBindRefs: ssrBindRefs,
 				}, nil
 			}
-			return nil, fmt.Errorf("%s:%d: cannot parse HTML: %v", filename, curLine, tok.Err())
+			return nil, syntaxErrf(filename, curLine, "cannot parse HTML: %v", tok.Err())
 		case html.TextToken:
 			text := string(tok.Text())
 			if !stack.isWhitespacePreserved() {
@@ -191,10 +197,10 @@ func Parse(filename string, imageResolver func(string) string) (*Template, error
 				switch string(tagName[4:]) {
 				case "var":
 					if attrsMap["name"] == "" {
-						return nil, fmt.Errorf("missing var name attribute")
+						return nil, syntaxErrf(filename, curLine, "<ssr:var> is missing the required name attribute")
 					}
 					if attrsMap["type"] == "" {
-						return nil, fmt.Errorf("missing var type attribute")
+						return nil, syntaxErrf(filename, curLine, "<ssr:var name=%q> is missing the required type attribute", attrsMap["name"])
 					}
 					variables = append(variables, Variable{
 						File:           filename,
@@ -214,11 +220,11 @@ func Parse(filename string, imageResolver func(string) string) (*Template, error
 					stack.Top().AddChildren(&node.SsrAssets{node.BaseNode{filename, curLine}})
 				case "form":
 					if activeForm != nil {
-						return nil, fmt.Errorf("<ssr:form> is inside <ssr:form>")
+						return nil, syntaxErrf(filename, curLine, "<ssr:form> cannot be nested inside another <ssr:form>")
 					}
 
 					if attrsMap["enctype"] != "" && attrsMap["enctype"] != node.FormEncUrlEncoded && attrsMap["enctype"] != node.FormEncTypeMultipart {
-						return nil, fmt.Errorf("<ssr:form> has an invalid enctype, must be '%s' or '%s'",
+						return nil, syntaxErrf(filename, curLine, "<ssr:form> has an invalid enctype, must be '%s' or '%s'",
 							node.FormEncUrlEncoded, node.FormEncTypeMultipart)
 					}
 
@@ -235,7 +241,7 @@ func Parse(filename string, imageResolver func(string) string) (*Template, error
 					stack.Push(formNode)
 				case "input", "textarea", "select":
 					if activeForm == nil {
-						return nil, fmt.Errorf("<ssr:%s> is not inside <ssr:form>", tagName[4:])
+						return nil, syntaxErrf(filename, curLine, "<ssr:%s> must be inside an <ssr:form>", tagName[4:])
 					}
 					// ssr:bind is invalid on GoSSR form primitives (E06).
 					if _, hasBind := attrsMap["ssr:bind"]; hasBind {
@@ -254,7 +260,7 @@ func Parse(filename string, imageResolver func(string) string) (*Template, error
 						goType = "string"
 					}
 					if _, exists := formElementGoTypes[goType]; !exists {
-						return nil, fmt.Errorf("unknown gotype '%s'", goType)
+						return nil, syntaxErrf(filename, curLine, "unknown gotype '%s' on <ssr:%s name=%q>", goType, tagName[4:], attrsMap["name"])
 					}
 
 					var (
@@ -269,7 +275,7 @@ func Parse(filename string, imageResolver func(string) string) (*Template, error
 								activeForm.Node.EncType = node.FormEncTypeMultipart
 							}
 							if activeForm.Node.EncType != node.FormEncTypeMultipart {
-								return nil, fmt.Errorf("invalid enctype '%s' for an input with type file, must be '%s'",
+								return nil, syntaxErrf(filename, curLine, "invalid enctype '%s' for an input with type file, must be '%s'",
 									activeForm.Node.EncType, node.FormEncTypeMultipart)
 							}
 						}
@@ -322,7 +328,7 @@ func Parse(filename string, imageResolver func(string) string) (*Template, error
 						})
 					} else if elementByName.Type == nodeType && nodeType == FormElementInput {
 						if goType != elementByName.GoType {
-							return nil, fmt.Errorf("form elements with name '%s' have different gotypes", elementByName.Name)
+							return nil, syntaxErrf(filename, curLine, "form elements with name '%s' have different gotypes", elementByName.Name)
 						}
 						switch attrsMap["type"] {
 						case "checkbox":
@@ -333,15 +339,15 @@ func Parse(filename string, imageResolver func(string) string) (*Template, error
 						case "radio":
 							elementByName.Nodes = append(elementByName.Nodes, n)
 						default:
-							return nil, fmt.Errorf("form contains at least 2 elements with name '%s'", attrsMap["name"])
+							return nil, syntaxErrf(filename, curLine, "form contains at least 2 elements with name '%s'", attrsMap["name"])
 						}
 					} else {
-						return nil, fmt.Errorf("form contains at least 2 elements with name '%s'", attrsMap["name"])
+						return nil, syntaxErrf(filename, curLine, "form contains at least 2 elements with name '%s'", attrsMap["name"])
 					}
 
 					stack.Top().AddChildren(n)
 				default:
-					return nil, fmt.Errorf("invalid tag name: %s", tagName)
+					return nil, syntaxErrf(filename, curLine, "unknown GoSSR tag <%s>", tagName)
 				}
 
 				continue
@@ -370,9 +376,9 @@ func Parse(filename string, imageResolver func(string) string) (*Template, error
 							// Preserve the ssr:bind attribute in the rendered HTML so the
 							// TypeScript runtime's wireSsrBindElements() can discover it via
 							// el.getAttribute('ssr:bind'). Without this the attribute is
-							// consumed silently and the input is never wired (Bug 1).
+							// consumed silently and the input is never wired.
 							n.Attributes = append(n.Attributes, node.HtmlAttribute{
-								Key: "ssr:bind",
+								Key:    "ssr:bind",
 								Values: []node.Node{&node.Text{Text: string(value)}},
 							})
 							if !more {
@@ -386,7 +392,7 @@ func Parse(filename string, imageResolver func(string) string) (*Template, error
 							}
 							loop, ok := expr[0].(*node.Loop)
 							if !ok {
-								return nil, fmt.Errorf("invalid loop expression")
+								return nil, syntaxErrf(filename, curLine, "invalid ssr:for expression %q, expected \"item in collection\" or \"i, item in collection\"", string(value))
 							}
 							loop.Children = []node.Node{n}
 							hasWrapper = true
@@ -407,9 +413,12 @@ func Parse(filename string, imageResolver func(string) string) (*Template, error
 							)
 
 						case "else", "else-if":
+							elseErr := func() *SyntaxError {
+								return syntaxErrf(filename, curLine, "ssr:%s must directly follow an element with ssr:if or ssr:else-if", key)
+							}
 							lastChild := stack.Top().LastChild()
 							if lastChild == nil {
-								return nil, fmt.Errorf("invalid else condition place")
+								return nil, elseErr()
 							}
 							for {
 								nodeText, ok := lastChild.(*node.Text)
@@ -419,12 +428,12 @@ func Parse(filename string, imageResolver func(string) string) (*Template, error
 								stack.Top().PopChild()
 								lastChild = stack.Top().LastChild()
 								if lastChild == nil {
-									return nil, fmt.Errorf("invalid else condition place")
+									return nil, elseErr()
 								}
 							}
 							nodeCond, ok := lastChild.(*node.SsrCondition)
 							if !ok {
-								return nil, fmt.Errorf("invalid else condition place")
+								return nil, elseErr()
 							}
 							hasWrapper = true
 							if key == "else" {
@@ -441,7 +450,7 @@ func Parse(filename string, imageResolver func(string) string) (*Template, error
 								})
 							}
 						default:
-							return nil, fmt.Errorf("invalid attribute name: \"%s\"", key)
+							return nil, syntaxErrf(filename, curLine, "unknown GoSSR attribute \"ssr:%s\"", key)
 						}
 						if more {
 							continue

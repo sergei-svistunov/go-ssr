@@ -323,7 +323,7 @@ func TestSnapshot_CompositeBindingKey(t *testing.T) {
 	rk := "3f7a"
 	// Namespaced keys as produced by the generator (routeKey.localKey).
 	compositeKey := rk + ".a1b2c3d4e5f60708" // namespaced composite hash key
-	scalarKey := rk + ".counter"              // namespaced scalar key
+	scalarKey := rk + ".counter"             // namespaced scalar key
 
 	msg := reactive.NewInitMsg(rk, map[string]string{
 		scalarKey:    "42",
@@ -454,8 +454,8 @@ func TestSlowClient_ClosesWith1008(t *testing.T) {
 
 	// Use the exported NewHandler and production reactive.Conn machinery, but
 	// control timing via a channel that blocks the write path.
-	blockWrite := make(chan struct{})    // closed by the test to unblock the server
-	serverClosed := make(chan struct{})  // closed when the server handler exits
+	blockWrite := make(chan struct{})   // closed by the test to unblock the server
+	serverClosed := make(chan struct{}) // closed when the server handler exits
 
 	h := reactive.NewHandler(func(ctx context.Context, r *http.Request, conn *reactive.Conn) {
 		defer close(serverClosed)
@@ -778,7 +778,7 @@ func TestWriteMsg_RouteKeyPopulated(t *testing.T) {
 }
 
 // TestWriteMsg_RawMessage_Decode verifies that scalar JSON values (number, string,
-// bool) in WriteMsg.Value decode correctly into typed Go vars (AC26).
+// bool) in WriteMsg.Value decode correctly into typed Go vars.
 func TestWriteMsg_RawMessage_Decode(t *testing.T) {
 	t.Run("number_42", func(t *testing.T) {
 		raw := `{"t":"write","routeKey":"3f7a","var":"n","value":42}`
@@ -827,7 +827,7 @@ func TestWriteMsg_RawMessage_Decode(t *testing.T) {
 }
 
 // TestWriteMsg_StructDecode verifies that a struct value round-trips correctly
-// through json.RawMessage in WriteMsg.Value (AC25 wire protocol).
+// through json.RawMessage in WriteMsg.Value (wire protocol).
 func TestWriteMsg_StructDecode(t *testing.T) {
 	type Profile struct {
 		Name string `json:"Name"`
@@ -850,7 +850,7 @@ func TestWriteMsg_StructDecode(t *testing.T) {
 
 // TestWriteMsg_DecodeError verifies that sending a JSON value that does not
 // match the target Go type causes json.Unmarshal to return an error. This is
-// the server-side behaviour that emits err{code:"decode_error"} (AC26).
+// the server-side behaviour that emits err{code:"decode_error"}.
 func TestWriteMsg_DecodeError(t *testing.T) {
 	// "not-a-number" is a JSON string; unmarshaling into int must fail.
 	raw := `{"t":"write","routeKey":"3f7a","var":"counter","value":"not-a-number"}`
