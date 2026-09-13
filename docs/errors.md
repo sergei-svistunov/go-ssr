@@ -87,7 +87,8 @@ A changed `depsPackage` or `depsType` in `gossr.yaml` changes every generated `N
 
 | Response | Cause |
 |---|---|
-| `400 Missed CSRF token` / `400 Invalid CSRF token` | the form posted without the cookie the render set, or with a stale one. Common behind an aggressive cache — serve pages with forms as `no-store` |
+| `400 Missed CSRF token` / `400 Invalid CSRF token` | the form posted without the cookie the render set, or with a token this process will not accept — it expired (a day after it was issued), the session it was bound to changed, the process restarted or another instance served the request while `mux.Options.CSRFKey` is unset, or the browser refused the cookie because the site is served over plain http on a host other than localhost, or in Safari (the server logs that case once; see `forms`) |
+| `403 Cross-site request` | the browser reported a POST/PUT/PATCH/DELETE as coming from another origin or a sibling subdomain, or `Origin` does not match the `Host` the app sees (logged with both) — behind a proxy, forward the public host; for a page served from elsewhere, list its origin in `mux.Options.OriginPatterns`; for a callback that is a third-party POST by design, exempt it with `mux.Options.AllowCrossSite` |
 | `400 Content-Type is not multipart/form-data` | the declared enctype and the submitted one disagree |
 | `404` | no route matched, or every hook in the stack returned no data context |
 | `302` from a route you expected to render | the route has child directories, so it redirects to its default child. See `routing` |

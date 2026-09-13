@@ -152,4 +152,4 @@ pair and values struct.
 - [ ] error display for each field plus the form-level error
 - [ ] `Process` checks `data.HasError()` before acting
 - [ ] success path redirects instead of rendering
-- [ ] the hidden CSRF field is left alone, and pages with forms are not cached
+- [ ] the hidden CSRF field is left alone

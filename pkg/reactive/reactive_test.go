@@ -15,6 +15,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 
+	"github.com/sergei-svistunov/go-ssr/pkg/mux"
 	"github.com/sergei-svistunov/go-ssr/pkg/reactive"
 )
 
@@ -32,7 +33,8 @@ func wsConnect(t *testing.T, h http.Handler) (*websocket.Conn, context.CancelFun
 
 	ctx, cancel := context.WithCancel(context.Background())
 	c, _, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{
-		// Match the server's InsecureSkipVerify origin setting.
+		// No Origin header is sent, which the server's origin check allows
+		// (non-browser client).
 		Host: "localhost",
 	})
 	if err != nil {
@@ -949,4 +951,137 @@ func TestSubscribeFailure_Closes1011(t *testing.T) {
 		t.Logf("TestSubscribeFailure_Closes1011: observed close code %d (%s) — PASS",
 			closeErr.Code, closeErr.Code)
 	}
+}
+
+// ----------------------------------------------------------------------------
+// Handshake origin tests
+// ----------------------------------------------------------------------------
+
+// noopHandler completes the handshake and returns at once; the connection is
+// closed by NewHandler's deferred CloseNow. A body that waits on ctx would
+// park forever: the context of a hijacked request is never cancelled.
+func noopHandler() http.Handler {
+	return reactive.NewHandler(func(ctx context.Context, r *http.Request, conn *reactive.Conn) {})
+}
+
+// behindMux mounts h at /live/__ws on a mux built with opts, the way
+// generated code registers reactive handlers.
+func behindMux(h http.Handler, opts mux.Options) http.Handler {
+	m := mux.New(map[string]mux.Route{}, opts)
+	mux.WithWSHandlers(map[string]http.Handler{"/live/__ws": h})(m)
+	return m
+}
+
+// dialWS serves h and attempts one handshake to path with the given dial
+// options, returning the connection (if any), the response and the error.
+func dialWS(t *testing.T, h http.Handler, path string, dial *websocket.DialOptions) (*websocket.Conn, *http.Response, error) {
+	t.Helper()
+	srv := httptest.NewServer(h)
+	t.Cleanup(srv.Close)
+	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + path
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	t.Cleanup(cancel)
+	c, resp, err := websocket.Dial(ctx, wsURL, dial)
+	if c != nil {
+		t.Cleanup(func() { c.CloseNow() })
+	}
+	return c, resp, err
+}
+
+func want403(t *testing.T, resp *http.Response, err error) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("expected the handshake to be rejected")
+	}
+	if resp == nil || resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("expected 403, got %v", resp)
+	}
+}
+
+func wantAccepted(t *testing.T, resp *http.Response, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatalf("expected the handshake to succeed, got %v (resp %v)", err, resp)
+	}
+}
+
+func TestNewHandler_Standalone_RejectsCrossOrigin(t *testing.T) {
+	// Outside the mux the library's same-host rule applies.
+	_, resp, err := dialWS(t, noopHandler(), "", &websocket.DialOptions{
+		HTTPHeader: http.Header{"Origin": {"http://evil.example"}},
+	})
+	want403(t, resp, err)
+}
+
+func TestNewHandler_Standalone_AcceptsSameOrigin(t *testing.T) {
+	srv := httptest.NewServer(noopHandler())
+	t.Cleanup(srv.Close)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	c, resp, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(srv.URL, "http"), &websocket.DialOptions{
+		HTTPHeader: http.Header{"Origin": {srv.URL}},
+	})
+	wantAccepted(t, resp, err)
+	c.CloseNow()
+}
+
+func TestNewHandler_BehindMux_ListedOriginAccepted(t *testing.T) {
+	_, resp, err := dialWS(t, behindMux(noopHandler(), mux.Options{OriginPatterns: []string{"dev.example:*"}}), "/live/__ws", &websocket.DialOptions{
+		HTTPHeader: http.Header{"Origin": {"http://dev.example:3000"}},
+	})
+	wantAccepted(t, resp, err)
+}
+
+func TestNewHandler_BehindMux_UnlistedOriginRejected(t *testing.T) {
+	_, resp, err := dialWS(t, behindMux(noopHandler(), mux.Options{OriginPatterns: []string{"dev.example:*"}}), "/live/__ws", &websocket.DialOptions{
+		HTTPHeader: http.Header{"Origin": {"http://evil.example"}},
+	})
+	want403(t, resp, err)
+}
+
+func TestNewHandler_BehindMux_SameOriginPerBrowserSkipsHostCompare(t *testing.T) {
+	// Behind a proxy that rewrites Host, Origin never equals r.Host; the
+	// browser-set Sec-Fetch-Site: same-origin must still let the page through.
+	_, resp, err := dialWS(t, behindMux(noopHandler(), mux.Options{}), "/live/__ws", &websocket.DialOptions{
+		HTTPHeader: http.Header{
+			"Origin":         {"https://app.example"},
+			"Sec-Fetch-Site": {"same-origin"},
+		},
+	})
+	wantAccepted(t, resp, err)
+}
+
+func TestNewHandler_BehindMux_CrossSitePerBrowserRejected(t *testing.T) {
+	_, resp, err := dialWS(t, behindMux(noopHandler(), mux.Options{}), "/live/__ws", &websocket.DialOptions{
+		HTTPHeader: http.Header{
+			"Origin":         {"https://evil.example"},
+			"Sec-Fetch-Site": {"cross-site"},
+		},
+	})
+	want403(t, resp, err)
+}
+
+func TestNewHandler_BehindMux_DefaultPortOnHostIgnored(t *testing.T) {
+	_, resp, err := dialWS(t, behindMux(noopHandler(), mux.Options{}), "/live/__ws", &websocket.DialOptions{
+		Host:       "app.example:443",
+		HTTPHeader: http.Header{"Origin": {"https://app.example"}},
+	})
+	wantAccepted(t, resp, err)
+}
+
+func TestNewHandler_BehindMux_OpaqueOriginRejected(t *testing.T) {
+	// A sandboxed iframe sends Origin: null; the handshake carries cookies
+	// and has no token behind it, so the mux must refuse it.
+	_, resp, err := dialWS(t, behindMux(noopHandler(), mux.Options{}), "/live/__ws", &websocket.DialOptions{
+		HTTPHeader: http.Header{"Origin": {"null"}},
+	})
+	want403(t, resp, err)
+}
+
+func TestNewHandler_Standalone_OpaqueOriginRejected(t *testing.T) {
+	_, resp, err := dialWS(t, noopHandler(), "", &websocket.DialOptions{
+		HTTPHeader: http.Header{"Origin": {"null"}},
+	})
+	want403(t, resp, err)
 }

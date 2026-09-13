@@ -186,12 +186,47 @@ Multipart bodies are parsed with a memory limit; larger parts spill to temporary
 
 ## CSRF protection
 
-Every form renders a hidden `_csrf_token_` field, and a matching `HttpOnly` cookie is set on each GET. On POST
-the token in the body must match the cookie, otherwise the request is rejected with 400 before any hook runs.
-Nothing needs to be wired up; just do not remove the hidden field or strip the cookie.
+Every form renders a hidden `_csrf_token_` field, and a matching `__Host-_csrf_token_` cookie (`Secure`,
+`HttpOnly`, `SameSite=Lax`, `Path=/`) is set while rendering. The token is a random nonce and an issue time
+signed with `mux.Options.CSRFKey`, so a value the server never issued is refused rather than trusted for
+matching a cookie — which is what planting a cookie would otherwise buy an attacker. On POST the token in the body must match the
+cookie, otherwise the request is rejected with 400 before the form's `Process` hook runs — `Init<Name>` has
+already run by then, so keep side effects out of it. Before any of that, the mux refuses any
+POST/PUT/PATCH/DELETE the browser marks as coming from elsewhere — `Sec-Fetch-Site: cross-site` or
+`same-site`, or an `Origin` that is not the request host — with 403 before any of the route's hooks run,
+unless the origin is listed in `mux.Options.OriginPatterns` (the same list the reactive WebSocket uses; the
+rule is `mux.CrossSite`) or `mux.Options.AllowCrossSite` exempts the request (an identity-provider callback
+that is a third-party POST by design). When the browser sends no `Sec-Fetch-Site` at all, an absent `Origin` — and `Origin: null`, as
+`Referrer-Policy: no-referrer` produces — is no signal either way and falls through to the token check; when
+the browser does say `same-site` or `cross-site`, the request is refused whatever the `Origin` says, unless
+a pattern lists it. Nothing needs to be wired up; just do not remove the hidden field or strip the cookie.
 
-Because the cookie is issued while rendering, a form fetched over a cached response can post a stale token.
-Serve pages containing forms with `Cache-Control: no-store` if you cache aggressively.
+Responses that issue a token are always sent with `Cache-Control: no-store`: the mux sets it once the routes
+in the stack have run — whether the outcome is a page, a redirect or an error — so a layout's own
+`Cache-Control` cannot re-enable caching of a response carrying a token.
+
+The same token is reused while it is valid rather than minted per render, so a form open in one tab is not
+invalidated by opening another, and the cookie is re-issued on each render so an active user does not fall
+off its edge. That cannot extend a token: it expires a day after the issue time it carries, whatever the
+cookie says. Past half that life a render rotates it, so a form is never handed a token about to expire
+under it; the token it replaces moves to a `__Host-_csrf_token_prev` cookie and keeps being accepted until
+its own expiry, so pages already open still submit. Set `mux.Options.CSRFSession` to bind tokens to a
+session, and one captured before a login stops working after it. A login that re-renders instead of
+redirecting gets a token for the new session on every form rendered after the rotation, but a form an
+earlier route in the same response already rendered keeps one bound to the old session and will be refused —
+redirect after a login and the question does not arise.
+
+Leaving `mux.Options.CSRFKey` empty generates a key when the handler is built, which needs no setup; tokens
+then do not survive a restart and are not accepted by a second instance, so set it from your secret store if
+you run more than one process or deploy without draining.
+
+The `__Host-` prefix means browsers only store the cookie over https (Chrome and Firefox also accept it on
+`http://localhost`; Safari does not). To develop over plain http on another host, or in Safari, pass
+`mux.Options{InsecureCookies: true}` to `NewSsrHandler`; it drops the prefix and the `Secure` flag and must
+never be enabled in production. A POST that arrives over plain http without the cookie is logged with that
+likely cause (a TLS-terminating proxy should forward `X-Forwarded-Proto: https`, which silences the log
+line). Behind a reverse proxy the `Origin` check compares against the `Host` the app sees, so forward the
+public host (`proxy_set_header Host $http_host` in nginx).
 
 ## Two-way binding is a different feature
 

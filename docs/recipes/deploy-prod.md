@@ -64,17 +64,40 @@ func main() {
 }
 ```
 
-Behind a reverse proxy, make sure WebSocket upgrades are forwarded — a reactive page connects to
-`<route>/__ws` on the same origin. In nginx that means `proxy_set_header Upgrade $http_upgrade;` and
+Serve production over https: the CSRF cookie is `__Host-`-prefixed and `Secure`, so browsers drop it on
+plain http (terminating TLS at the proxy is fine). Set `mux.Options.CSRFKey` from your secret store when
+more than one instance serves the site, or when tokens should survive a restart: left empty, each process
+signs with a key of its own and rejects the others' tokens with a one-off 400 per affected form. Behind a
+reverse proxy, pass the public host through —
+`proxy_set_header Host $http_host;` in nginx (`$http_host` keeps a non-default port, `$host` drops it) — and
+`proxy_set_header X-Forwarded-Proto $scheme;`, because the cross-site check compares the browser's `Origin`
+against them for both form submissions and WebSocket handshakes. Make sure WebSocket upgrades are forwarded
+too — a reactive page
+connects to `<route>/__ws` on the same origin. That means `proxy_set_header Upgrade $http_upgrade;` and
 `proxy_set_header Connection "upgrade";` plus a `proxy_read_timeout` long enough for an idle connection to
 survive.
+
+## Upgrading an existing deployment
+
+Cross-site state-changing requests and WebSocket handshakes are now refused, which changes two working
+setups with no application change.
+
+A form on one host posting to another — `www.example.com` to `app.example.com`, say — is `same-site`, not
+same-origin, and is refused on every modern browser from the moment you upgrade. List the posting origin in
+`mux.Options.OriginPatterns`, or exempt the route with `mux.Options.AllowCrossSite` if it is a third-party
+callback by design.
+
+Behind a proxy that rewrites `Host` to the upstream — nginx's `proxy_pass` default — clients that do not
+send `Sec-Fetch-Site` (Safari before 16.4, older WebViews) get 403 on form submissions and failed reactive
+sockets. Forward `Host` and `X-Forwarded-Proto` before upgrading, and set `mux.Options.CSRFKey` if more than
+one instance serves the site.
 
 ## Caching
 
 Asset URLs are content-hashed and served with `Cache-Control: public, max-age=31536000, immutable`, so a CDN
-can cache them indefinitely. HTML is not cached by the framework. Pages containing forms should not be cached
-by an intermediary: the CSRF cookie is issued while rendering, so a shared cached page produces stale-token
-400s. Set `Cache-Control: no-store` on those responses.
+can cache them indefinitely. HTML is not cached by the framework, and responses that render a form are always
+sent with `Cache-Control: no-store` (set after every route has run), so an intermediary that honours it never
+shares one user's CSRF token. Do not strip that header upstream.
 
 ## Operational notes
 
@@ -90,6 +113,7 @@ by an intermediary: the CSRF cookie is issued while rendering, so a shared cache
 
 - [ ] `go-ssr -prod` run, generated files committed, `git diff --exit-code` clean
 - [ ] `static_embed/`, `static/` and `node_modules/` ignored
-- [ ] proxy forwards WebSocket upgrades and tolerates idle connections
-- [ ] pages with forms are served `no-store`
+- [ ] served over https, `mux.Options.InsecureCookies` not set
+- [ ] `mux.Options.CSRFKey` set from the secret store if more than one instance serves the site
+- [ ] proxy forwards the public `Host`, WebSocket upgrades, and tolerates idle connections
 - [ ] the runtime image contains only the binary

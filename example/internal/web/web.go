@@ -16,6 +16,19 @@ func New(d *model.Model) http.Handler {
 
 	ssrHandler := pages.NewSsrHandler(d, ssrMux.Options{
 		ErrorHandler: handleError,
+		// The CSRF cookie is Secure-only. Uncomment for plain-http
+		// development on a host other than localhost, or in Safari (which
+		// drops Secure cookies on http://localhost too); never enable in
+		// production.
+		// InsecureCookies: true,
+
+		// CSRFKey signs the CSRF tokens. Left unset, a key is generated at
+		// startup, so every restart invalidates the tokens on pages users
+		// already have open and no two instances accept each other's. Before
+		// running more than one instance, or deploying without draining, set
+		// it to at least 32 bytes from your secret store — and fail startup
+		// if that value is missing, because an empty one silently falls back
+		// to the generated key.
 	})
 	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ssrHandler.ServeHTTP(w, r.WithContext(ctxdata.ToContext(r.Context(), &ctxdata.Data{})))

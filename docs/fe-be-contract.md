@@ -38,10 +38,13 @@ Hooks may write headers and cookies through the `mux.ResponseWriter` they receiv
 POST /contact                (multipart or url-encoded, hidden _csrf_token_)
         │
         ▼
+  mux                   cross-site request → 403 before any route runs
+        │
+        ▼
   Init<Name>            populate options and defaults (also runs on GET)
         │
         ▼
-  form.Parse            CSRF check, identify which form was submitted   → 400 on failure
+  form.Parse            CSRF cookie and token check → 400; identify which form was submitted
         │
         ▼
   field parsing         string → declared Go type, required checks; errors recorded per field

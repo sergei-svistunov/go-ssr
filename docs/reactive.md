@@ -136,6 +136,19 @@ variable named `count`.
 In the browser, all reactive routes on a page share one WebSocket through a multiplexing singleton in
 `gossr-runtime`, so a nested page opens one connection, not several.
 
+The mux accepts the handshake only when the browser says it is same-origin (`Sec-Fetch-Site: same-origin`)
+or its `Origin` matches the request `Host` — `mux.CrossSiteStrict`, the rule forms use with one difference:
+an opaque `Origin: null`, which a sandboxed iframe sends, is refused rather than ignored, because no CSRF
+token follows a handshake. A handshake carrying no `Origin` at all is accepted — that is a non-browser
+client, and a browser always sends one. The connection carries
+the session cookies, so a third-party page must not be able to open one and send write frames. A rejected
+handshake is logged with the `Origin` and `Host` seen. If the page is served from a different origin than
+the Go process — a dev server that proxies only some paths — list that origin in
+`mux.Options{OriginPatterns: []string{"dev.example:*"}}` when calling `NewSsrHandler`; `dev.example:*`
+matches any explicit port, a bare `dev.example` matches the default port, and `mux.Options.AllowCrossSite`
+exempts individual handshakes the way it does form POSTs. The check lives in the mux, so it covers every
+handler registered with it, generated or not, and an existing project gets it by updating the library alone.
+
 ## Reconnection
 
 The client reconnects with backoff after an unexpected close. On reconnect the server re-runs `Data` and

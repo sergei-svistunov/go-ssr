@@ -21,6 +21,8 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+
+	"github.com/sergei-svistunov/go-ssr/pkg/mux"
 )
 
 // slowClientTimeout is the maximum time the send goroutine will wait for
@@ -456,13 +458,17 @@ func ParseValue[T any](s string) (T, error) {
 type HandlerFunc func(ctx context.Context, r *http.Request, conn *Conn)
 
 // NewHandler returns an http.Handler that upgrades HTTP requests to WebSocket
-// and calls fn for each connection. Origin checks are bypassed (the generated
-// code is responsible for session validation inside Subscribe).
+// and calls fn for each connection. Mounted through the mux, as generated
+// code does, the handshake has already passed mux.CrossSite — the rule forms
+// use, with mux.Options.OriginPatterns as the allowlist — so no further
+// origin check is made here; the handshake carries the browser's cookies,
+// and that check is what stops a third-party page from driving write frames
+// as the logged-in user. Mounted anywhere else, the library's own same-host
+// rule applies. Subscribe still decides who the user is.
 func NewHandler(fn HandlerFunc) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-			// Accept connections from any origin; auth is handled in Subscribe.
-			InsecureSkipVerify: true,
+			InsecureSkipVerify: mux.OriginChecked(r.Context()),
 		})
 		if err != nil {
 			// Accept writes its own HTTP error response on failure.
