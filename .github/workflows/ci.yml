@@ -17,6 +17,9 @@ jobs:
         with:
           go-version: "1.26.x"
           check-latest: true
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "20"
       - run: make test
 
   lint:
@@ -31,6 +34,9 @@ jobs:
         with:
           version: v2.14.0
           install-only: true
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "20"
       - run: make lint
 
   vuln:

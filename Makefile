@@ -4,14 +4,14 @@ GO ?= go
 PKGS = $(shell $(GO) list -e ./... | grep -v /internal/boilerplate/files)
 DIRS = $(shell $(GO) list -e -f '{{.Dir}}' ./... | grep -v /internal/boilerplate/files | sed 's|^$(CURDIR)|.|')
 
-.PHONY: check test lint vuln secrets e2e tools
+.PHONY: check example test lint vuln secrets e2e tools
 
 check: test lint vuln secrets e2e
 
-test:
+test: example
 	$(GO) test -race $(PKGS)
 
-lint:
+lint: example
 	golangci-lint run $(DIRS)
 
 vuln:
@@ -40,11 +40,14 @@ secrets:
 	cd "$$tmp/tree"; \
 	gitleaks dir --no-banner --no-color --redact --verbose --ignore-gitleaks-allow --config "$$tmp/gitleaks.toml" .
 
-# GOSSR_RUNTIME_TGZ, when set, is a local gossr-runtime package installed over
-# the one in the lockfile.
-e2e:
+# The example's embedded assets are generated, not committed. GOSSR_RUNTIME_TGZ,
+# when set, is a local gossr-runtime package installed over the one in the
+# lockfile.
+example:
 	cd example/internal/web && npm ci && { [ -z "$$GOSSR_RUNTIME_TGZ" ] || npm install --no-save "$$GOSSR_RUNTIME_TGZ"; }
 	cd example && $(GO) run ..
+
+e2e: example
 	cd example/tests && npm ci && npx playwright test
 	git diff --exit-code -- 'example/**/*_gen.go' 'example/**/__ssr_gen__.ts'
 
