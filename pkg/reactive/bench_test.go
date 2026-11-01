@@ -7,19 +7,20 @@ package reactive_test
 //
 // This benchmark simulates what the generated writeBlock_KEY / renderBlock_KEY
 // functions do for a reactive ssr:for with 1000 items. The generated code writes
-// each iteration into a strings.Builder using reactive.RenderValue for each item,
+// each iteration into a strings.Builder using render.Text for each item,
 // then returns b.String(). We replicate that pattern here to measure the server-side
 // render cost in isolation (no WS round-trip, no alloc for the Conn itself).
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 
-	"github.com/sergei-svistunov/go-ssr/pkg/reactive"
+	"github.com/sergei-svistunov/go-ssr/pkg/render"
 )
 
 // writeBlock_loop1000 simulates the generated writeBlock_KEY for a reactive ssr:for
-// with 1000 string items. Each iteration renders <li>ITEM</li> using RenderValue.
+// with 1000 string items. Each iteration renders <li>ITEM</li> using render.Text.
 // This mirrors exactly what the generated code emits for:
 //
 //	<ssr:for var="item" in="items"><li>{{ item }}</li></ssr:for>
@@ -28,7 +29,7 @@ import (
 func writeBlock_loop1000(items []string, w *strings.Builder) {
 	for _, item := range items {
 		w.WriteString("<li>")
-		w.WriteString(reactive.RenderValue(item))
+		_ = render.Text(w, item)
 		w.WriteString("</li>")
 	}
 }
@@ -49,7 +50,7 @@ func BenchmarkReactiveLoop1000(b *testing.B) {
 	// Build a 1000-item slice of strings, each a short HTML-safe value.
 	items := make([]string, 1000)
 	for i := range items {
-		items[i] = "item-" + reactive.RenderValue(i)
+		items[i] = "item-" + strconv.Itoa(i)
 	}
 
 	b.ResetTimer()

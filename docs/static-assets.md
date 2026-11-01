@@ -18,8 +18,8 @@ pages/**/*.png            ─┘
 ```
 
 `gossr-assets-webpack-plugin` discovers entry points by convention: for each route directory it bundles
-`index.ts`, `styles.scss` and — on reactive routes — the generated `__ssr_gen__.ts`. The webpack config ships
-with `entry: {}`; the plugin fills it in. It also writes `webpack-assets.json`, which lists the output path,
+`index.ts`, `styles.scss` and — on routes with live values or page calls — the generated `__ssr_gen__.ts`. The
+webpack config ships with `entry: {}`; the plugin fills it in. It also writes `webpack-assets.json`, which lists the output path,
 the files per entry point and the image mapping.
 
 ## Emitting the tags
@@ -46,8 +46,10 @@ An `<img src="…">` in a template is resolved through the image map:
 ```
 
 The path is relative to the route directory. Images referenced from SCSS are handled by webpack itself. Other
-elements and attributes are not rewritten — a background image belongs in a stylesheet, and an unmanaged asset
-can always be referenced by an absolute URL.
+elements and attributes are not rewritten — a background image belongs in a stylesheet. An unmanaged asset on
+the same origin can be referenced by an absolute path; one on another origin also needs that origin in
+`mux.Options.CSPSources`, since the Content-Security-Policy loads images, scripts, styles and fonts from the
+site itself by default (`security`).
 
 ## Serving in development
 
@@ -73,6 +75,7 @@ verbatim for formats that are already compressed such as PNG, JPEG, WOFF2 and MP
 - a strong ETag from the stored bytes, with `If-None-Match` answered by 304,
 - `Cache-Control: public, max-age=31536000, immutable`, which is safe because filenames are hashed,
 - `Vary: Accept-Encoding`, gzip passed through when accepted and decompressed on the fly when not,
+- `X-Content-Type-Options: nosniff` and `Cross-Origin-Resource-Policy: same-origin`,
 - `405` with an `Allow` header for anything other than GET and HEAD.
 
 Staging is cached through an `.etags.json` manifest keyed by the source file's MD5 as well as its mtime, so

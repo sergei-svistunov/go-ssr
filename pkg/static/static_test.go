@@ -261,3 +261,21 @@ func TestServe_EmptyFileSetsContentLengthZero(t *testing.T) {
 		t.Fatalf("body must be empty")
 	}
 }
+
+func TestStaticHeaders(t *testing.T) {
+	files := map[string]File{
+		"/p.txt": {ContentType: "text/plain", ETag: `"e"`, EmbedPath: "testdata/plain.txt", Size: 11},
+	}
+	for _, inm := range []string{"", `"e"`} {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/p.txt", nil)
+		req.Header.Set("If-None-Match", inm)
+		Serve(rec, req, testFS, files)
+		if got := rec.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+			t.Errorf("If-None-Match %q: X-Content-Type-Options = %q, want nosniff", inm, got)
+		}
+		if got := rec.Header().Get("Cross-Origin-Resource-Policy"); got != "same-origin" {
+			t.Errorf("If-None-Match %q: Cross-Origin-Resource-Policy = %q, want same-origin", inm, got)
+		}
+	}
+}

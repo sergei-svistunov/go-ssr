@@ -1,6 +1,8 @@
 package node
 
 import (
+	"html"
+
 	"github.com/sergei-svistunov/go-ssr/internal/generator/gobuf"
 )
 
@@ -30,7 +32,7 @@ func (n *SsrSelect) WriteGoCode(buf *gobuf.GoBuf) {
 	buf.WriteStringLn("input := form." + n.FormFieldName)
 	buf.WriteStringLn("_ = input")
 	buf.WritePrintString("<select")
-	buf.WritePrintString(` name="` + n.Name + `"`)
+	buf.WritePrintString(` name="` + html.EscapeString(n.Name) + `"`)
 	for _, a := range n.Attributes {
 		if selectReservedAttrs[a.Key] {
 			continue

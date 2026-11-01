@@ -5,11 +5,16 @@ package users
 import (
 	"context"
 	"io"
+	"strings"
 	"sync"
 
 	"github.com/sergei-svistunov/go-ssr/pkg/mux"
 	"github.com/sergei-svistunov/go-ssr/pkg/reactive"
+	"github.com/sergei-svistunov/go-ssr/pkg/render"
 )
+
+// Keeps the render import in a page without values, so a variable may have a render type.
+var _ = render.Text
 
 type RouteData struct {
 	UserCount int
@@ -28,9 +33,23 @@ type RouteDataProvider interface {
 // on the wire. Stable for a given route path.
 const routeKey = "954dac29"
 
-// renderBlock_userCount returns the current rendered HTML for the userCount binding site.
+// writeBlock_userCount renders binding site "954dac29.userCount" into w.
+func writeBlock_userCount(data *RouteData, w io.Writer) error {
+//line index.html:2
+	userCount := data.UserCount
+	_ = w // w io.Writer is used by WriteInnerGoCode; this silences the linter when the block body emits no direct writes
+//line index.html:12
+	if err := render.Text(w, userCount); err != nil {
+		return err
+	}
+	return nil
+}
+
+// renderBlock_userCount returns the current rendered HTML for binding key "954dac29.userCount".
 func renderBlock_userCount(data *RouteData) string {
-	return reactive.RenderValue(data.UserCount)
+	var __w strings.Builder
+	_ = writeBlock_userCount(data, &__w)
+	return __w.String()
 }
 
 // ReactiveState holds the current live values for all reactive variables
@@ -60,7 +79,6 @@ func (s *ReactiveState) SetUserCount(v int) {
 
 // Snapshot returns the current rendered values for all reactive binding sites.
 // It is called to build the init message sent to newly connected clients.
-// Exported so ssrhandler_gen.go can call it with a package prefix.
 func Snapshot(data *RouteData) map[string]string {
 	m := map[string]string{}
 	m["954dac29.userCount"] = renderBlock_userCount(data)
@@ -70,7 +88,6 @@ func Snapshot(data *RouteData) map[string]string {
 // HandleWrite processes a client→server write message for this route.
 // It validates the value and, if valid, updates the ReactiveState.
 // msg.RouteKey is echoed back in ack/err frames.
-// Exported so ssrhandler_gen.go can call it with a package prefix.
 func HandleWrite(ctx context.Context, r *mux.Request, conn *reactive.Conn, dp RouteDataProvider, state *ReactiveState, msg *reactive.WriteMsg) {
 	switch msg.Var {
 	default:
@@ -80,39 +97,77 @@ func HandleWrite(ctx context.Context, r *mux.Request, conn *reactive.Conn, dp Ro
 
 type ssrRoute struct{ dp RouteDataProvider }
 
-func NewRoute(dp RouteDataProvider) mux.Route { return &ssrRoute{dp: dp} }
-func (rt *ssrRoute) GetDataContext(ctx context.Context, r *mux.Request, w mux.ResponseWriter, child mux.DataContext) (mux.DataContext, error) {
-	dataCtx := &dataContext{
-		RouteDataContext: mux.RouteDataContext{
-			Child: child,
-			Assets: []string{
-				"<link href=\"/static/css/vendors.01d2a6ec617e83aef053.css\" rel=\"stylesheet\">",
-				"<script defer=\"defer\" src=\"/static/js/vendors.01d2a6ec617e83aef053.js\"></script>",
-				"<script defer=\"defer\" src=\"/static/js/bootstrap.7eb7f8ba56d073f7cb8b.js\"></script>",
-				"<script defer=\"defer\" src=\"/static/js/luxon.111ed65163c5c5571bb7.js\"></script>",
-				"<link href=\"/static/css/pages/users.4789bb019e66041c8e22.css\" rel=\"stylesheet\">",
-				"<script defer=\"defer\" src=\"/static/js/pages/users.4789bb019e66041c8e22.js\"></script>",
-			},
-		},
-	}
-
-	if err := rt.dp.Data(ctx, r, w, &dataCtx.RouteData); err != nil {
-		return nil, err
-	}
-
-	return dataCtx, nil
+func NewRoute(dp RouteDataProvider) mux.Route {
+	mux.CheckGuard(dp, "/users")
+	return &ssrRoute{dp: dp}
 }
 
-func (rt *ssrRoute) GetDefaultRoute(ctx context.Context, r *mux.Request) (string, error) {
-	return rt.dp.DefaultRoute(ctx, r)
+func (rt *ssrRoute) Layout() bool { return true }
+
+func (rt *ssrRoute) NewState() mux.RouteState {
+	s := &ssrState{dp: rt.dp}
+	s.SetAssets([]string{
+		"<link href=\"/static/css/vendors.5a2176a80029d4f81fc6.css\" rel=\"stylesheet\">",
+		"<script defer=\"defer\" src=\"/static/js/vendors.5a2176a80029d4f81fc6.js\"></script>",
+		"<script defer=\"defer\" src=\"/static/js/bootstrap.ee5455b5f18a25638194.js\"></script>",
+		"<script defer=\"defer\" src=\"/static/js/luxon.d838df54b702121e6f64.js\"></script>",
+		"<link href=\"/static/css/pages/users.459fb8fcdedfbf5756f9.css\" rel=\"stylesheet\">",
+		"<script defer=\"defer\" src=\"/static/js/pages/users.459fb8fcdedfbf5756f9.js\"></script>",
+	})
+	return s
 }
 
-type dataContext struct {
-	mux.RouteDataContext
+type ssrState struct {
+	mux.Frame
+	dp        RouteDataProvider
 	RouteData RouteData
+	liveOnce  sync.Once
+	live      *ReactiveState
 }
 
-func (c *dataContext) Write(w io.Writer) error {
+var _ mux.Live = (*ssrState)(nil)
+
+func (c *ssrState) RouteKey() string { return routeKey }
+
+func (c *ssrState) Snapshot() map[string]string { return Snapshot(&c.RouteData) }
+
+func (c *ssrState) Subscribe(ctx context.Context, r *mux.Request, conn *reactive.Conn) error {
+	return c.dp.Subscribe(ctx, r, c.reactiveState(conn))
+}
+
+func (c *ssrState) HandleWrite(ctx context.Context, r *mux.Request, conn *reactive.Conn, msg reactive.WriteMsg) {
+	HandleWrite(ctx, r, conn, c.dp, c.reactiveState(conn), &msg)
+}
+
+func (c *ssrState) reactiveState(conn *reactive.Conn) *ReactiveState {
+	c.liveOnce.Do(func() { c.live = NewReactiveState(conn, &c.RouteData) })
+	return c.live
+}
+
+func (c *ssrState) Guard(ctx context.Context, r *mux.Request) error {
+	if g, ok := c.dp.(mux.Guarded); ok {
+		return g.Guard(ctx, r)
+	}
+	return nil
+}
+
+func (c *ssrState) InitForms(ctx context.Context, r *mux.Request, w mux.ResponseWriter) error {
+	return nil
+}
+
+func (c *ssrState) SubmitForm(ctx context.Context, r *mux.Request, w mux.ResponseWriter, id string) (bool, error) {
+	return false, nil
+}
+
+func (c *ssrState) Data(ctx context.Context, r *mux.Request, w mux.ResponseWriter) error {
+	return c.dp.Data(ctx, r, w, &c.RouteData)
+}
+
+func (c *ssrState) DefaultRoute(ctx context.Context, r *mux.Request) (string, error) {
+	return c.dp.DefaultRoute(ctx, r)
+}
+
+func (c *ssrState) Write(w io.Writer) error {
 //line index.html:2
 	userCount := c.RouteData.UserCount
 //line index.html:1
@@ -124,7 +179,7 @@ func (c *dataContext) Write(w io.Writer) error {
 	if _, err := w.Write(_l06kspbe5opjqr66oqjjs8cqir7qlmhnnfqnvmi0fb1i4m7592bg); err != nil {
 		return err
 	}
-	if _, err := mux.WriteHtmlEscaped(w, userCount); err != nil {
+	if err := render.Text(w, userCount); err != nil {
 		return err
 	}
 	if _, err := w.Write(_b6b21srlg21530j9s8vtq7c1lkhpq3m96osltl8v1mp1nkuugsn0); err != nil {
@@ -136,21 +191,21 @@ func (c *dataContext) Write(w io.Writer) error {
 			return err
 		}
 //line index.html:15
-		if _, err := mux.WriteHtmlEscaped(w, user.NavTabClass); err != nil {
+		if err := render.Attr(w, user.NavTabClass); err != nil {
 			return err
 		}
 		if _, err := w.Write(_abqfj6andhh8alnn7ftvgs8c9klofcd31bs4vq0bpaecj078ad9g); err != nil {
 			return err
 		}
 //line index.html:15
-		if _, err := mux.WriteHtmlEscaped(w, user.Login); err != nil {
+		if err := render.URLPart(w, user.Login); err != nil {
 			return err
 		}
 		if _, err := w.Write(_lcmdet48ia9q0oam521uudg1jkg3li09sdb2shbhi1v9i6kec5og); err != nil {
 			return err
 		}
-//line index.html:15
-		if _, err := mux.WriteHtmlEscaped(w, user.Name); err != nil {
+//line index.html:16
+		if err := render.Text(w, user.Name); err != nil {
 			return err
 		}
 		if _, err := w.Write(_hq646ifh911k5rn23l8tjsgn4mi3nsfcoouqkv3q58bqaa10k9og); err != nil {
@@ -160,11 +215,8 @@ func (c *dataContext) Write(w io.Writer) error {
 	if _, err := w.Write(_tukeepe9jr1hoknjgh3a9imknmf9l24v70j4j99l69tkbrfnhal0); err != nil {
 		return err
 	}
-	if c.Child != nil {
-		err := c.Child.Write(w)
-		if err != nil {
-			return err
-		}
+	if err := c.WriteChild(w); err != nil {
+		return err
 	}
 	if _, err := w.Write(_e5ppjpltgb6tcdaqius92k3nnp6ah25em7776ub8q4vo370uv7kg); err != nil {
 		return err

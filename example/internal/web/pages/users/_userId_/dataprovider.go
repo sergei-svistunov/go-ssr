@@ -15,7 +15,6 @@ type User struct {
 	Age   uint8
 	Name  string
 	Login string
-	Image string
 }
 
 type DP struct {
@@ -26,16 +25,20 @@ func NewDP(d *model.Model) *DP {
 	return &DP{model: d}
 }
 
-func (p *DP) Data(ctx context.Context, r *mux.Request, w mux.ResponseWriter, data *RouteData) error {
-	dbUser := p.model.GetUserByLogin(r.URLParam("userId"))
-	if dbUser == nil {
+// Guard answers 404 for an unknown user before any route below this one runs.
+func (p *DP) Guard(ctx context.Context, r *mux.Request) error {
+	if p.model.GetUserByLogin(r.URLParam("userId")) == nil {
 		return mux.NewHttpError(http.StatusNotFound, "user wasn't found")
 	}
+	return nil
+}
+
+func (p *DP) Data(ctx context.Context, r *mux.Request, w mux.ResponseWriter, data *RouteData) error {
+	dbUser := p.model.GetUserByLogin(r.URLParam("userId"))
 
 	data.User.Login = dbUser.Login
 	data.User.Name = dbUser.Name
 	data.User.Age = dbUser.Age
-	data.User.Image = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTUW0u5Eiiy3oM6wcpeEE6sXCzlh8G-tX1_Iw&s"
 
 	data.UserTabClass = func(rPath string) string {
 		if strings.HasSuffix(strings.TrimSuffix(r.URL.Path, "/"), rPath) {

@@ -7,27 +7,22 @@ import (
 	"net/http"
 
 	"github.com/sergei-svistunov/go-ssr/pkg/mux"
+	"github.com/sergei-svistunov/go-ssr/pkg/render"
 )
 
-type errDataContext struct {
+type errChild struct {
 	err error
 }
 
-func (c *errDataContext) Write(w io.Writer) error {
-	if _, err := w.Write([]byte(`<div class="container"><div class="alert alert-danger mt-3"><strong>Error:&nbsp;</strong>`)); err != nil {
+func (c errChild) Write(w io.Writer) error {
+	if _, err := io.WriteString(w, `<div class="container"><div class="alert alert-danger mt-3"><strong>Error:&nbsp;</strong>`); err != nil {
 		return err
 	}
-	if _, err := w.Write([]byte(c.err.Error())); err != nil {
+	if err := render.Text(w, c.err.Error()); err != nil {
 		return err
 	}
-	if _, err := w.Write([]byte(`</div></div>`)); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (e *errDataContext) WriteAssets(w io.Writer, writen map[string]struct{}) error {
-	return nil
+	_, err := io.WriteString(w, `</div></div>`)
+	return err
 }
 
 type errRouteDataProvider struct{}
@@ -42,16 +37,16 @@ func (errRouteDataProvider) Subscribe(ctx context.Context, r *mux.Request, state
 	return nil
 }
 
+// WriteError renders err inside the root layout.
 func WriteError(w http.ResponseWriter, r *mux.Request, err error) {
-	rt := &ssrRoute{dp: errRouteDataProvider{}}
-	dc, err := rt.GetDataContext(r.Context(), r, w, &errDataContext{err})
-	if err != nil {
+	page := NewRoute(errRouteDataProvider{}).NewState()
+	if dataErr := page.Data(r.Context(), r, w); dataErr != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		log.Print(err)
+		log.Print(dataErr)
 		return
 	}
-
-	if err := dc.Write(w); err != nil {
+	page.SetChild(errChild{err})
+	if err := page.Write(w); err != nil {
 		log.Print(err)
 	}
 }

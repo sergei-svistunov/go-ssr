@@ -16,6 +16,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -103,32 +106,35 @@ func TestGenerator_NestedReactiveRoutes_Succeed(t *testing.T) {
 		t.Fatalf("Generate: unexpected error (E02 should be retired): %v", err)
 	}
 
-	// The generated ssrhandler_gen.go must have ONE WS endpoint at the leaf path
-	// /dashboard/stats/__ws (not two separate ones).
-	handlerFile := filepath.Join(webDir, "pages", "ssrhandler_gen.go")
-	handlerData, err := os.ReadFile(handlerFile)
+	// Each reactive route's state is a live state of its own; the handler
+	// builds no WebSocket endpoints: the mux serves every live connection.
+	for _, rPath := range []string{"dashboard", "dashboard/stats"} {
+		if content := readGenerated(t, webDir, rPath, "ssrroute_gen.go"); !strings.Contains(content, "var _ mux.Live = (*ssrState)(nil)") {
+			t.Errorf("%s: the state does not implement mux.Live\n%s", rPath, content)
+		}
+	}
+	assertNoLiveHandlers(t, webDir)
+}
+
+// readGenerated returns the generated file name of the route at rPath.
+func readGenerated(t *testing.T, webDir, rPath, name string) string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(webDir, "pages", filepath.FromSlash(rPath), name))
 	if err != nil {
-		t.Fatalf("ReadFile %s: %v", handlerFile, err)
+		t.Fatal(err)
 	}
-	handlerContent := string(handlerData)
+	return string(data)
+}
 
-	// Leaf path WS endpoint must be present.
-	if !strings.Contains(handlerContent, "/dashboard/stats/__ws") {
-		t.Errorf("expected /dashboard/stats/__ws WS endpoint in handler\n%s", handlerContent)
-	}
-
-	// There should be only ONE wsHandler function (the leaf handler muxes both routes).
-	wsHandlerCount := strings.Count(handlerContent, "wsHandler")
-	if wsHandlerCount < 2 { // at least the var assignment + the map entry
-		t.Errorf("expected wsHandler references in generated handler, got %d\n%s", wsHandlerCount, handlerContent)
-	}
-
-	// The leaf handler must reference both routes' data providers.
-	if !strings.Contains(handlerContent, "routeDashboard.NewDP") {
-		t.Errorf("expected routeDashboard.NewDP in handler (ancestor route)\n%s", handlerContent)
-	}
-	if !strings.Contains(handlerContent, "routeDashboardStats.NewDP") {
-		t.Errorf("expected routeDashboardStats.NewDP in handler (leaf route)\n%s", handlerContent)
+// assertNoLiveHandlers checks that ssrhandler_gen.go mounts no WebSocket
+// handler of its own.
+func assertNoLiveHandlers(t *testing.T, webDir string) {
+	t.Helper()
+	content := readGenerated(t, webDir, ".", "ssrhandler_gen.go")
+	for _, s := range []string{"WithWSHandlers", "__ws", "reactive", "websocket"} {
+		if strings.Contains(content, s) {
+			t.Errorf("ssrhandler_gen.go mentions %q\n%s", s, content)
+		}
 	}
 }
 
@@ -247,41 +253,34 @@ func TestGenerator_NestedReactiveRoutes_RouteKeyConstant(t *testing.T) {
 	}
 }
 
-// TestGenerator_NonLeafReactiveRoute_NoWSEndpoint verifies that a non-leaf
-// reactive route (one that has a child route) does NOT get its own WS endpoint;
-// only the leaf gets a WS endpoint.
-func TestGenerator_NonLeafReactiveRoute_NoWSEndpoint(t *testing.T) {
-	webDir := filepath.Join(t.TempDir(), "web")
-	writeTemplate(t, webDir, "shop",
-		`<ssr:var name="cart" type="int" reactive="true"/>
-<p>{{ cart }}</p>`)
-	// Non-reactive child; shop is the reactive parent.
-	writeTemplate(t, webDir, "shop/checkout",
-		`<ssr:var name="step" type="string"/>
-<p>{{ step }}</p>`)
+// TestGenerator_LivePagesFollowTheRenderedRoutes verifies which pages have a
+// live connection: a reactive route renders its values on its own page and
+// on the pages a layout renders inside it, never on the pages below a gate.
+func TestGenerator_LivePagesFollowTheRenderedRoutes(t *testing.T) {
+	for _, tc := range []struct {
+		name, shop string
+		want       []string
+	}{
+		{"gate", `<ssr:var name="cart" type="int" reactive="true"/><p>{{ cart }}</p>`, []string{"/shop"}},
+		{"layout", `<ssr:var name="cart" type="int" reactive="true"/><p>{{ cart }}</p><ssr:content default="checkout"/>`, []string{"/shop/checkout"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			webDir := filepath.Join(t.TempDir(), "web")
+			writeTemplate(t, webDir, "shop", tc.shop)
+			writeTemplate(t, webDir, "shop/checkout", `<ssr:var name="step" type="string"/><p>{{ step }}</p>`)
 
-	g := makeGen(t, webDir)
-	if err := g.Analyze(); err != nil {
-		t.Fatalf("Analyze: %v", err)
-	}
-	if err := g.Generate(); err != nil {
-		t.Fatalf("Generate: %v", err)
-	}
-
-	handlerFile := filepath.Join(webDir, "pages", "ssrhandler_gen.go")
-	handlerData, err := os.ReadFile(handlerFile)
-	if err != nil {
-		t.Fatalf("ReadFile: %v", err)
-	}
-	handlerContent := string(handlerData)
-
-	// The leaf path /shop/checkout/__ws must be present (because /shop is reactive).
-	if !strings.Contains(handlerContent, "/shop/checkout/__ws") {
-		t.Errorf("expected /shop/checkout/__ws (leaf WS endpoint) in handler\n%s", handlerContent)
-	}
-	// The non-leaf /shop/__ws must NOT be present as a separate endpoint.
-	if strings.Contains(handlerContent, `"/shop/__ws"`) {
-		t.Errorf("non-leaf /shop/__ws should NOT get its own WS endpoint\n%s", handlerContent)
+			g := makeGen(t, webDir)
+			if err := g.Analyze(); err != nil {
+				t.Fatalf("Analyze: %v", err)
+			}
+			inv, err := g.Inventory("")
+			if err != nil {
+				t.Fatalf("Inventory: %v", err)
+			}
+			if !slices.Equal(inv.WSEndpoints, tc.want) {
+				t.Errorf("live pages = %v, want %v", inv.WSEndpoints, tc.want)
+			}
+		})
 	}
 }
 
@@ -353,12 +352,13 @@ func TestGenerator_E04_Retired_StructReactiveVar(t *testing.T) {
 }
 
 // TestGenerator_StructReactiveVar_Compiles verifies that a struct-typed
-// reactive variable compiles cleanly and emits a TS type in __ssr_gen__.ts
-// .
+// reactive variable compiles cleanly and emits a TS type in __ssr_gen__.ts.
+// Only a client-writable variable has its own TS type; every variable reads
+// as a string.
 func TestGenerator_StructReactiveVar_Compiles(t *testing.T) {
 	webDir := filepath.Join(t.TempDir(), "web")
 	writeTemplate(t, webDir, "page",
-		`<ssr:var name="profile" type="Profile" reactive="true"/>
+		`<ssr:var name="profile" type="Profile" reactive="true" client-writable="true"/>
 <p>{{ profile }}</p>`)
 
 	g := makeGen(t, webDir)
@@ -393,6 +393,9 @@ func TestGenerator_StructReactiveVar_Compiles(t *testing.T) {
 	if !strings.Contains(tsContent, "ReadVars") {
 		t.Errorf("expected ReadVars in __ssr_gen__.ts\n%s", tsContent)
 	}
+	if !strings.Contains(tsContent, "export type ReadVars = {\n  profile: string;\n}") {
+		t.Errorf("expected profile to read as a string\n%s", tsContent)
+	}
 }
 
 // TestGenerator_SliceReactiveVar verifies that a slice-typed reactive variable
@@ -400,7 +403,7 @@ func TestGenerator_StructReactiveVar_Compiles(t *testing.T) {
 func TestGenerator_SliceReactiveVar(t *testing.T) {
 	webDir := filepath.Join(t.TempDir(), "web")
 	writeTemplate(t, webDir, "items",
-		`<ssr:var name="tags" type="[]string" reactive="true"/>
+		`<ssr:var name="tags" type="[]string" reactive="true" client-writable="true"/>
 <ul ssr:for="x in tags"><li>{{ x }}</li></ul>`)
 
 	g := makeGen(t, webDir)
@@ -431,6 +434,9 @@ func TestGenerator_SliceReactiveVar(t *testing.T) {
 	if !strings.Contains(tsContent, "string[]") {
 		t.Errorf("expected string[] in __ssr_gen__.ts\n%s", tsContent)
 	}
+	if !strings.Contains(tsContent, "export type ReadVars = {\n  tags: string;\n}") {
+		t.Errorf("expected tags to read as a string\n%s", tsContent)
+	}
 }
 
 // TestGenerator_MapReactiveVar verifies that a map[string]int reactive variable
@@ -438,7 +444,7 @@ func TestGenerator_SliceReactiveVar(t *testing.T) {
 func TestGenerator_MapReactiveVar(t *testing.T) {
 	webDir := filepath.Join(t.TempDir(), "web")
 	writeTemplate(t, webDir, "scores",
-		`<ssr:var name="scores" type="map[string]int" reactive="true"/>
+		`<ssr:var name="scores" type="map[string]int" reactive="true" client-writable="true"/>
 <p>{{ scores }}</p>`)
 
 	g := makeGen(t, webDir)
@@ -468,6 +474,9 @@ func TestGenerator_MapReactiveVar(t *testing.T) {
 	if !strings.Contains(tsContent, "Record<string, number>") {
 		t.Errorf("expected Record<string, number> in __ssr_gen__.ts\n%s", tsContent)
 	}
+	if !strings.Contains(tsContent, "export type ReadVars = {\n  scores: string;\n}") {
+		t.Errorf("expected scores to read as a string\n%s", tsContent)
+	}
 }
 
 // TestGenerator_PointerReactiveVar verifies that a *int reactive variable
@@ -475,7 +484,7 @@ func TestGenerator_MapReactiveVar(t *testing.T) {
 func TestGenerator_PointerReactiveVar(t *testing.T) {
 	webDir := filepath.Join(t.TempDir(), "web")
 	writeTemplate(t, webDir, "maybe",
-		`<ssr:var name="count" type="*int" reactive="true"/>
+		`<ssr:var name="count" type="*int" reactive="true" client-writable="true"/>
 <p>{{ count }}</p>`)
 
 	g := makeGen(t, webDir)
@@ -505,6 +514,9 @@ func TestGenerator_PointerReactiveVar(t *testing.T) {
 	if !strings.Contains(tsContent, "number | null") {
 		t.Errorf("expected number | null in __ssr_gen__.ts\n%s", tsContent)
 	}
+	if !strings.Contains(tsContent, "export type ReadVars = {\n  count: string;\n}") {
+		t.Errorf("expected count to read as a string\n%s", tsContent)
+	}
 }
 
 // TestGenerator_RecursiveStructFallback verifies that a recursive type
@@ -517,7 +529,7 @@ func TestGenerator_RecursiveStructFallback(t *testing.T) {
 	// its own interface expansion (which for our placeholder emitter means we
 	// detect the cycle at depth 1).
 	writeTemplate(t, webDir, "tree",
-		`<ssr:var name="root" type="Node" reactive="true"/>
+		`<ssr:var name="root" type="Node" reactive="true" client-writable="true"/>
 <p>{{ root }}</p>`)
 
 	g := makeGen(t, webDir)
@@ -806,19 +818,16 @@ func TestGenerator_ReactiveRouteGeneratesReactiveState(t *testing.T) {
 		t.Error("expected Subscribe in generated file")
 	}
 
-	// Check ssrhandler_gen.go contains wsHandler registration.
-	handlerFile := filepath.Join(webDir, "pages", "ssrhandler_gen.go")
-	handlerData, err := os.ReadFile(handlerFile)
-	if err != nil {
-		t.Fatalf("ReadFile %s: %v", handlerFile, err)
+	for _, want := range []string{
+		"var _ mux.Live = (*ssrState)(nil)",
+		"func (c *ssrState) Subscribe(ctx context.Context, r *mux.Request, conn *reactive.Conn) error",
+		"func (c *ssrState) HandleWrite(ctx context.Context, r *mux.Request, conn *reactive.Conn, msg reactive.WriteMsg)",
+	} {
+		if !strings.Contains(content, want) {
+			t.Errorf("expected %q in generated file", want)
+		}
 	}
-	handlerContent := string(handlerData)
-	if !strings.Contains(handlerContent, "__ws") {
-		t.Error("expected __ws in generated handler file")
-	}
-	if !strings.Contains(handlerContent, "WithWSHandlers") {
-		t.Error("expected WithWSHandlers in generated handler file")
-	}
+	assertNoLiveHandlers(t, webDir)
 }
 
 // containsHTMLSnippet checks whether a Go source content string contains the
@@ -1295,12 +1304,16 @@ func TestCSSImportInGenTS(t *testing.T) {
 	if !strings.Contains(content, "import 'gossr-runtime/ssr-block.css';") {
 		t.Errorf("expected CSS import in __ssr_gen__.ts\n%s", content)
 	}
+	// The live connection's hooks see the page's query.
+	if !strings.Contains(content, "window.location.pathname.replace(/\\/$/, '') + '/__ws' + window.location.search") {
+		t.Errorf("wsUrl does not carry the page's address and query\n%s", content)
+	}
 }
 
 // ---- renderBlock_* helpers ----
 
 // TestRenderBlockHelper_SingleVar verifies that single-variable binding sites
-// get a renderBlock_KEY function using reactive.RenderValue.
+// get a renderBlock_KEY function that renders with the first render's escaper.
 func TestRenderBlockHelper_SingleVar(t *testing.T) {
 	webDir := filepath.Join(t.TempDir(), "web")
 	writeTemplate(t, webDir, "rv",
@@ -1322,12 +1335,13 @@ func TestRenderBlockHelper_SingleVar(t *testing.T) {
 	}
 	content := string(data)
 
-	// Single-var: function should use reactive.RenderValue.
 	if !strings.Contains(content, "func renderBlock_count(") {
 		t.Errorf("expected renderBlock_count function\n%s", content)
 	}
-	if !strings.Contains(content, "reactive.RenderValue(") {
-		t.Errorf("expected reactive.RenderValue in renderBlock_count\n%s", content)
+	start := strings.Index(content, "func writeBlock_count(")
+	end := strings.Index(content, "func renderBlock_count(")
+	if start < 0 || end < start || !strings.Contains(content[start:end], "render.Text(w, count)") {
+		t.Errorf("expected writeBlock_count to render count with render.Text\n%s", content)
 	}
 }
 
@@ -1743,7 +1757,7 @@ func TestGenerator_AttributeReactivity_WrapsElement(t *testing.T) {
 	webDir := filepath.Join(t.TempDir(), "page")
 	writeTemplate(t, webDir, "live",
 		`<ssr:var name="userColor" type="string" reactive="true"/>
-<p style="color: {{ userColor }}">hello</p>`)
+<p class="c-{{ userColor }}">hello</p>`)
 
 	g := makeGen(t, webDir)
 	if err := g.Analyze(); err != nil {
@@ -1776,7 +1790,7 @@ func TestGenerator_AttributeReactivity_SuppressesInnerSpan(t *testing.T) {
 	webDir := filepath.Join(t.TempDir(), "page")
 	writeTemplate(t, webDir, "live",
 		`<ssr:var name="userColor" type="string" reactive="true"/>
-<p style="color: {{ userColor }}">{{ userColor }}</p>`)
+<p class="c-{{ userColor }}">{{ userColor }}</p>`)
 
 	g := makeGen(t, webDir)
 	if err := g.Analyze(); err != nil {
@@ -1800,4 +1814,85 @@ func TestGenerator_AttributeReactivity_SuppressesInnerSpan(t *testing.T) {
 	if hasInnerSpan {
 		t.Errorf("inner <span data-ssr-bind=...> must be suppressed by the outer reactive block\n%s", got)
 	}
+}
+
+// TestGenerator_SsrBindCarriesItsRoute verifies that an element with ssr:bind
+// names, in data-ssr-route, the routeKey its route's client passes to the
+// runtime, so a parent's runtime never wires a child's input.
+func TestGenerator_SsrBindCarriesItsRoute(t *testing.T) {
+	webDir := filepath.Join(t.TempDir(), "web")
+	writeTemplate(t, webDir, "dashboard",
+		`<ssr:var name="theme" type="string" reactive="true" client-writable="true"/>
+<input ssr:bind="theme" type="text"/><ssr:content/>`)
+	writeTemplate(t, webDir, "dashboard/users",
+		`<ssr:var name="name" type="string" reactive="true" client-writable="true"/>
+<div ssr:if="name != ''"><input ssr:bind="name" type="text"/></div>`)
+
+	g := makeGen(t, webDir)
+	if err := g.Analyze(); err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if err := g.Generate(); err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+
+	clientKey := regexp.MustCompile(`routeKey: '([^']*)'`)
+	for rPath, want := range map[string]string{
+		"dashboard":       `<input ssr:bind="theme" type="text" data-ssr-route="%s">`,
+		"dashboard/users": `<input ssr:bind="name" type="text" data-ssr-route="%s">`,
+	} {
+		m := clientKey.FindStringSubmatch(readGenerated(t, webDir, rPath, "__ssr_gen__.ts"))
+		if m == nil {
+			t.Fatalf("%s: no routeKey in the generated client", rPath)
+		}
+		html := staticHTML(readGenerated(t, webDir, rPath, "ssrroute_gen.go"))
+		if want := fmt.Sprintf(want, m[1]); !strings.Contains(html, want) || strings.Count(html, "data-ssr-route=") != 1 {
+			t.Errorf("%s: want %s once in\n%s", rPath, want, html)
+		}
+	}
+}
+
+// TestGenerator_SsrBindOutsideReactiveRouteCarriesItsRoute verifies that an
+// ssr:bind element in a route without live values still names its own route,
+// so the runtime of a reactive layout above it never claims it.
+func TestGenerator_SsrBindOutsideReactiveRouteCarriesItsRoute(t *testing.T) {
+	webDir := filepath.Join(t.TempDir(), "web")
+	writeTemplate(t, webDir, "dashboard",
+		`<ssr:var name="count" type="int" reactive="true"/>
+<p>{{ count }}</p><ssr:content/>`)
+	writeTemplate(t, webDir, "dashboard/users",
+		`<ssr:var name="name" type="string" client-writable="true"/>
+<input ssr:bind="name" type="text"/>`)
+
+	g := makeGen(t, webDir)
+	if err := g.Analyze(); err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if err := g.Generate(); err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+
+	m := regexp.MustCompile(`routeKey: '([^']*)'`).FindStringSubmatch(readGenerated(t, webDir, "dashboard", "__ssr_gen__.ts"))
+	if m == nil {
+		t.Fatal("dashboard: no routeKey in the generated client")
+	}
+	html := staticHTML(readGenerated(t, webDir, "dashboard/users", "ssrroute_gen.go"))
+	child := regexp.MustCompile(`<input ssr:bind="name" type="text" data-ssr-route="([^"]*)">`).FindStringSubmatch(html)
+	if child == nil || !regexp.MustCompile(`^[0-9a-f]{8}$`).MatchString(child[1]) || child[1] == m[1] {
+		t.Fatalf("the child input must carry its own route key, not the layout's %s:\n%s", m[1], html)
+	}
+}
+
+// staticHTML returns the static markup of a generated route file: its
+// []byte{0x..} literals decoded and joined.
+func staticHTML(code string) string {
+	var b strings.Builder
+	for _, lit := range regexp.MustCompile(`(?s)\[\]byte\{(.*?)\}`).FindAllStringSubmatch(code, -1) {
+		for _, h := range regexp.MustCompile(`0x([0-9a-f]{2})`).FindAllStringSubmatch(lit[1], -1) {
+			c, _ := strconv.ParseUint(h[1], 16, 8)
+			b.WriteByte(byte(c))
+		}
+		b.WriteByte('\n')
+	}
+	return b.String()
 }

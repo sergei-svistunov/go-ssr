@@ -125,7 +125,9 @@ ssr.on('displayName', () => {
 ```
 
 `ssr:bind` only works on native `<input>`, `<select>` and `<textarea>` elements, with a scalar variable declared
-in the same route. For anything else call `ssr.set('name', value)` from TypeScript.
+in the same route. The input gets the server's value back only because the page also has the plain
+`{{ displayName }}` site. For anything else call `ssr.set('name', value)` from TypeScript; to run a Go function
+and await its result, declare a page call (`page-calls`).
 
 ## Non-scalar live values
 

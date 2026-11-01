@@ -102,7 +102,7 @@ func (r *Request) CrossSite() bool {
 }
 
 // originListed matches u against patterns. A pattern path.Match cannot parse
-// counts as no match: New panics on one at construction, but a request path
+// counts as no match: New refuses one at construction, but a request path
 // must not — CrossSite is exported and callers pass their own patterns, and
 // a panic there would turn bad configuration into a downed request.
 func originListed(u *url.URL, patterns []string) bool {
@@ -130,13 +130,13 @@ func stripDefaultPort(host, scheme string) string {
 	return host
 }
 
-// validateOriginPatterns panics on a pattern that cannot work, the way a bad
-// regexp would at startup; a silent non-match would be chased as a proxy
-// problem instead. Matching itself never panics — see originListed.
-func validateOriginPatterns(patterns []string) {
+// validateOriginPatterns refuses a pattern that cannot work, so it fails at
+// startup; a silent non-match would be chased as a proxy problem instead.
+// Matching itself never fails — see originListed.
+func validateOriginPatterns(patterns []string) error {
 	for _, p := range patterns {
 		if _, err := path.Match(strings.ToLower(p), ""); err != nil {
-			panic(fmt.Sprintf("mux: malformed OriginPatterns entry %q: %v", p, err))
+			return fmt.Errorf("mux: malformed OriginPatterns entry %q: %w", p, err)
 		}
 		// An IPv6 literal host starts with "[", which path.Match parses
 		// happily as a character class: the pattern then never matches the
@@ -146,8 +146,9 @@ func validateOriginPatterns(patterns []string) {
 			host = p[i+len("://"):]
 		}
 		if strings.HasPrefix(host, "[") {
-			panic(fmt.Sprintf("mux: OriginPatterns entry %q reads as a character class, not an IPv6 literal: "+
-				"escape the brackets, as in `\\[::1\\]:*`", p))
+			return fmt.Errorf("mux: OriginPatterns entry %q reads as a character class, not an IPv6 literal: "+
+				"escape the brackets, as in `\\[::1\\]:*`", p)
 		}
 	}
+	return nil
 }

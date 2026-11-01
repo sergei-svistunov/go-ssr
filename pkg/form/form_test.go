@@ -345,3 +345,18 @@ func (b *bytesBuffer) Write(p []byte) (int, error) {
 func (b *bytesBuffer) String() string {
 	return string(b.data)
 }
+
+func TestSelectOption_WriteHtml_EscapesValueAndGroupLabel(t *testing.T) {
+	grp := SelectOptionGroup[string]{
+		Label:   `"><img src=x>`,
+		Options: []SelectOptionElement[string]{SelectOption[string]{Value: `"><img src=x>`, Label: "x"}},
+	}
+	var buf = &bytesBuffer{}
+	if err := grp.WriteHtml(buf, func(v string) bool { return false }); err != nil {
+		t.Fatal(err)
+	}
+	want := `<optgroup label="&#34;&gt;&lt;img src=x&gt;"><option value="&#34;&gt;&lt;img src=x&gt;">x</option></optgroup>`
+	if s := buf.String(); s != want {
+		t.Fatalf("got %q, want %q", s, want)
+	}
+}

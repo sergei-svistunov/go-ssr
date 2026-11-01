@@ -43,7 +43,8 @@ go-ssr -prod && go build -o myapp .
 
 `-watch` debounces changes and picks work by file type: `.html` regenerates the SSR code, `.ts` and `.scss`
 re-run webpack, `.go` rebuilds and restarts the application. The application is started with the arguments in
-`goRunArgs` and the environment in `env` from `gossr.yaml`.
+`goRunArgs` and the shell's environment plus `env` from `gossr.yaml`; the scaffolded app needs `CSRF_KEY`
+there (`quickstart`).
 
 ## Exit status and errors
 

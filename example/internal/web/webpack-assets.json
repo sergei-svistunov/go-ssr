@@ -1,39 +1,45 @@
 {
   "outputPath": "static",
   "entrypoints": {
+    "pages/contact": [
+      "/static/css/pages/contact.e13519ff518c20dc1334.css",
+      "/static/js/pages/contact.e13519ff518c20dc1334.js"
+    ],
     "pages/home": [
-      "/static/css/vendors.01d2a6ec617e83aef053.css",
-      "/static/js/vendors.01d2a6ec617e83aef053.js",
-      "/static/js/pages/home.5e7dd2c7fdd2d1ed59b6.js"
+      "/static/css/vendors.5a2176a80029d4f81fc6.css",
+      "/static/js/vendors.5a2176a80029d4f81fc6.js",
+      "/static/css/pages/home.eb1fcc08529a6b061a27.css",
+      "/static/js/pages/home.eb1fcc08529a6b061a27.js"
     ],
     "pages/users/_userId_/contacts": [
-      "/static/css/pages/users/_userId_/contacts.0050cdcd5d388d6c8d02.css",
-      "/static/js/pages/users/_userId_/contacts.0050cdcd5d388d6c8d02.js"
+      "/static/css/pages/users/_userId_/contacts.e5ff5d4bb11130a0f9cd.css",
+      "/static/js/pages/users/_userId_/contacts.e5ff5d4bb11130a0f9cd.js"
     ],
     "pages/users/_userId_/info": [
-      "/static/css/vendors.01d2a6ec617e83aef053.css",
-      "/static/js/vendors.01d2a6ec617e83aef053.js",
-      "/static/js/pages/users/_userId_/info.89104f3b680bed7cc4d3.js"
+      "/static/css/vendors.5a2176a80029d4f81fc6.css",
+      "/static/js/vendors.5a2176a80029d4f81fc6.js",
+      "/static/js/pages/users/_userId_/info.bde034fd4fcd6689abfd.js"
     ],
     "pages/users": [
-      "/static/css/vendors.01d2a6ec617e83aef053.css",
-      "/static/js/vendors.01d2a6ec617e83aef053.js",
-      "/static/js/bootstrap.7eb7f8ba56d073f7cb8b.js",
-      "/static/js/luxon.111ed65163c5c5571bb7.js",
-      "/static/css/pages/users.4789bb019e66041c8e22.css",
-      "/static/js/pages/users.4789bb019e66041c8e22.js"
+      "/static/css/vendors.5a2176a80029d4f81fc6.css",
+      "/static/js/vendors.5a2176a80029d4f81fc6.js",
+      "/static/js/bootstrap.ee5455b5f18a25638194.js",
+      "/static/js/luxon.d838df54b702121e6f64.js",
+      "/static/css/pages/users.459fb8fcdedfbf5756f9.css",
+      "/static/js/pages/users.459fb8fcdedfbf5756f9.js"
     ],
     "main": [
-      "/static/css/vendors.01d2a6ec617e83aef053.css",
-      "/static/js/vendors.01d2a6ec617e83aef053.js",
-      "/static/js/bootstrap.7eb7f8ba56d073f7cb8b.js",
-      "/static/css/713.c2b68d57eaa496d90a5d.css",
-      "/static/css/main.f3f597d3fe9a600b89aa.css",
-      "/static/js/main.f3f597d3fe9a600b89aa.js"
+      "/static/css/vendors.5a2176a80029d4f81fc6.css",
+      "/static/js/vendors.5a2176a80029d4f81fc6.js",
+      "/static/js/bootstrap.ee5455b5f18a25638194.js",
+      "/static/css/vendors-node_modules_bootstrap-icons_font_bootstrap-icons_min_css.ca9792bc48666a9f0106.css",
+      "/static/css/main.c4c3657cf42c8a92e67c.css",
+      "/static/js/main.c4c3657cf42c8a92e67c.js"
     ]
   },
   "images": {
     "home/logo.png": "/static/images/home/logo.pnglogo.b11feeeb5df711606111.png",
+    "avatar.png": "/static/images/avatar.pngavatar.2a291a7700b01383a125.png",
     "logo.png": "/static/images/logo.pnglogo.b11feeeb5df711606111.png"
   }
 }

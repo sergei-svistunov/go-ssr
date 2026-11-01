@@ -7,8 +7,7 @@ type ResponseWriter interface {
 }
 
 // NoopResponseWriter is a ResponseWriter that discards all header writes.
-// It is used by the WebSocket handler when calling Data() during reconnect,
-// where response headers must not be set.
+// The mux passes it to Data on a live connection, which sends no headers.
 type NoopResponseWriter struct{}
 
 func (NoopResponseWriter) Header() http.Header { return http.Header{} }

@@ -23,13 +23,16 @@ type File struct {
 }
 
 // Serve looks up r.URL.Path in files; if absent, returns false so the caller
-// can fall through to its next handler. On a hit it writes the response and
-// returns true.
+// can fall through to its next handler. On a hit it writes the response,
+// with X-Content-Type-Options: nosniff and Cross-Origin-Resource-Policy:
+// same-origin, and returns true.
 func Serve(w http.ResponseWriter, r *http.Request, fs embed.FS, files map[string]File) bool {
 	f, ok := files[r.URL.Path]
 	if !ok {
 		return false
 	}
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Cross-Origin-Resource-Policy", "same-origin")
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		w.Header().Set("Allow", "GET, HEAD")
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

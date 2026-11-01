@@ -40,7 +40,7 @@ func (n *RawExpression) WriteInnerGoCode(buf *gobuf.GoBuf) {
 }
 
 func (n *RawExpression) writeValue(buf *gobuf.GoBuf) {
-	buf.WriteString("if _, err := mux.WriteRaw(w,")
+	buf.WriteString("if err := render.HTML(w, ")
 	n.Value.WriteGoCode(buf)
 	buf.WriteStringLn("); err != nil {")
 	buf.WriteStringLn("return err")

@@ -4,6 +4,11 @@
 import { createSsrClient } from 'gossr-runtime';
 import 'gossr-runtime/ssr-block.css';
 
+export interface LastSeenOut {
+  lastSeen: string;
+  at: string;
+}
+
 export type ReadVars = {
   lastSeen: string;
 }
@@ -11,9 +16,13 @@ export type ReadVars = {
 export type WriteVars = {
 }
 
-export const ssr = createSsrClient<ReadVars, WriteVars>({
+export type Calls = {
+  refreshLastSeen: { in: Record<string, never>; out: LastSeenOut };
+}
+
+export const ssr = createSsrClient<ReadVars, WriteVars, Calls>({
   wsUrl: typeof window !== 'undefined'
-    ? window.location.pathname.replace(/\/$/, '') + '/__ws'
+    ? window.location.pathname.replace(/\/$/, '') + '/__ws' + window.location.search
     : '',
   routeKey: '2b2f214e',
 });

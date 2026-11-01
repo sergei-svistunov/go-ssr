@@ -5,15 +5,17 @@ import { createSsrClient } from 'gossr-runtime';
 import 'gossr-runtime/ssr-block.css';
 
 export type ReadVars = {
-  userCount: number;
+  userCount: string;
 }
 
 export type WriteVars = {
 }
 
-export const ssr = createSsrClient<ReadVars, WriteVars>({
+export type Calls = {};
+
+export const ssr = createSsrClient<ReadVars, WriteVars, Calls>({
   wsUrl: typeof window !== 'undefined'
-    ? window.location.pathname.replace(/\/$/, '') + '/__ws'
+    ? window.location.pathname.replace(/\/$/, '') + '/__ws' + window.location.search
     : '',
   routeKey: '954dac29',
 });

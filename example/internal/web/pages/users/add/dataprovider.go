@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"log"
 	"net/http"
 	"path"
 
@@ -57,8 +56,6 @@ func (p *DP) InitAdd(ctx context.Context, r *mux.Request, w mux.ResponseWriter, 
 }
 
 func (p *DP) ProcessAdd(ctx context.Context, r *mux.Request, w mux.ResponseWriter, form *FormAddValues) error {
-	log.Printf("%#v\n", form)
-
 	f, err := form.Image.GetValue().Open()
 	if err != nil {
 		return err

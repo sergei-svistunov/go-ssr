@@ -1,6 +1,8 @@
 package node
 
 import (
+	"html"
+
 	"github.com/sergei-svistunov/go-ssr/internal/generator/gobuf"
 )
 
@@ -12,8 +14,10 @@ type SsrInput struct {
 	FormFieldName string
 	Type          string
 	Value         string
-	Multiple      bool
-	Attributes    []HtmlAttribute
+	// GoValue is Value as a Go literal of the field's type, for a checkbox or a radio.
+	GoValue    string
+	Multiple   bool
+	Attributes []HtmlAttribute
 }
 
 var inputReservedAttrs = map[string]bool{
@@ -33,8 +37,10 @@ func (n *SsrInput) WriteGoCode(buf *gobuf.GoBuf) {
 	buf.WriteStringLn("_ = input")
 	buf.WritePrintString("<input")
 
-	buf.WritePrintString(` name="` + n.Name + `"`)
-	buf.WritePrintString(` type="` + n.Type + `"`)
+	buf.WritePrintString(` name="` + html.EscapeString(n.Name) + `"`)
+	if n.Type != "" {
+		buf.WritePrintString(` type="` + n.Type + `"`)
+	}
 	if n.Type != "file" && n.Type != "checkbox" && n.Type != "radio" {
 		buf.WriteStringLn("if input.IsNotNull() {")
 		buf.WritePrintString(` value="`)
@@ -44,19 +50,19 @@ func (n *SsrInput) WriteGoCode(buf *gobuf.GoBuf) {
 		buf.WriteStringLn("if input.HasError() {")
 		buf.WriteStringLn("	v = input.GetFormValue()")
 		buf.WriteStringLn("}")
-		buf.WriteStringLn("if _, err := mux.WriteHtmlEscaped(w, v); err != nil {")
+		buf.WriteStringLn("if err := render.Attr(w, v); err != nil {")
 		buf.WriteStringLn("return err")
 		buf.WriteStringLn("}")
 		buf.WritePrintString(`"`)
 		buf.WriteStringLn("}")
 	}
 	if n.Type == "radio" || n.Type == "checkbox" {
-		buf.WritePrintString(` value="` + n.Value + `"`)
+		buf.WritePrintString(` value="` + html.EscapeString(n.Value) + `"`)
 
 		if n.Multiple {
-			buf.WriteStringLn("if _, exists := input.GetValue()[" + n.Value + "]; exists {")
+			buf.WriteStringLn("if _, exists := input.GetValue()[" + n.GoValue + "]; exists {")
 		} else {
-			buf.WriteStringLn("if input.GetValue() == " + n.Value + " {")
+			buf.WriteStringLn("if input.GetValue() == " + n.GoValue + " {")
 		}
 		buf.WritePrintString(" checked")
 		buf.WriteStringLn("}")

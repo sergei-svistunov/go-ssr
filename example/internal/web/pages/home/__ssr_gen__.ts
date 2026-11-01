@@ -6,17 +6,19 @@ import 'gossr-runtime/ssr-block.css';
 
 export type ReadVars = {
   displayName: string;
-  visitorsBadgeColor: string;
-  visitorsOnline: number;
+  visitorsBadgeClass: string;
+  visitorsOnline: string;
 }
 
 export type WriteVars = {
   displayName: string;
 }
 
-export const ssr = createSsrClient<ReadVars, WriteVars>({
+export type Calls = {};
+
+export const ssr = createSsrClient<ReadVars, WriteVars, Calls>({
   wsUrl: typeof window !== 'undefined'
-    ? window.location.pathname.replace(/\/$/, '') + '/__ws'
+    ? window.location.pathname.replace(/\/$/, '') + '/__ws' + window.location.search
     : '',
   routeKey: '2cc974af',
 });

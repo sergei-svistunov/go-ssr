@@ -2,8 +2,10 @@ package pages_test
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/sergei-svistunov/go-ssr/example/internal/model"
@@ -31,16 +33,20 @@ func (d DiscardWriter) Write(bytes []byte) (int, error) {
 func (d DiscardWriter) WriteHeader(int) {}
 
 var (
-	ssrHandler = ctxMiddleware{
-		pages.NewSsrHandler(
-			&model.Model{}, mux.Options{},
-		),
-	}
-	req1    = httptest.NewRequest(http.MethodGet, "/home", nil)
-	req2    = httptest.NewRequest(http.MethodGet, "/users/johndoe123/info", nil)
-	headers = map[string][]string{}
-	dw      = DiscardWriter{}
+	ssrHandler = ctxMiddleware{newSsrHandler()}
+	req1       = httptest.NewRequest(http.MethodGet, "/home", nil)
+	req2       = httptest.NewRequest(http.MethodGet, "/users/johndoe123/info", nil)
+	headers    = map[string][]string{}
+	dw         = DiscardWriter{}
 )
+
+func newSsrHandler() http.Handler {
+	h, err := pages.NewSsrHandler(&model.Model{}, mux.Options{CSRFKey: []byte("bench-key-bench-key-bench-key-32")})
+	if err != nil {
+		panic(err)
+	}
+	return h
+}
 
 func BenchmarkSsrHandlerSimple(b *testing.B) {
 	for i := 0; i < b.N; i++ {
@@ -51,5 +57,26 @@ func BenchmarkSsrHandlerSimple(b *testing.B) {
 func BenchmarkSsrHandlerDeep(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		ssrHandler.ServeHTTP(dw, req2)
+	}
+}
+
+func TestExampleUserGuard(t *testing.T) {
+	for path, want := range map[string]int{
+		"/users/nosuchuser/info": http.StatusNotFound,
+		"/users/johndoe123/info": http.StatusOK,
+	} {
+		w := httptest.NewRecorder()
+		ssrHandler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		if w.Code != want {
+			t.Errorf("GET %s = %d, want %d", path, w.Code, want)
+		}
+	}
+}
+
+func TestErrorPageEscapesTheError(t *testing.T) {
+	w := httptest.NewRecorder()
+	pages.WriteError(w, mux.NewRequest(httptest.NewRequest(http.MethodGet, "/", nil)), errors.New("<b>x</b>"))
+	if body := w.Body.String(); !strings.Contains(body, "&lt;b&gt;x&lt;/b&gt;") || strings.Contains(body, "<b>x</b>") {
+		t.Errorf("error page body = %q, want the error text escaped", body)
 	}
 }

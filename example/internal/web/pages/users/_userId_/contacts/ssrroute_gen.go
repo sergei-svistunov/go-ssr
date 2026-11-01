@@ -7,7 +7,11 @@ import (
 	"io"
 
 	"github.com/sergei-svistunov/go-ssr/pkg/mux"
+	"github.com/sergei-svistunov/go-ssr/pkg/render"
 )
+
+// Keeps the render import in a page without values, so a variable may have a render type.
+var _ = render.Text
 
 type RouteData struct {
 	Emails []string
@@ -20,35 +24,50 @@ type RouteDataProvider interface {
 
 type ssrRoute struct{ dp RouteDataProvider }
 
-func NewRoute(dp RouteDataProvider) mux.Route { return &ssrRoute{dp: dp} }
-func (rt *ssrRoute) GetDataContext(ctx context.Context, r *mux.Request, w mux.ResponseWriter, child mux.DataContext) (mux.DataContext, error) {
-	dataCtx := &dataContext{
-		RouteDataContext: mux.RouteDataContext{
-			Child: child,
-			Assets: []string{
-				"<link href=\"/static/css/pages/users/_userId_/contacts.0050cdcd5d388d6c8d02.css\" rel=\"stylesheet\">",
-				"<script defer=\"defer\" src=\"/static/js/pages/users/_userId_/contacts.0050cdcd5d388d6c8d02.js\"></script>",
-			},
-		},
-	}
-
-	if err := rt.dp.Data(ctx, r, w, &dataCtx.RouteData); err != nil {
-		return nil, err
-	}
-
-	return dataCtx, nil
+func NewRoute(dp RouteDataProvider) mux.Route {
+	mux.CheckGuard(dp, "/users/_userId_/contacts")
+	return &ssrRoute{dp: dp}
 }
 
-func (rt *ssrRoute) GetDefaultRoute(ctx context.Context, r *mux.Request) (string, error) {
-	return "", nil
+func (rt *ssrRoute) Layout() bool { return false }
+
+func (rt *ssrRoute) NewState() mux.RouteState {
+	s := &ssrState{dp: rt.dp}
+	s.SetAssets([]string{
+		"<link href=\"/static/css/pages/users/_userId_/contacts.e5ff5d4bb11130a0f9cd.css\" rel=\"stylesheet\">",
+		"<script defer=\"defer\" src=\"/static/js/pages/users/_userId_/contacts.e5ff5d4bb11130a0f9cd.js\"></script>",
+	})
+	return s
 }
 
-type dataContext struct {
-	mux.RouteDataContext
+type ssrState struct {
+	mux.Frame
+	dp        RouteDataProvider
 	RouteData RouteData
 }
 
-func (c *dataContext) Write(w io.Writer) error {
+func (c *ssrState) Guard(ctx context.Context, r *mux.Request) error {
+	if g, ok := c.dp.(mux.Guarded); ok {
+		return g.Guard(ctx, r)
+	}
+	return nil
+}
+
+func (c *ssrState) InitForms(ctx context.Context, r *mux.Request, w mux.ResponseWriter) error {
+	return nil
+}
+
+func (c *ssrState) SubmitForm(ctx context.Context, r *mux.Request, w mux.ResponseWriter, id string) (bool, error) {
+	return false, nil
+}
+
+func (c *ssrState) Data(ctx context.Context, r *mux.Request, w mux.ResponseWriter) error {
+	return c.dp.Data(ctx, r, w, &c.RouteData)
+}
+
+func (c *ssrState) DefaultRoute(ctx context.Context, r *mux.Request) (string, error) { return "", nil }
+
+func (c *ssrState) Write(w io.Writer) error {
 //line index.html:2
 	emails := c.RouteData.Emails
 //line index.html:1
@@ -62,7 +81,7 @@ func (c *dataContext) Write(w io.Writer) error {
 			return err
 		}
 //line index.html:7
-		if _, err := mux.WriteHtmlEscaped(w, phone); err != nil {
+		if err := render.Text(w, phone); err != nil {
 			return err
 		}
 		if _, err := w.Write(_2r9972n9hj841mpqco77bjcufn7gtu387u4ppfrdmdeb5tgjm380); err != nil {
@@ -78,7 +97,7 @@ func (c *dataContext) Write(w io.Writer) error {
 			return err
 		}
 //line index.html:12
-		if _, err := mux.WriteHtmlEscaped(w, email); err != nil {
+		if err := render.Text(w, email); err != nil {
 			return err
 		}
 		if _, err := w.Write(_2r9972n9hj841mpqco77bjcufn7gtu387u4ppfrdmdeb5tgjm380); err != nil {

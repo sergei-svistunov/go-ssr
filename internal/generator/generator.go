@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -123,7 +125,6 @@ func (g *Generator) Analyze() error {
 				Route: path.Join("/", routePath),
 				File:  g.relPath(filepath.Join(p, "index.html")),
 				Line:  1,
-				Col:   1,
 				Code:  "E01",
 				Message: fmt.Sprintf("reactive-bindings: route folder \"__ws\" (at %s) is reserved for WebSocket endpoints; rename the folder",
 					g.relPath(p)),
@@ -150,6 +151,15 @@ func (g *Generator) Analyze() error {
 		})
 		if err != nil {
 			diags = append(diags, g.diagnostic(path.Join("/", routePath), filepath.Join(p, "index.html"), err))
+			return nil
+		}
+
+		if d := g.checkWritableVars(path.Join("/", routePath), r); d != nil {
+			diags = append(diags, *d)
+			return nil
+		}
+		if d := g.checkCalls(path.Join("/", routePath), r); d != nil {
+			diags = append(diags, *d)
 			return nil
 		}
 
@@ -370,30 +380,12 @@ func isParamSegment(s string) bool {
 func (g *Generator) genHandler(hasStatic bool) error {
 	buf := gobuf.New()
 
-	// Determine if any route is reactive (needs WS handler registration).
-	var reactiveRoutePaths []string
-	for _, rPath := range g.getRoutesPaths() {
-		if isReactiveRoute(g.routes[rPath]) {
-			reactiveRoutePaths = append(reactiveRoutePaths, rPath)
-		}
-	}
-	hasReactive := len(reactiveRoutePaths) > 0
-
 	buf.WriteStringLn(goFileHeader)
 	buf.WriteStringLn("package pages")
 
 	buf.WriteStringLn("import (")
 	buf.WriteQuotedString("net/http", "\n")
-	if hasReactive {
-		buf.WriteQuotedString("context", "\n")
-		buf.WriteQuotedString("fmt", "\n")
-		buf.WriteQuotedString("sync", "\n")
-	}
 	buf.WriteString("\n")
-	if hasReactive {
-		buf.WriteQuotedString("github.com/coder/websocket", "\n")
-		buf.WriteQuotedString("github.com/sergei-svistunov/go-ssr/pkg/reactive", "\n")
-	}
 	buf.WriteQuotedString("github.com/sergei-svistunov/go-ssr/pkg/mux", "\n")
 	if g.depsPackage != "" {
 		buf.WriteQuotedString(g.depsPackage, "\n")
@@ -411,13 +403,12 @@ func (g *Generator) genHandler(hasStatic bool) error {
 
 	// func NewSsrHandler
 	if g.depsPackage != "" {
-		buf.WriteStringLn("func NewSsrHandler(d *" + g.depsPackageName() + "." + g.depsType + ", opts mux.Options) http.Handler {")
+		buf.WriteStringLn("func NewSsrHandler(d *" + g.depsPackageName() + "." + g.depsType + ", opts mux.Options) (http.Handler, error) {")
 	} else {
-		buf.WriteStringLn("func NewSsrHandler(opts mux.Options) http.Handler {")
+		buf.WriteStringLn("func NewSsrHandler(opts mux.Options) (http.Handler, error) {")
 	}
 
-	// Always use a named variable for the Mux so we can apply WithWSHandlers.
-	buf.WriteStringLn("ssrH := mux.New(map[string]mux.Route{")
+	buf.WriteStringLn("ssrH, err := mux.New(map[string]mux.Route{")
 	for _, rPath := range g.getRoutesPaths() {
 		buf.WriteQuotedString(rPath)
 		buf.WriteString(": ")
@@ -432,39 +423,17 @@ func (g *Generator) genHandler(hasStatic bool) error {
 		}
 	}
 	buf.WriteStringLn("}, opts)")
-
-	// Register WebSocket handlers for reactive routes.
-	// Multiplexing model: one WS handler per leaf page that has at
-	// least one reactive route in its ancestor stack. The handler at the leaf
-	// path muxes all reactive ancestors over one WS connection.
-	if hasReactive {
-		// Compute the set of leaf paths that need WS endpoints.
-		// A leaf path needs a WS endpoint if any route in its ancestor stack
-		// (including itself) is reactive.
-		wsLeafPaths := g.computeWSLeafPaths()
-
-		// Emit one WS handler constructor per leaf path.
-		for _, leafPath := range wsLeafPaths {
-			ancestors := g.ancestorStack(leafPath)
-			g.genWSHandlerCode(buf, leafPath, ancestors)
-		}
-
-		buf.WriteStringLn("mux.WithWSHandlers(map[string]http.Handler{")
-		for _, leafPath := range wsLeafPaths {
-			routeVar := pathToVariable(leafPath)
-			buf.WriteQuotedString(wsEndpointPath(leafPath))
-			buf.WriteStringLn(": wsHandler" + routeVar + ",")
-		}
-		buf.WriteStringLn("})(ssrH)")
-	}
+	buf.WriteStringLn("if err != nil {")
+	buf.WriteStringLn("	return nil, err")
+	buf.WriteStringLn("}")
 
 	if hasStatic {
 		buf.WriteStringLn("return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {")
 		buf.WriteStringLn("if ssrServeStatic(w, r) { return }")
 		buf.WriteStringLn("ssrH.ServeHTTP(w, r)")
-		buf.WriteStringLn("})")
+		buf.WriteStringLn("}), nil")
 	} else {
-		buf.WriteStringLn("return ssrH")
+		buf.WriteStringLn("return ssrH, nil")
 	}
 	buf.WriteStringLn("}")
 
@@ -499,16 +468,42 @@ func (g *Generator) genRoute(rPath string, r *route.Route) error {
 
 	// Determine whether the reactive write dispatcher will use json.Unmarshal
 	// (only when there are client-writable variables).
-	hasClientWritableVars := reactive && len(clientWritableVars(r.Template().GetVariables())) > 0
+	var writable []template.Variable
+	if reactive {
+		writable = clientWritableVars(r.Template().GetVariables())
+	}
+	parsesText, parsesFloat := false, false
+	for _, v := range writable {
+		if parse, _, _, _ := textParse(v.Type); parse != "" {
+			parsesText = true
+			parsesFloat = parsesFloat || strings.HasPrefix(v.Type, "float")
+		}
+	}
+	calls := r.Template().GetCalls()
+	var callImports map[string]string
+	if len(calls) > 0 {
+		have := map[string]bool{
+			"context": true, "json": true, "io": true, "http": true, "mux": true, "render": true,
+			"math": parsesFloat, "strconv": parsesText, "sync": reactive, "strings": needsStrings,
+			"form": len(r.Template().GetForms()) > 0, "reactive": reactive,
+		}
+		callImports = loadGoPackage(filepath.Join(g.webDir, "pages", rPath)).callImports(calls, have)
+	}
 
 	buf.WriteStringLn("import (")
 	buf.WriteQuotedString("context", "\n")
-	if hasClientWritableVars {
+	if len(writable) > 0 || len(calls) > 0 {
 		buf.WriteQuotedString("encoding/json", "\n")
 	}
 	buf.WriteQuotedString("io", "\n")
-	if len(r.Template().GetForms()) > 0 {
+	if parsesFloat {
+		buf.WriteQuotedString("math", "\n")
+	}
+	if len(r.Template().GetForms()) > 0 || len(calls) > 0 {
 		buf.WriteQuotedString("net/http", "\n")
+	}
+	if parsesText {
+		buf.WriteQuotedString("strconv", "\n")
 	}
 	if reactive {
 		buf.WriteQuotedString("sync", "\n")
@@ -517,6 +512,10 @@ func (g *Generator) genRoute(rPath string, r *route.Route) error {
 		buf.WriteQuotedString("strings", "\n")
 	}
 	buf.WriteString("\n")
+	for _, name := range slices.Sorted(maps.Keys(callImports)) {
+		buf.WriteString(name + " ")
+		buf.WriteQuotedString(callImports[name], "\n")
+	}
 	if len(r.Template().GetForms()) > 0 {
 		buf.WriteQuotedString("github.com/sergei-svistunov/go-ssr/pkg/form", "\n")
 	}
@@ -524,7 +523,10 @@ func (g *Generator) genRoute(rPath string, r *route.Route) error {
 	if reactive {
 		buf.WriteQuotedString("github.com/sergei-svistunov/go-ssr/pkg/reactive", "\n")
 	}
+	buf.WriteQuotedString("github.com/sergei-svistunov/go-ssr/pkg/render", "\n")
 	buf.WriteStringLn(")")
+	buf.WriteStringLn("// Keeps the render import in a page without values, so a variable may have a render type.")
+	buf.WriteStringLn("var _ = render.Text")
 
 	routeVariables := r.Template().GetVariables()
 
@@ -618,7 +620,17 @@ func (g *Generator) genRoute(rPath string, r *route.Route) error {
 		}
 	}
 
+	for _, c := range calls {
+		buf.WriteStringLn("// " + callMethod(c.Name) + " answers the page call " + c.Name + ", after every Guard on the path; Data does not run.")
+		buf.WriteStringLn(callMethod(c.Name) + "(ctx context.Context, r *mux.Request, in " + c.In + ") (" + c.Out + ", error)")
+	}
+
 	buf.WriteStringLn("}\n")
+
+	// Every ssr:bind element names its route, so only that route's runtime wires
+	// it; one whose route has no runtime is wired by none. It is marked before
+	// any markup is emitted, live blocks included.
+	r.Template().MarkBindRoute(routeKeyFor(rPath))
 
 	// Reactive: emit ReactiveState struct, renderBlock_KEY helpers, Set<VarName>
 	// methods, snapshot, and handleWrite dispatch function.
@@ -629,114 +641,129 @@ func (g *Generator) genRoute(rPath string, r *route.Route) error {
 		g.genHandleWriteCode(buf, r)
 	}
 
-	// type ssrRoute
+	forms := r.Template().GetForms()
+
 	buf.WriteStringLn("type ssrRoute struct { dp RouteDataProvider }")
-	buf.WriteStringLn("func NewRoute(dp RouteDataProvider) mux.Route { return &ssrRoute{dp: dp} }")
+	buf.WriteStringLn("func NewRoute(dp RouteDataProvider) mux.Route {")
+	buf.WriteString("mux.CheckGuard(dp, ")
+	buf.WriteQuotedString(rPath)
+	buf.WriteStringLn(")")
+	buf.WriteStringLn("return &ssrRoute{dp: dp}")
+	buf.WriteStringLn("}")
+	buf.WriteString("\n")
 
-	// func (rt *ssrRoute) GetDataContext
-	buf.WriteStringLn("func (rt *ssrRoute) GetDataContext(ctx context.Context, r *mux.Request, w mux.ResponseWriter, child mux.DataContext) (mux.DataContext, error) {")
+	buf.WriteStringLn(fmt.Sprintf("func (rt *ssrRoute) Layout() bool { return %t }", r.Template().GetContentNode() != nil))
+	buf.WriteString("\n")
 
-	buf.WriteStringLn("dataCtx := &dataContext{")
-	buf.WriteStringLn("	RouteDataContext: mux.RouteDataContext{")
-	buf.WriteStringLn("		Child:  child,")
-	buf.WriteStringLn("		Assets: []string{")
+	buf.WriteStringLn("func (rt *ssrRoute) NewState() mux.RouteState {")
+	buf.WriteStringLn("s := &ssrState{dp: rt.dp}")
+	buf.WriteStringLn("s.SetAssets([]string{")
 	for _, asset := range g.assets.GetTags(rPath) {
 		buf.WriteQuotedString(asset, ",\n")
 	}
-	buf.WriteStringLn("		},")
-	buf.WriteStringLn("	},")
+	buf.WriteStringLn("})")
+	buf.WriteStringLn("return s")
 	buf.WriteStringLn("}")
 	buf.WriteString("\n")
 
-	for _, form := range r.Template().GetForms() {
-		dCtxFormField := "dataCtx." + getFormCtxField(form.Name)
-		buf.WriteStringLn(dCtxFormField + ".BaseFormValues.SetElements([]form.Element{")
-		for _, element := range form.Elements {
-			buf.WriteStringLn("&" + dCtxFormField + "." + getExportedName(element.Name) + ",")
-		}
-		buf.WriteStringLn("})")
-		buf.WriteString("\n")
+	buf.WriteStringLn("type ssrState struct {")
+	buf.WriteStringLn("mux.Frame")
+	buf.WriteStringLn("dp RouteDataProvider")
+	buf.WriteStringLn("RouteData RouteData")
+	for _, form := range forms {
+		buf.WriteStringLn(getFormCtxField(form.Name) + " " + getFormValuesTypeName(form.Name))
+	}
+	if reactive {
+		buf.WriteStringLn("liveOnce sync.Once")
+		buf.WriteStringLn("live *ReactiveState")
+	}
+	buf.WriteStringLn("}")
+	buf.WriteString("\n")
 
-		buf.WriteStringLn("if err := rt.dp." + getFormInitMethod(form.Name) + "(ctx, r, w, &" + dCtxFormField + "); err != nil {")
-		buf.WriteStringLn("	return nil, err")
-		buf.WriteStringLn("}")
-		buf.WriteString("\n")
+	if reactive {
+		g.genLiveMethods(buf)
+	}
+	if len(calls) > 0 {
+		genCallMethods(buf, rPath, calls, reactive)
 	}
 
-	if len(r.Template().GetForms()) > 0 {
-		buf.WriteStringLn("if r.Method == http.MethodPost {")
-		buf.WriteStringLn("formId, err := form.Parse(r)")
-		buf.WriteStringLn("if err != nil {")
-		buf.WriteStringLn("	return nil, err")
+	buf.WriteStringLn("func (c *ssrState) Guard(ctx context.Context, r *mux.Request) error {")
+	buf.WriteStringLn("if g, ok := c.dp.(mux.Guarded); ok {")
+	buf.WriteStringLn("	return g.Guard(ctx, r)")
+	buf.WriteStringLn("}")
+	buf.WriteStringLn("return nil")
+	buf.WriteStringLn("}")
+	buf.WriteString("\n")
+
+	buf.WriteStringLn("func (c *ssrState) InitForms(ctx context.Context, r *mux.Request, w mux.ResponseWriter) error {")
+	for _, form := range forms {
+		field := "c." + getFormCtxField(form.Name)
+		buf.WriteStringLn(field + ".BaseFormValues.SetElements([]form.Element{")
+		for _, element := range form.Elements {
+			buf.WriteStringLn("&" + field + "." + getExportedName(element.Name) + ",")
+		}
+		buf.WriteStringLn("})")
+		buf.WriteStringLn("if err := c.dp." + getFormInitMethod(form.Name) + "(ctx, r, w, &" + field + "); err != nil {")
+		buf.WriteStringLn("	return err")
 		buf.WriteStringLn("}")
-		buf.WriteStringLn(`switch formId {`)
-		for _, form := range r.Template().GetForms() {
-			formField := getFormCtxField(form.Name)
+	}
+	buf.WriteStringLn("return nil")
+	buf.WriteStringLn("}")
+	buf.WriteString("\n")
+
+	buf.WriteStringLn("func (c *ssrState) SubmitForm(ctx context.Context, r *mux.Request, w mux.ResponseWriter, id string) (bool, error) {")
+	if len(forms) > 0 {
+		buf.WriteStringLn("switch id {")
+		for _, form := range forms {
+			field := "c." + getFormCtxField(form.Name)
+			multipart := form.Node.EncType == node.FormEncTypeMultipart
 			buf.WriteString("case ")
 			buf.WriteQuotedString(form.Name)
 			buf.WriteStringLn(":")
-
-			if form.Node.EncType == "multipart/form-data" {
+			if multipart {
 				buf.WriteStringLn(`if !form.IsMultipart(r) {`)
-				buf.WriteStringLn(`	return nil, mux.NewHttpError(http.StatusBadRequest, "Content-Type is not multipart/form-data")`)
-				buf.WriteStringLn("}")
+				buf.WriteStringLn(`	return true, mux.NewHttpError(http.StatusBadRequest, "Content-Type is not multipart/form-data")`)
 			} else {
 				buf.WriteStringLn(`if form.IsMultipart(r) {`)
-				buf.WriteStringLn(`	return nil, mux.NewHttpError(http.StatusBadRequest, "Content-Type is not application/x-www-form-urlencoded")`)
-				buf.WriteStringLn("}")
+				buf.WriteStringLn(`	return true, mux.NewHttpError(http.StatusBadRequest, "Content-Type is not application/x-www-form-urlencoded")`)
 			}
-
+			buf.WriteStringLn("}")
 			for _, element := range form.Elements {
-				buf.WriteString("dataCtx." + formField + "." + getExportedName(element.Name) + ".Process(r, ")
+				buf.WriteString(field + "." + getExportedName(element.Name) + ".Process(r, ")
 				buf.WriteQuotedString(element.Name, ", ")
-
-				if form.Node.EncType == node.FormEncTypeMultipart {
-					buf.WriteString("true, ")
-				} else {
-					buf.WriteString("false, ")
-				}
-
-				if element.IsRequired {
-					buf.WriteString("true")
-				} else {
-					buf.WriteString("false")
-				}
+				buf.WriteString(fmt.Sprintf("%t, %t", multipart, element.IsRequired))
 				buf.WriteStringLn(")")
 			}
-
-			buf.WriteStringLn("if err := rt.dp." + getFormProcessMethod(form.Name) + "(ctx, r, w, &dataCtx." +
-				formField + "); err != nil {")
-			buf.WriteStringLn("	return nil, err")
-			buf.WriteStringLn("	}")
-
-			buf.WriteStringLn("dataCtx." + formField + ".BaseFormValues.MarkValidated()")
+			buf.WriteStringLn(field + ".BaseFormValues.MarkValidated()")
+			buf.WriteStringLn("if " + field + ".BaseFormValues.HasError() {")
+			buf.WriteStringLn("	return true, nil")
+			buf.WriteStringLn("}")
+			buf.WriteStringLn("return true, c.dp." + getFormProcessMethod(form.Name) + "(ctx, r, w, &" + field + ")")
 		}
-		buf.WriteStringLn("	}")
-		buf.WriteStringLn("}")
-
-		buf.WriteString("if err := form.SetCSRFToken(r, w")
-		for _, form := range r.Template().GetForms() {
-			buf.WriteString(",")
-			buf.WriteString("&dataCtx." + getFormCtxField(form.Name) + ".BaseFormValues")
-		}
-		buf.WriteStringLn("); err != nil {")
-		buf.WriteStringLn("	return nil, err")
 		buf.WriteStringLn("}")
 	}
-
-	buf.WriteStringLn("if err := rt.dp.Data(ctx, r, w, &dataCtx.RouteData); err != nil {")
-	buf.WriteStringLn("return nil, err")
-	buf.WriteStringLn("}")
-	buf.WriteString("\n")
-	buf.WriteStringLn("return dataCtx, nil")
+	buf.WriteStringLn("return false, nil")
 	buf.WriteStringLn("}")
 	buf.WriteString("\n")
 
-	// func (rt *ssrRoute) GetDefaultRoute
-	buf.WriteString("func (rt *ssrRoute) GetDefaultRoute(ctx context.Context, r *mux.Request) (string, error) { return ")
+	buf.WriteStringLn("func (c *ssrState) Data(ctx context.Context, r *mux.Request, w mux.ResponseWriter) error {")
+	if len(forms) > 0 {
+		buf.WriteString("if err := form.SetCSRFToken(r, w")
+		for _, form := range forms {
+			buf.WriteString(", &c." + getFormCtxField(form.Name) + ".BaseFormValues")
+		}
+		buf.WriteStringLn("); err != nil {")
+		buf.WriteStringLn("	return err")
+		buf.WriteStringLn("}")
+	}
+	buf.WriteStringLn("return c.dp.Data(ctx, r, w, &c.RouteData)")
+	buf.WriteStringLn("}")
+	buf.WriteString("\n")
+
+	buf.WriteString("func (c *ssrState) DefaultRoute(ctx context.Context, r *mux.Request) (string, error) { return ")
 	if nodeContent := r.Template().GetContentNode(); nodeContent != nil {
 		if nodeContent.Default == "" {
-			buf.WriteString("rt.dp.DefaultRoute(ctx, r)")
+			buf.WriteString("c.dp.DefaultRoute(ctx, r)")
 		} else {
 			buf.WriteQuotedString(nodeContent.Default)
 			buf.WriteString(", nil")
@@ -744,20 +771,10 @@ func (g *Generator) genRoute(rPath string, r *route.Route) error {
 	} else {
 		buf.WriteString(`"", nil`)
 	}
-
 	buf.WriteStringLn("}")
+	buf.WriteString("\n")
 
-	// type dataContext
-	buf.WriteStringLn("type dataContext struct {")
-	buf.WriteStringLn("mux.RouteDataContext")
-	buf.WriteStringLn("RouteData RouteData")
-	for _, form := range r.Template().GetForms() {
-		buf.WriteStringLn(getFormCtxField(form.Name) + " " + getFormValuesTypeName(form.Name))
-	}
-	buf.WriteStringLn("}")
-
-	// func (c *dataContext) Write
-	buf.WriteStringLn("func (c *dataContext) Write(w io.Writer) error {")
+	buf.WriteStringLn("func (c *ssrState) Write(w io.Writer) error {")
 	for _, variable := range routeVariables {
 		buf.WriteStringLn(variable.FilePos())
 		buf.WriteString(variable.Name)
@@ -799,16 +816,31 @@ func (g *Generator) genRouteDP(rPath string, r *route.Route) error {
 	buf.WriteStringLn(path.Base(path.Join("pages", rPath)))
 
 	hasClientWritable := len(clientWritableVars(r.Template().GetVariables())) > 0
+	calls := r.Template().GetCalls()
 
 	buf.WriteStringLn("import (")
 	buf.WriteQuotedString("context", "\n")
 	if hasClientWritable {
 		buf.WriteQuotedString("errors", "\n")
 	}
+	if len(calls) > 0 {
+		buf.WriteQuotedString("net/http", "\n")
+	}
 	buf.WriteString("\n")
 	buf.WriteQuotedString("github.com/sergei-svistunov/go-ssr/pkg/mux", "\n")
 	if g.depsPackage != "" {
 		buf.WriteQuotedString(g.depsPackage, "\n")
+	}
+	if len(calls) > 0 {
+		have := map[string]bool{"context": true, "errors": hasClientWritable, "http": true, "mux": true}
+		if g.depsPackage != "" {
+			have[g.depsPackageName()] = true
+		}
+		imports := loadGoPackage(filepath.Dir(filename)).callImports(calls, have)
+		for _, name := range slices.Sorted(maps.Keys(imports)) {
+			buf.WriteString(name + " ")
+			buf.WriteQuotedString(imports[name], "\n")
+		}
 	}
 	buf.WriteStringLn(")")
 
@@ -860,6 +892,16 @@ func (g *Generator) genRouteDP(rPath string, r *route.Route) error {
 		}
 	}
 
+	for _, c := range calls {
+		buf.WriteString("\n")
+		buf.WriteStringLn("// " + callMethod(c.Name) + " answers the page call " + c.Name + ".")
+		buf.WriteStringLn("// The generated default refuses every call — write it to answer.")
+		buf.WriteStringLn("func (p *DP) " + callMethod(c.Name) + "(ctx context.Context, r *mux.Request, in " + c.In + ") (" + c.Out + ", error) {")
+		buf.WriteStringLn("	var out " + c.Out)
+		buf.WriteStringLn("	return out, mux.NewHttpError(http.StatusForbidden, http.StatusText(http.StatusForbidden))")
+		buf.WriteStringLn("}")
+	}
+
 	formattedCode, err := buf.Formatted()
 	if err != nil {
 		return fmt.Errorf("could not format generated code: %w\n%s", err, buf.String())
@@ -872,50 +914,42 @@ func (g *Generator) genRouteDP(rPath string, r *route.Route) error {
 	return nil
 }
 
-// computeWSLeafPaths returns the sorted set of route paths that should have a
-// WS endpoint emitted. A route path qualifies when:
-//  1. It is a "leaf" — no other route in g.routes is a strict child of it.
-//  2. At least one route in its ancestor stack (including itself) is reactive.
-//
-// Non-reactive-only subtrees produce no WS endpoint.
-func (g *Generator) computeWSLeafPaths() []string {
+// livePagePaths returns the sorted paths of the pages that have a live
+// connection: those a request can end at, whose rendered routes — every
+// layout above them and the page itself — include one with live values or
+// calls. A layout with routes below it redirects instead, and a gate above a
+// page renders nothing of it.
+func (g *Generator) livePagePaths() []string {
 	routePaths := g.getRoutesPaths()
-
-	// Build a set for quick child-lookup.
-	routeSet := make(map[string]bool, len(routePaths))
-	for _, p := range routePaths {
-		routeSet[p] = true
-	}
-
-	isLeaf := func(rPath string) bool {
-		prefix := rPath
-		if prefix != "/" {
-			prefix = rPath + "/"
-		}
+	hasChildren := func(rPath string) bool {
+		prefix := strings.TrimSuffix(rPath, "/") + "/"
 		for _, p := range routePaths {
 			if p != rPath && strings.HasPrefix(p, prefix) {
-				return false
+				return true
 			}
 		}
-		return true
+		return false
+	}
+	isLayout := func(r *route.Route) bool {
+		return r.Template() != nil && r.Template().GetContentNode() != nil
 	}
 
-	var wsLeafs []string
+	var live []string
 	for _, rPath := range routePaths {
-		if !isLeaf(rPath) {
+		page := g.routes[rPath]
+		if isLayout(page) && hasChildren(rPath) {
 			continue
 		}
-		// Check if any route in the ancestor stack (including this leaf) is reactive.
-		ancestors := g.ancestorStack(rPath)
-		for _, ancestor := range ancestors {
-			if isReactiveRoute(ancestor) {
-				wsLeafs = append(wsLeafs, rPath)
+		stack := g.ancestorStack(rPath)
+		for i, r := range stack {
+			if (i == len(stack)-1 || isLayout(r)) && hasLiveConnection(r) {
+				live = append(live, rPath)
 				break
 			}
 		}
 	}
-	sort.Strings(wsLeafs)
-	return wsLeafs
+	sort.Strings(live)
+	return live
 }
 
 // ancestorStack returns the route stack for the given leaf path in root-to-leaf

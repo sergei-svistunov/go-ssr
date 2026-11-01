@@ -79,11 +79,7 @@ func (n *SsrForm) WriteGoCode(buf *gobuf.GoBuf) {
 	buf.WritePrintString(`">`)
 
 	for _, c := range n.Children {
-		if tNode, ok := c.(*Text); ok {
-			buf.WritePrintString(tNode.Text)
-		} else {
-			c.WriteGoCode(buf)
-		}
+		c.WriteGoCode(buf)
 	}
 
 	buf.WritePrintString("</form>")

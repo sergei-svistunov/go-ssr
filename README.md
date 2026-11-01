@@ -11,10 +11,14 @@ Full documentation lives in [docs/](docs/) and is also served by the built-in
 
 - **Directory-based routing**: Define web routes based on your project's folder structure. Folders with leading and
   trailing underscores (e.g., `_userId_`) are interpreted as dynamic URL parameters, accessible via the `URLParam`
-  method in the request object.
+  method in the request object. A parent route is a layout that wraps its pages, or a gate that guards them.
+- **Route guards**: An optional `Guard` on any data provider runs before every other hook on the path — forms,
+  `Data`, live connections and page calls — so a check on a layout covers every page below it.
 - **HTML template rendering**: Transform HTML templates into Go code, enabling fast, type-safe server-side rendering.
+  Every value is escaped for the place it lands — text, attribute or URL — and places with no safe escaping are
+  refused at generate time with a code and a fix.
 - **Data providers**: Each route has its own `RouteDataProvider` interface with short method names (`Data`,
-  `DefaultRoute`, `Init*`, `Process*`). Routes are self-contained - each carries its own data provider.
+  `DefaultRoute`, `Init*`, `Process*`, `Call*`). Routes are self-contained - each carries its own data provider.
 - **Dependency injection**: Optionally configure a `depsPackage` in `gossr.yaml` to pass a shared dependencies type
   to all route data providers via constructor injection. No composite interfaces or manual wiring needed.
 - **Static asset management**: Seamlessly integrate with `gossr-assets-webpack-plugin` to manage static assets (CSS,
@@ -25,28 +29,38 @@ Full documentation lives in [docs/](docs/) and is also served by the built-in
 - **Automatic rebuild**: Watches for file changes, rebuilding assets and templates as needed, and automatically restarts
   the project.
 - **Form handling**: Automatically generate Go code to handle HTML forms, including validation, file uploads, CSRF
-  protection and error management.
+  protection and error management. The handler checks every POST's signed CSRF token before any form hook runs.
+- **Security headers**: Every response carries a strict Content-Security-Policy, `nosniff`, `Referrer-Policy`
+  and cross-origin isolation headers; cross-site form posts and WebSocket handshakes are refused.
 - **Reactive bindings**: Opt-in, Vue-like live bindings. Mark a variable `reactive="true"` and the server pushes DOM
   patches to every connected client over WebSocket whenever the value changes. TypeScript can write back to
   server-validated state with `ssr.set()` or a declarative `ssr:bind` attribute on any native input element. No
   WebSocket boilerplate required.
+- **Page calls**: Declare `<ssr:call name="save" in="SaveIn" out="SaveOut"/>`, implement `CallSave` in Go, and
+  `await ssr.call('save', args)` from typed TypeScript, over the page's live connection, with the route guards
+  checked on every call.
 - **MCP server**: `go-ssr -mcp` exposes the documentation and the generator itself to AI agents over stdio.
 
 ## It's very fast
 
-The example below shows how you can benchmark SSR handler performance:
+The example below, from `example/internal/web/pages/handler_test.go`, shows how you can benchmark SSR handler
+performance:
 
 ```go
 var (
-    ssrHandler = ctxMiddleware{
-        pages.NewSsrHandler(
-            &model.Model{}, mux.Options{},
-        ),
-    }
+    ssrHandler = ctxMiddleware{newSsrHandler()}
     req1 = httptest.NewRequest(http.MethodGet, "/home", nil)
     req2 = httptest.NewRequest(http.MethodGet, "/users/johndoe123/info", nil)
     dw = DiscardWriter{}
 )
+
+func newSsrHandler() http.Handler {
+    h, err := pages.NewSsrHandler(&model.Model{}, mux.Options{CSRFKey: []byte("bench-key-bench-key-bench-key-32")})
+    if err != nil {
+        panic(err)
+    }
+    return h
+}
 
 func BenchmarkSsrHandlerSimple(b *testing.B) {
     for i := 0; i < b.N; i++ {
@@ -76,7 +90,9 @@ BenchmarkSsrHandlerDeep-16      	  164113	      7131 ns/op
 
 ## Installation
 
-Requires Go 1.25 or newer, plus Node.js and npm for the asset pipeline.
+Requires Go 1.25 or newer, plus Node.js and npm for the asset pipeline. go-ssr 0.7.0 works with gossr-runtime
+0.2.0, and gossr-runtime 0.2.0 with go-ssr 0.7.0; nothing checks the pairing at run time, so install them
+together.
 
 ```bash
 go install github.com/sergei-svistunov/go-ssr@latest
@@ -87,6 +103,7 @@ go install github.com/sergei-svistunov/go-ssr@latest
 ```bash
 mkdir myapp && cd myapp
 go-ssr -init -pkg-name example.com/myapp   # scaffold, install, build, generate
+export CSRF_KEY=$(openssl rand -hex 32)    # signs CSRF tokens; a development key
 go run .                                    # http://localhost:8080/
 ```
 
@@ -111,15 +128,17 @@ See [docs/quickstart.md](docs/quickstart.md) for the walkthrough and [docs/cli.m
 | [quickstart](docs/quickstart.md) | from an empty directory to a running app |
 | [project-structure](docs/project-structure.md) | directories, generated files, reserved names |
 | [cli](docs/cli.md) | command line flags and modes |
-| [config](docs/config.md) | `gossr.yaml` and dependency injection |
-| [routing](docs/routing.md) | dynamic parameters, nested layouts, default child routes |
+| [config](docs/config.md) | `gossr.yaml`, dependency injection and handler options |
+| [routing](docs/routing.md) | dynamic parameters, layouts and gates, guards, default child routes |
 | [template-syntax](docs/template-syntax.md) | every `ssr:` tag and attribute |
-| [expressions](docs/expressions.md) | the `{{ }}` language: operators, calls, escaping |
+| [expressions](docs/expressions.md) | the `{{ }}` language: operators, calls, escaping, `SafeHTML` |
 | [forms](docs/forms.md) | form declaration, validation, files, CSRF, the Init/Process hooks |
 | [reactive](docs/reactive.md) | live server-pushed values and two-way input binding |
+| [page-calls](docs/page-calls.md) | Go functions the page's TypeScript calls |
+| [security](docs/security.md) | guards, CSRF, escaping, the Content-Security-Policy, connection limits |
 | [fe-be-contract](docs/fe-be-contract.md) | how the browser and the server talk |
 | [typescript-api](docs/typescript-api.md) | the generated `ssr` client and `gossr-runtime` |
-| [runtime-api](docs/runtime-api.md) | `pkg/mux`, `pkg/form`, `pkg/reactive`, `pkg/static` |
+| [runtime-api](docs/runtime-api.md) | `pkg/mux`, `pkg/form`, `pkg/render`, `pkg/reactive`, `pkg/static` |
 | [static-assets](docs/static-assets.md) | the webpack pipeline and embedded serving |
 | [errors](docs/errors.md) | what each generator error means and how to fix it |
 | **Recipes** | [new app](docs/recipes/new-app.md) · [add a route](docs/recipes/add-route.md) · [add a form](docs/recipes/add-form.md) · [add a live value](docs/recipes/add-reactive-var.md) · [build for production](docs/recipes/deploy-prod.md) |
@@ -155,7 +174,7 @@ Or configure it directly in any MCP host:
 | `gossr_scaffold_route` | create a route and its data provider stub |
 | `gossr_generate` | regenerate after template edits, building assets when they are stale |
 | `gossr_validate` | check templates and bindings without writing files |
-| `gossr_routes` | describe routes: parameters, variables, forms, WebSocket endpoints, required methods |
+| `gossr_routes` | describe routes: parameters, variables, forms, calls, live connections, required methods |
 | `gossr_webpack` | install npm dependencies and run webpack |
 | `gossr_run` | start the application and wait until it answers, or report why it did not |
 | `gossr_logs` | return what the running application has printed since the last call |
@@ -170,7 +189,7 @@ server exits.
 
 ## Example
 
-The [example folder](/example) demonstrates every feature of the framework woven into a small running app:
+The [example folder](/example) demonstrates every feature of GoSSR woven into a small running app:
 
 - Directory-based routing, dynamic URL params, embedded layouts, dependency injection, webpack-managed assets
 - A live navbar balance pushed from the root layout's `Subscribe`
@@ -178,13 +197,14 @@ The [example folder](/example) demonstrates every feature of the framework woven
   hook that logs and rejects oversized values
 - A live user count on `/users` and a relative-time "last seen" indicator on `/users/<id>/info`, all updating
   simultaneously over a single multiplexed WebSocket connection
+- A page call on `/users/<id>/info` that refreshes "last seen" from TypeScript
 - A traditional form at `/contact` covering `<ssr:form>`, validation, and `Process*`
 
 Run the app on `:18080`:
 
 ```bash
 cd example
-go run .
+CSRF_KEY=$(openssl rand -hex 32) go run .
 ```
 
 End-to-end browser tests live in `example/tests/` (Playwright, Chromium):

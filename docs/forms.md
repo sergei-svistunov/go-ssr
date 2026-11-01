@@ -22,7 +22,8 @@ conversion, required-field checking and CSRF handling; you write two hooks.
 ```
 
 The rendered `<form>` posts to the current URL with `method="post"` and carries a hidden CSRF field. Field
-attributes not understood by GoSSR (`class`, `id`, `placeholder`, `step`, `style`, …) pass through to the HTML.
+attributes not understood by GoSSR (`class`, `id`, `placeholder`, `step`, …) pass through to the HTML, with
+the same escaping and refusals as on any element (`template-syntax`).
 
 See `template-syntax` for the full attribute list on `<ssr:form>`, `<ssr:input>`, `<ssr:select>` and
 `<ssr:textarea>`.
@@ -64,23 +65,24 @@ each field follows the element and its attributes:
 
 ## Lifecycle
 
-Every request to the route, GET or POST:
+On every request to the route, GET or POST, after every `Guard` on the path has passed:
 
-1. The form struct is built and its elements registered.
-2. `Init<Name>` runs. This is where select options and default values belong — it runs before parsing, on
-   every request, so the form can always be rendered.
+1. On POST, the mux checks the CSRF token and finds which form was submitted, before any form hook runs. The
+   body is read as multipart or url-encoded. A missing cookie or a bad token is a 400.
+2. The form struct is built and its elements registered.
+3. `Init<Name>` runs. This is where select options and default values belong — it runs on every request, so
+   the form can always be rendered.
 
-Additionally on POST:
+Additionally on POST, for the submitted form only:
 
-3. `form.Parse` reads the body (multipart or url-encoded), verifies the CSRF token and identifies which form
-   was submitted. A bad or missing token is a 400.
 4. The enctype is checked against the declaration; a mismatch is a 400.
 5. Each field is parsed into its Go type. A failed conversion or a missing `required` value sets that field's
-   error.
-6. `Process<Name>` runs — **whether or not step 5 found errors**. Check before acting.
-7. The form is marked validated, which is what `form.IsValidated()` reports in the template.
+   error. The form is marked validated, which is what `form.IsValidated()` reports in the template.
+6. `Process<Name>` runs **only when step 5 found no errors**. With errors, the page re-renders with the
+   submitted values and messages, and `Process` is not called.
 
-Finally `Data` runs and the page renders.
+A POST whose form no route of the page renders is a 400 `This form is not on this page.` Finally `Data` runs
+and the page renders.
 
 Only the submitted form's fields are parsed, so several forms can live on one route without interfering.
 
@@ -93,9 +95,7 @@ func (p *DP) ProcessContact(ctx context.Context, r *mux.Request, w mux.ResponseW
 
     if !strings.Contains(email, "@") {
         data.Email.SetError("Please enter a valid email address")
-    }
-    if data.HasError() {
-        return nil // fall through to rendering; the template shows the errors
+        return nil // fall through to rendering; the template shows the error
     }
 
     if err := p.m.SaveContact(ctx, name, email); err != nil {
@@ -107,7 +107,8 @@ func (p *DP) ProcessContact(ctx context.Context, r *mux.Request, w mux.ResponseW
 }
 ```
 
-Two patterns worth copying from that:
+`Process` sees only values that parsed and passed `required`; the checks it adds are its own. Two patterns
+worth copying from that:
 
 - Returning `nil` after setting errors re-renders the page with the submitted values and messages in place.
 - Returning `mux.Redirect` on success avoids the duplicate-submission problem of rendering directly.
@@ -131,7 +132,7 @@ func (p *DP) InitContact(ctx context.Context, r *mux.Request, w mux.ResponseWrit
 ```
 
 Options can come from a database — `Init<Name>` receives the request and the deps value, and runs before
-rendering.
+rendering. On a POST it runs after the CSRF check, so a forged POST never reaches it.
 
 ## Reading values in the template
 
@@ -181,25 +182,30 @@ for _, h := range data.Gallery.GetValue() {
 }
 ```
 
-Multipart bodies are parsed with a memory limit; larger parts spill to temporary files, as with
-`http.Request.ParseMultipartForm`.
+Multipart bodies are parsed with `http.Request.ParseMultipartForm`: up to `mux.MaxMultipartMemory` (32 MB) is
+kept in memory and the rest spills to temporary files, with no total limit. Cap request bodies in front of the
+handler at what your largest upload needs; see `security`.
 
 ## CSRF protection
 
 Every form renders a hidden `_csrf_token_` field, and a matching `__Host-_csrf_token_` cookie (`Secure`,
 `HttpOnly`, `SameSite=Lax`, `Path=/`) is set while rendering. The token is a random nonce and an issue time
 signed with `mux.Options.CSRFKey`, so a value the server never issued is refused rather than trusted for
-matching a cookie — which is what planting a cookie would otherwise buy an attacker. On POST the token in the body must match the
-cookie, otherwise the request is rejected with 400 before the form's `Process` hook runs — `Init<Name>` has
-already run by then, so keep side effects out of it. Before any of that, the mux refuses any
-POST/PUT/PATCH/DELETE the browser marks as coming from elsewhere — `Sec-Fetch-Site: cross-site` or
-`same-site`, or an `Origin` that is not the request host — with 403 before any of the route's hooks run,
-unless the origin is listed in `mux.Options.OriginPatterns` (the same list the reactive WebSocket uses; the
-rule is `mux.CrossSite`) or `mux.Options.AllowCrossSite` exempts the request (an identity-provider callback
-that is a third-party POST by design). When the browser sends no `Sec-Fetch-Site` at all, an absent `Origin` — and `Origin: null`, as
-`Referrer-Policy: no-referrer` produces — is no signal either way and falls through to the token check; when
-the browser does say `same-site` or `cross-site`, the request is refused whatever the `Origin` says, unless
-a pattern lists it. Nothing needs to be wired up; just do not remove the hidden field or strip the cookie.
+matching a cookie — which is what planting a cookie would otherwise buy an attacker.
+
+The mux checks every POST itself, after the route guards and before any form hook: the token in the body must
+be one it signed and must match the cookie, otherwise the request is rejected with 400 and no `Init` or
+`Process` runs. Before any of that, the mux refuses any POST/PUT/PATCH/DELETE the browser marks as coming from
+elsewhere — `Sec-Fetch-Site: cross-site` or `same-site`, or an `Origin` that is not the request host — with 403
+before any of the route's hooks run, unless the origin is listed in `mux.Options.OriginPatterns` (the same
+list live connections use; the rule is `mux.CrossSite`) or `mux.Options.AllowCrossSite` exempts the request.
+The exemption lifts only that refusal: an exempt POST still needs the cookie and the signed token, so a
+third-party POST by design, such as a sign-in or payment callback, belongs in an `http.Handler` in front of
+the mux, not in a page. When the browser sends no `Sec-Fetch-Site` at all, an absent `Origin` — and
+`Origin: null`, as `Referrer-Policy: no-referrer` produces — is no signal either way and falls through to the
+token check; when the browser does say `same-site` or `cross-site`, the request is refused whatever the
+`Origin` says, unless a pattern lists it. Nothing needs to be wired up; just do not remove the hidden field or
+strip the cookie.
 
 Responses that issue a token are always sent with `Cache-Control: no-store`: the mux sets it once the routes
 in the stack have run — whether the outcome is a page, a redirect or an error — so a layout's own
@@ -216,9 +222,9 @@ redirecting gets a token for the new session on every form rendered after the ro
 earlier route in the same response already rendered keeps one bound to the old session and will be refused —
 redirect after a login and the question does not arise.
 
-Leaving `mux.Options.CSRFKey` empty generates a key when the handler is built, which needs no setup; tokens
-then do not survive a restart and are not accepted by a second instance, so set it from your secret store if
-you run more than one process or deploy without draining.
+`mux.Options.CSRFKey` is required and must be at least 32 bytes; `NewSsrHandler` returns an error otherwise.
+Every instance that serves the site needs the same key, and tokens survive a restart only if the key does,
+so read it from your secret store. For development, any random 32-byte value works; see `quickstart`.
 
 The `__Host-` prefix means browsers only store the cookie over https (Chrome and Firefox also accept it on
 `http://localhost`; Safari does not). To develop over plain http on another host, or in Safari, pass

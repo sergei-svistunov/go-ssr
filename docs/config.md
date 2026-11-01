@@ -1,6 +1,7 @@
-# Configuration: gossr.yaml
+# Configuration: gossr.yaml and handler options
 
-`gossr.yaml` marks the project root. The tool searches for it in the working directory and every parent.
+`gossr.yaml` marks the project root and configures the generator; the tool searches for it in the working
+directory and every parent. The generated handler is configured in Go, with `mux.Options`.
 
 ## Fields
 
@@ -11,7 +12,7 @@ depsPackage: example.com/myapp/internal/model
 depsType: Model
 goRunArgs: .
 env:
-  PORT: "8080"
+  CSRF_KEY: "<64 hex characters>"
 ```
 
 | Field | Default | Meaning |
@@ -21,7 +22,7 @@ env:
 | `depsPackage` | empty | import path of a package whose type is injected into every data provider |
 | `depsType` | `Deps` | the type name inside `depsPackage`; only used when `depsPackage` is set |
 | `goRunArgs` | `.` | arguments passed to `go run` in watch mode |
-| `env` | empty | environment variables for the application process in watch mode |
+| `env` | empty | environment variables for the application process that `go-ssr -watch` and the MCP `gossr_run` tool start |
 
 ## Dependency injection
 
@@ -50,9 +51,8 @@ func NewDP(d *model.Model) *DP { return &DP{m: d} }
 and the handler takes it as its first argument:
 
 ```go
-// main.go
-m := model.New(db)
-http.ListenAndServe(":8080", pages.NewSsrHandler(m, mux.Options{}))
+// internal/web/web.go
+handler, err := pages.NewSsrHandler(m, mux.Options{CSRFKey: csrfKey})
 ```
 
 Because `depsType` names the type directly, any type works — a struct of dependencies, a service container, or
@@ -64,6 +64,52 @@ in the other direction is a cycle and the project will not build. Keep it as a s
 
 Changing `depsPackage` or `depsType` changes every generated `NewDP` signature, so existing
 `dataprovider.go` files — which the generator does not rewrite — need updating by hand.
+
+## Handler options
+
+`NewSsrHandler(deps, mux.Options{…})` — `NewSsrHandler(mux.Options{…})` without `depsPackage` — returns the
+handler and an error. The error reports an option `mux.New` refuses.
+
+```go
+handler, err := pages.NewSsrHandler(deps, mux.Options{
+    CSRFKey:                csrfKey,
+    CSRFSession:            func(r *mux.Request) string { return sessionID(r.Context()) },
+    MaxLiveConnsPerSession: 8,
+    CSPSources: map[string][]string{
+        "img-src": {"https://images.example.com"},
+    },
+    ErrorHandler: renderError,
+})
+if err != nil {
+    log.Fatal(err)
+}
+```
+
+| Option | Default | Meaning |
+|---|---|---|
+| `CSRFKey` | required | signs CSRF tokens; at least 32 bytes, the same on every instance. Empty or shorter is an error |
+| `CSRFSession` | nil | returns the session a request belongs to, so a token is bound to it; also keys `MaxLiveConnsPerSession` |
+| `MaxLiveConnsPerSession` | 0, no limit | live connections open at once per session; a handshake beyond it is refused with 429. A request without a session is not counted |
+| `CSPSources` | none | sources added to directives of the Content-Security-Policy, after the defaults; an unknown directive or a weakening source is an error |
+| `OriginPatterns` | none | other origins allowed to post forms and open live connections |
+| `AllowCrossSite` | nil | exempts single requests from the cross-site refusal, not from the CSRF check |
+| `InsecureCookies` | false | drops `Secure` and `__Host-` from the CSRF cookie for plain-http development; never in production |
+| `ErrorHandler` | plain text | renders refusals and errors |
+
+`security` gives the exact policy and the rules for `CSPSources`; `runtime-api` describes every option.
+
+### A key for development
+
+The scaffolded `main.go` reads the key from `CSRF_KEY`, 64 hex characters, and refuses to start without it.
+Generate a random one for development:
+
+```bash
+openssl rand -hex 32
+```
+
+Export it in the shell that runs `go run .`, or set it under `env:` in `gossr.yaml` for `go-ssr -watch` and the
+MCP `gossr_run` tool. `gossr.yaml` is usually committed, so a key there is a development key only. In
+production, read the key from your secret store; a new key invalidates every token issued under the old one.
 
 ## Production mode
 

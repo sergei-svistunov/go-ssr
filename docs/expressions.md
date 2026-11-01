@@ -19,15 +19,40 @@ the same grammar; `ssr:if` and `ssr:for` take a bare expression without braces.
 
 | Form | Behaviour |
 |---|---|
-| `{{ expr }}` | HTML-escaped: `&`, `<`, `>`, `"`, `'` and carriage return are replaced with entities |
-| `{{$ expr }}` | written verbatim, no escaping |
+| `{{ expr }}` | escaped for its context: element text and quoted attributes are HTML-escaped (`&`, `<`, `>`, `"`, `'` and carriage return become entities, and a NUL byte becomes U+FFFD), URL attributes are also checked and percent-encoded |
+| `{{$ expr }}` | written verbatim, no escaping; allowed only in element text |
 
-Use `{{$ }}` only for values you produced yourself, such as pre-rendered markup from a Markdown renderer.
-A user-supplied value written with `{{$ }}` is an HTML injection.
+The generator picks the escaper from where the value lands; `template-syntax` lists the contexts and the places
+it refuses (E08–E18). A whole-URL value whose scheme is not `http`, `https` or `mailto`, such as
+`javascript:alert(1)`, is written as `about:invalid#gossr-unsafe-url`.
+
+`{{$ }}` writes any value as it is, and **the caller owns the safety of what it writes**: a user-supplied value
+written with `{{$ }}` is an HTML injection. It is refused in an attribute, `<title>` and `<textarea>` (E13),
+and, like `{{ }}`, in `<script>`, `<style>` and the other raw-text elements (E08, E12). Use it only for markup your code produced, such as the output of a Markdown renderer that
+sanitises its input.
+
+`pkg/render` has helpers for building markup in Go:
+
+| Helper | Returns |
+|---|---|
+| `render.HTMLConst("<b>Hi</b>")` | markup from a string constant; a string variable does not compile |
+| `render.EscapeHTML(text)` | markup that shows exactly `text` |
+| `render.JoinHTML(a, b, …)` | the parts concatenated |
+
+They return `render.SafeHTML`. `{{$ }}` writes it as markup; `{{ }}` escapes it like any other value, showing
+the tags as text. A `render.SafeHTML` never decodes from JSON or text, and a client-writable variable may not
+hold one (`reactive`).
 
 ```html
-<div>{{ post.Title }}</div>       <!-- safe for any input -->
-<div>{{$ post.BodyHTML }}</div>   <!-- trusted markup only -->
+<ssr:var name="title" type="string"/>
+<ssr:var name="body" type="render.SafeHTML"/>
+<h1>{{ title }}</h1>   <!-- safe for any input -->
+<div>{{$ body }}</div> <!-- markup the data provider built -->
+```
+
+```go
+data.Title = post.Title
+data.Body = render.JoinHTML(render.HTMLConst("<p>"), render.EscapeHTML(post.Summary), render.HTMLConst("</p>"))
 ```
 
 ## Literals
@@ -118,8 +143,9 @@ condition would have avoided it. Use `ssr:if` for those cases.
 
 ## How values are rendered
 
-Strings are written as-is; all sized integer types, `float32`, `float64` and `bool` are formatted directly;
-anything else falls back to `fmt.Sprint`. A type with a `String()` method therefore renders through it. Floats
+Strings are written as they are, before escaping; all sized integer types, `float32`, `float64` and `bool` are
+formatted directly; `nil` is empty; anything else falls back to `fmt.Sprint`. A type with a `String()` method
+therefore renders through it, and is escaped like a string. Floats
 use `strconv`'s shortest representation (`%g`), so format currency and other presentation-sensitive numbers
 yourself:
 
@@ -148,8 +174,16 @@ If any variable in an expression is declared `reactive="true"`, that expression 
 the server re-renders it and pushes a DOM patch when an input changes. A composite expression such as
 `{{ a + b }}` tracks both variables. See `reactive`.
 
-## Notes on script and style content
+## Script and style content
 
-`{{ }}` is interpreted inside `<script>` and `<style>` too. That is handy for injecting a server value into an
-inline script, and a hazard for JavaScript object literals — `{{` in a script that is not meant as an
-expression will be compiled as one.
+`{{ }}` and `{{$ }}` are refused inside `<script>` and `<style>` (E08), and an inline `<script>` body or a
+`<style>` element is refused on its own (E16). To hand a server value to TypeScript, put it in a `data-*`
+attribute and read it from the element:
+
+```html
+<div id="chart" data-points="{{ pointsJSON }}"></div>
+```
+
+```typescript
+const points = JSON.parse(document.getElementById('chart')!.dataset.points ?? '[]');
+```

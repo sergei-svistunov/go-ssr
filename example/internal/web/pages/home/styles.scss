@@ -1,0 +1,13 @@
+.badge {
+  &.visitors-few {
+    background-color: #dc3545;
+  }
+
+  &.visitors-some {
+    background-color: #fd7e14;
+  }
+
+  &.visitors-many {
+    background-color: #198754;
+  }
+}

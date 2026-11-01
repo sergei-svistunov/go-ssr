@@ -93,12 +93,16 @@ func TestInventory_DescribesRoutesFormsAndVariables(t *testing.T) {
 		t.Errorf("/users/_userId_: URLParams = %v, want [userId]", got)
 	}
 
-	// The WebSocket endpoint is mounted at the deepest route below a reactive one.
-	if len(inv.WSEndpoints) != 1 || inv.WSEndpoints[0] != "/users/_userId_" {
-		t.Errorf("WSEndpoints = %v, want [/users/_userId_]", inv.WSEndpoints)
+	// /users has no content slot, so it is a gate: its live values belong to
+	// its own page, not to the page below it.
+	if len(inv.WSEndpoints) != 1 || inv.WSEndpoints[0] != "/users" {
+		t.Errorf("WSEndpoints = %v, want [/users]", inv.WSEndpoints)
 	}
-	if param.WSEndpoint != "/users/_userId_/__ws" {
-		t.Errorf("/users/_userId_: WSEndpoint = %q, want /users/_userId_/__ws", param.WSEndpoint)
+	if users.WSEndpoint != "/users/__ws" {
+		t.Errorf("/users: WSEndpoint = %q, want /users/__ws", users.WSEndpoint)
+	}
+	if param.WSEndpoint != "" {
+		t.Errorf("/users/_userId_: WSEndpoint = %q, want none", param.WSEndpoint)
 	}
 }
 

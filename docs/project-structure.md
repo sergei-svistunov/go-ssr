@@ -44,7 +44,7 @@ myapp/
 | `index.ts` | you | optional TypeScript entry point, bundled into this route's chunk |
 | `styles.scss` | you | optional stylesheet, bundled into this route's chunk |
 | `ssrroute_gen.go` | generator | rendering code and generated types; never edit |
-| `__ssr_gen__.ts` | generator | the typed reactive client, only for routes with reactive variables |
+| `__ssr_gen__.ts` | generator | the typed client, only for routes with reactive variables or page calls |
 | other `.go` files | you | helper types used by the template (`User`, for example) live in the same package |
 
 A route directory is a Go package named after the directory, so `pages/users/_userId_/` is package
@@ -65,13 +65,14 @@ running the generator first.
 
 | Name | Why |
 |---|---|
-| `__ws` | reserved for the generated WebSocket endpoint of a reactive route; a directory with this name is an error (see `errors`) |
+| `__ws` | every page's live connection is at its path followed by `/__ws`; a directory with this name is an error (see `errors`) |
 | `static_embed` | the staging directory under `pages/` for the embedded static blob; a route cannot share the name |
 | `index.html`, `index.ts`, `styles.scss` | fixed per-route file names |
 | `dataprovider.go`, `*_gen.go`, `__ssr_gen__.ts` | fixed generated or convention file names |
+| `data-ssr-route` | an attribute the generator writes on `ssr:bind` elements; a template may not set it |
 
 A directory whose name is wrapped in underscores — `_userId_` — is a dynamic URL parameter, not a literal
-path segment. See `routing`.
+path segment, and a request segment spelt `_userId_` is a value of that parameter. See `routing`.
 
 ## Where the deps package goes
 

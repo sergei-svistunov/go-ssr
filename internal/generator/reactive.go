@@ -5,20 +5,19 @@ package generator
 // This file contains:
 //   - ssrBindScalarTypes set for E07 (ssr:bind on non-scalar variable) check
 //   - bindingKey() for assigning <span data-ssr-bind> key values
-//   - goTypeToTSType() for Go→TypeScript type mapping
 //   - genReactiveStateCode() for generating per-route ReactiveState types,
 //     renderBlock_KEY helpers, updated snapshot(), and Set<VarName> with dep map
-//   - genWSHandlerCode() for generating the per-route WebSocket handler
+//   - genLiveMethods() for making a reactive route's state a mux.Live
 //   - genHandleWriteCode() for generating the handleWrite dispatch function
-//   - genRouteTSTypes() for emitting TS interface declarations in __ssr_gen__.ts
+//   - genRouteTSTypes() for writing __ssr_gen__.ts
 
 import (
 	"crypto/sha256"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/sergei-svistunov/go-ssr/internal/generator/gobuf"
@@ -64,13 +63,15 @@ var ssrBindScalarTypes = map[string]bool{
 	"float64": true,
 }
 
-// bindingKey returns the binding key for a set of reactive variable refs.
+// bindingKey returns the binding key of a site that reads the reactive
+// variables refs and renders the source exprSrc.
 //
-//   - Single name: the variable name itself (e.g., "counter").
-//   - Multiple names: lowercase hex SHA-256 of the expression source text,
-//     truncated to 16 characters (e.g., "a1b2c3d4e5f60708").
+//   - A site that renders one variable as it is: the variable name (e.g., "counter").
+//   - Any other site: lowercase hex SHA-256 of the source, truncated to 16
+//     characters (e.g., "a1b2c3d4e5f60708"), so that two sites share a key only
+//     when they render the same markup.
 func bindingKey(refs []string, exprSrc string) string {
-	if len(refs) == 1 {
+	if len(refs) == 1 && exprSrc == refs[0] {
 		return refs[0]
 	}
 	sum := sha256.Sum256([]byte(exprSrc))
@@ -122,7 +123,6 @@ func validateSsrBindE07(rPath string, tmpl *template.Template, varMap map[string
 			return &Diagnostic{
 				Route: rPath,
 				Line:  ref.Line,
-				Col:   1,
 				Code:  "E07",
 				Message: fmt.Sprintf("reactive-bindings: ssr:bind=%q requires a scalar variable type; %q has type %q. Use ssr.set() in TypeScript for non-scalar reactive variables.",
 					ref.VarName, ref.VarName, v.Type),
@@ -160,7 +160,6 @@ func validateSsrBindRefs(rPath string, tmpl *template.Template, allRouteVarMaps 
 				return &Diagnostic{
 					Route: rPath,
 					Line:  ref.Line,
-					Col:   1,
 					Code:  "E05",
 					Message: fmt.Sprintf("reactive-bindings: ssr:bind=%q at route %q requires client-writable=\"true\" on the variable declaration; add client-writable=\"true\" to the <ssr:var> or remove ssr:bind",
 						ref.VarName, rPath),
@@ -187,7 +186,6 @@ func validateSsrBindRefs(rPath string, tmpl *template.Template, allRouteVarMaps 
 			return &Diagnostic{
 				Route: rPath,
 				Line:  ref.Line,
-				Col:   1,
 				Code:  "E05",
 				Message: fmt.Sprintf("reactive-bindings: ssr:bind=%q at route %q references a variable declared in a different route (%q); ssr:bind references must be local to the declaring route",
 					ref.VarName, rPath, declaringRoute),
@@ -198,7 +196,6 @@ func validateSsrBindRefs(rPath string, tmpl *template.Template, allRouteVarMaps 
 		return &Diagnostic{
 			Route: rPath,
 			Line:  ref.Line,
-			Col:   1,
 			Code:  "E05",
 			Message: fmt.Sprintf("reactive-bindings: ssr:bind=%q at route %q references variable %q which is not declared in any route; add <ssr:var name=%q .../> to this route's template",
 				ref.VarName, rPath, ref.VarName, ref.VarName),
@@ -208,8 +205,8 @@ func validateSsrBindRefs(rPath string, tmpl *template.Template, allRouteVarMaps 
 }
 
 // routeNeedsStringsBuilder returns true when the route is reactive and will
-// emit at least one writeBlock_KEY/renderBlock_KEY helper that uses
-// strings.Builder (i.e., any composite expression or block binding site).
+// emit at least one writeBlock_KEY/renderBlock_KEY helper, each of which uses
+// strings.Builder.
 //
 // This is a pure analysis pass — it does NOT mutate the template AST.
 // It must be called before AnnotateBindings so that we can determine import
@@ -234,14 +231,12 @@ func checkNeedsStrings(nodes []node.Node, reactiveMap map[string]bool) bool {
 func checkNeedsStringsNode(n node.Node, reactiveMap map[string]bool) bool {
 	switch v := n.(type) {
 	case *node.Expression:
-		refs := v.CollectVarRefs(reactiveMap)
-		// Composite expression (>1 reactive var) needs strings.Builder.
-		if len(refs) > 1 {
+		// Every site renders through a strings.Builder.
+		if len(v.CollectVarRefs(reactiveMap)) > 0 {
 			return true
 		}
 	case *node.RawExpression:
-		refs := v.CollectVarRefs(reactiveMap)
-		if len(refs) > 1 {
+		if len(v.CollectVarRefs(reactiveMap)) > 0 {
 			return true
 		}
 	case *node.SsrCondition:
@@ -380,9 +375,8 @@ func (g *Generator) genReactiveStateCode(buf *gobuf.GoBuf, rPath string, r *rout
 	// The namespaced key (with routeKey prefix) is used only in snapshot() and
 	// Enqueue() calls.
 	//
-	// Pattern:
-	//   - Single-variable expression sites: return reactive.RenderValue(data.Field)
-	//   - All other sites: writeBlock_KEY(data, &__w) → return string
+	// Every site renders through writeBlock_KEY with the escapers of the first
+	// render, so a live value is the markup the page wrote for the same site.
 	// ---------------------------------------------------------------------------
 	for _, nsKey := range sortedNsKeys {
 		n, ok := reactiveNodes[nsKey]
@@ -392,66 +386,50 @@ func (g *Generator) genReactiveStateCode(buf *gobuf.GoBuf, rPath string, r *rout
 		}
 
 		localKey := localKeyOf(nsKey)
-		refs := bindings[nsKey]
-		// For a single-var site, the local key equals the variable name.
-		isSingleVar := len(refs) == 1 && reactiveMap[refs[0]] && localKey == refs[0]
+		buf.WriteStringLn("// writeBlock_" + localKey + " renders binding site \"" + nsKey + "\" into w.")
+		buf.WriteStringLn("func writeBlock_" + localKey + "(data *RouteData, w io.Writer) error {")
 
-		if isSingleVar {
-			// Single-variable expression site: RenderValue is sufficient.
-			varName := refs[0]
-			buf.WriteStringLn("// renderBlock_" + localKey + " returns the current rendered HTML for the " + varName + " binding site.")
-			buf.WriteStringLn("func renderBlock_" + localKey + "(data *RouteData) string {")
-			buf.WriteString("return reactive.RenderValue(data.")
-			buf.WriteStringLn(getExportedName(varName) + ")")
-			buf.WriteStringLn("}")
-			buf.WriteString("\n")
-		} else {
-			// Composite expression or block site: use a writeBlock helper.
-			buf.WriteStringLn("// writeBlock_" + localKey + " renders binding site \"" + nsKey + "\" into w.")
-			buf.WriteStringLn("func writeBlock_" + localKey + "(data *RouteData, w io.Writer) error {")
-
-			// Emit variable aliases for only those template variables that are
-			// actually referenced inside this block. CollectVarRefs with the full
-			// allVarsMap (reactive + non-reactive) returns every var the block uses,
-			// preventing "declared and not used" compile errors when a block references
-			// only a subset of the route's variables.
-			referencedNames := n.CollectVarRefs(allVarsMap)
-			sort.Strings(referencedNames) // deterministic output
-			for _, name := range referencedNames {
-				v := varsByName[name]
-				buf.WriteStringLn(v.FilePos())
-				buf.WriteString(v.Name)
-				buf.WriteString(":=data.")
-				buf.WriteStringLn(getExportedName(v.Name))
-			}
-			buf.WriteStringLn("_ = w // w io.Writer is used by WriteInnerGoCode; this silences the linter when the block body emits no direct writes")
-
-			// Emit the block/expression body without wrappers.
-			switch v := n.(type) {
-			case *node.Expression:
-				v.WriteInnerGoCode(buf)
-			case *node.RawExpression:
-				v.WriteInnerGoCode(buf)
-			case *node.SsrCondition:
-				v.WriteInnerGoCode(buf)
-			case *node.Loop:
-				v.WriteInnerGoCode(buf)
-			case *node.HtmlElement:
-				v.WriteInnerGoCode(buf)
-			}
-
-			buf.WriteStringLn("return nil")
-			buf.WriteStringLn("}")
-			buf.WriteString("\n")
-
-			buf.WriteStringLn("// renderBlock_" + localKey + " returns the current rendered HTML for binding key \"" + nsKey + "\".")
-			buf.WriteStringLn("func renderBlock_" + localKey + "(data *RouteData) string {")
-			buf.WriteStringLn("var __w strings.Builder")
-			buf.WriteStringLn("_ = writeBlock_" + localKey + "(data, &__w)")
-			buf.WriteStringLn("return __w.String()")
-			buf.WriteStringLn("}")
-			buf.WriteString("\n")
+		// Emit variable aliases for only those template variables that are
+		// actually referenced inside this block. CollectVarRefs with the full
+		// allVarsMap (reactive + non-reactive) returns every var the block uses,
+		// preventing "declared and not used" compile errors when a block references
+		// only a subset of the route's variables.
+		referencedNames := n.CollectVarRefs(allVarsMap)
+		sort.Strings(referencedNames) // deterministic output
+		for _, name := range referencedNames {
+			v := varsByName[name]
+			buf.WriteStringLn(v.FilePos())
+			buf.WriteString(v.Name)
+			buf.WriteString(":=data.")
+			buf.WriteStringLn(getExportedName(v.Name))
 		}
+		buf.WriteStringLn("_ = w // w io.Writer is used by WriteInnerGoCode; this silences the linter when the block body emits no direct writes")
+
+		// Emit the block/expression body without wrappers.
+		switch v := n.(type) {
+		case *node.Expression:
+			v.WriteInnerGoCode(buf)
+		case *node.RawExpression:
+			v.WriteInnerGoCode(buf)
+		case *node.SsrCondition:
+			v.WriteInnerGoCode(buf)
+		case *node.Loop:
+			v.WriteInnerGoCode(buf)
+		case *node.HtmlElement:
+			v.WriteInnerGoCode(buf)
+		}
+
+		buf.WriteStringLn("return nil")
+		buf.WriteStringLn("}")
+		buf.WriteString("\n")
+
+		buf.WriteStringLn("// renderBlock_" + localKey + " returns the current rendered HTML for binding key \"" + nsKey + "\".")
+		buf.WriteStringLn("func renderBlock_" + localKey + "(data *RouteData) string {")
+		buf.WriteStringLn("var __w strings.Builder")
+		buf.WriteStringLn("_ = writeBlock_" + localKey + "(data, &__w)")
+		buf.WriteStringLn("return __w.String()")
+		buf.WriteStringLn("}")
+		buf.WriteString("\n")
 	}
 
 	// ---------------------------------------------------------------------------
@@ -470,7 +448,6 @@ func (g *Generator) genReactiveStateCode(buf *gobuf.GoBuf, rPath string, r *rout
 	buf.WriteString("\n")
 
 	// NewReactiveState constructor (accepts routeKey for patch frame tagging).
-	// Exported so ssrhandler_gen.go can call it with a package prefix.
 	buf.WriteStringLn("func NewReactiveState(conn *reactive.Conn, data *RouteData) *ReactiveState {")
 	buf.WriteStringLn("return &ReactiveState{conn: conn, routeKey: routeKey, data: data}")
 	buf.WriteStringLn("}")
@@ -512,7 +489,6 @@ func (g *Generator) genReactiveStateCode(buf *gobuf.GoBuf, rPath string, r *rout
 	// ---------------------------------------------------------------------------
 	buf.WriteStringLn("// Snapshot returns the current rendered values for all reactive binding sites.")
 	buf.WriteStringLn("// It is called to build the init message sent to newly connected clients.")
-	buf.WriteStringLn("// Exported so ssrhandler_gen.go can call it with a package prefix.")
 	buf.WriteStringLn("func Snapshot(data *RouteData) map[string]string {")
 	buf.WriteStringLn("m := map[string]string{}")
 	for _, nsKey := range sortedNsKeys {
@@ -529,164 +505,28 @@ func (g *Generator) genReactiveStateCode(buf *gobuf.GoBuf, rPath string, r *rout
 	return bindings, nil
 }
 
-// genWSHandlerCode generates the WebSocket handler function for a leaf page.
-// The handler muxes all reactive routes in the ancestor stack over one WS
-// connection. It is named wsHandler<leafVar> and is a local func
-// in ssrhandler_gen.go.
-//
-// ancestors is the root-to-leaf slice of all routes in the page's route stack
-// (from g.ancestorStack). Non-reactive ancestors are skipped for Subscribe
-// goroutines but their Data/state are not needed; only reactive routes get a
-// goroutine and a ReactiveState.
-func (g *Generator) genWSHandlerCode(buf *gobuf.GoBuf, leafPath string, ancestors []*routepkg.Route) {
-	leafVar := pathToVariable(leafPath)
-
-	// Filter to reactive routes only.
-	type reactiveEntry struct {
-		rPath  string
-		route  *routepkg.Route
-		varSfx string // variable name suffix (pathToVariable)
-	}
-	var reactives []reactiveEntry
-	for _, r := range ancestors {
-		// Determine the route path for this ancestor by reverse-lookup in g.routes.
-		rPath := g.routePathForRoute(r)
-		if rPath == "" || !isReactiveRoute(r) {
-			continue
-		}
-		reactives = append(reactives, reactiveEntry{
-			rPath:  rPath,
-			route:  r,
-			varSfx: pathToVariable(rPath),
-		})
-	}
-
-	buf.WriteStringLn("wsHandler" + leafVar + " := reactive.NewHandler(func(ctx context.Context, r *http.Request, conn *reactive.Conn) {")
-
-	// Create a mux.Request from the raw *http.Request so Data() can be called.
-	// Populate URLParams from context — the mux WS dispatch path extracts dynamic
-	// segment values and stashes them via mux.URLParamsFromContext.
-	buf.WriteStringLn("muxReq := mux.NewRequest(r)")
-	buf.WriteStringLn("if wsParams := mux.URLParamsFromContext(r.Context()); wsParams != nil {")
-	buf.WriteStringLn("for k, v := range wsParams { muxReq.URLParams[k] = v }")
+// genLiveMethods makes a reactive route's state implement mux.Live. The
+// ReactiveState is made once per connection, by whichever of Subscribe and
+// HandleWrite runs first.
+func (g *Generator) genLiveMethods(buf *gobuf.GoBuf) {
+	buf.WriteStringLn("var _ mux.Live = (*ssrState)(nil)")
+	buf.WriteString("\n")
+	buf.WriteStringLn("func (c *ssrState) RouteKey() string { return routeKey }")
+	buf.WriteString("\n")
+	buf.WriteStringLn("func (c *ssrState) Snapshot() map[string]string { return Snapshot(&c.RouteData) }")
+	buf.WriteString("\n")
+	buf.WriteStringLn("func (c *ssrState) Subscribe(ctx context.Context, r *mux.Request, conn *reactive.Conn) error {")
+	buf.WriteStringLn("return c.dp.Subscribe(ctx, r, c.reactiveState(conn))")
 	buf.WriteStringLn("}")
-
-	// Per reactive route: instantiate DP, call Data, create ReactiveState.
-	for _, re := range reactives {
-		pkgPrefix := ""
-		if re.rPath != "/" {
-			pkgPrefix = getRoutePackageAlias(re.rPath) + "."
-		}
-		dpConstructor := pkgPrefix + "NewDP()"
-		if g.depsPackage != "" {
-			dpConstructor = pkgPrefix + "NewDP(d)"
-		}
-		sfx := re.varSfx
-
-		buf.WriteStringLn("dp" + sfx + " := " + dpConstructor)
-		buf.WriteStringLn("var data" + sfx + " " + pkgPrefix + "RouteData")
-		buf.WriteStringLn("// Data is called on initial page load AND on every WebSocket reconnect.")
-		buf.WriteStringLn("// Do not rely on r.Method, POST body, or response headers here.")
-		buf.WriteStringLn("if err := dp" + sfx + ".Data(ctx, muxReq, mux.NoopResponseWriter{}, &data" + sfx + "); err != nil { return }")
-		buf.WriteStringLn("state" + sfx + " := " + pkgPrefix + "NewReactiveState(conn, &data" + sfx + ")")
-	}
-
-	// Build combined bindings map from all reactive routes' snapshots.
-	buf.WriteStringLn("combinedBindings := map[string]string{}")
-	for _, re := range reactives {
-		pkgPrefix := ""
-		if re.rPath != "/" {
-			pkgPrefix = getRoutePackageAlias(re.rPath) + "."
-		}
-		sfx := re.varSfx
-		buf.WriteStringLn("for k, v := range " + pkgPrefix + "Snapshot(&data" + sfx + ") { combinedBindings[k] = v }")
-	}
-
-	// Determine the leaf reactive route key (last in reactives) for the init frame.
-	// routeKey in init frame is the leaf route's key by convention.
-	leafRouteKey := ""
-	if len(reactives) > 0 {
-		leafRouteKey = routeKeyFor(reactives[len(reactives)-1].rPath)
-	}
-	buf.WriteString("initMsg := reactive.NewInitMsg(")
-	buf.WriteQuotedString(leafRouteKey)
-	buf.WriteStringLn(", combinedBindings)")
-	buf.WriteStringLn("if err := conn.SendJSON(initMsg); err != nil { return }")
-	buf.WriteStringLn("conn.StartSendLoop()")
-
-	// Build the write-frame dispatch map (routeKey → handleWrite function).
-	// Unknown routeKey: send err{routeKey:"", code:"unknown_route"}.
-	if len(reactives) > 0 {
-		buf.WriteStringLn("dispatchWrite := map[string]func(reactive.WriteMsg){")
-		for _, re := range reactives {
-			pkgPrefix := ""
-			if re.rPath != "/" {
-				pkgPrefix = getRoutePackageAlias(re.rPath) + "."
-			}
-			sfx := re.varSfx
-			rk := routeKeyFor(re.rPath)
-			buf.WriteString(fmt.Sprintf("%q: ", rk))
-			buf.WriteStringLn("func(msg reactive.WriteMsg) {")
-			buf.WriteStringLn(pkgPrefix + "HandleWrite(ctx, muxReq, conn, dp" + sfx + ", state" + sfx + ", &msg)")
-			buf.WriteStringLn("},")
-		}
-		buf.WriteStringLn("}")
-	}
-
-	// Set up shared context + WaitGroup for concurrent Subscribe goroutines.
-	buf.WriteStringLn("wsCtx, wsCancel := context.WithCancel(ctx)")
-	buf.WriteStringLn("defer wsCancel()")
-	buf.WriteStringLn("errCh := make(chan error, " + fmt.Sprintf("%d", len(reactives)+1) + ")")
-
-	// Spawn one Subscribe goroutine per reactive route.
-	// Each goroutine has two defers in LIFO order:
-	//   1. defer wg.Done()      — registered first, runs second (after recover)
-	//   2. defer func(){recover} — registered second, runs first on panic
-	// This ensures a panic is caught and forwarded as a 1011 close before wg.Done.
-	buf.WriteStringLn("var wg sync.WaitGroup")
-	for _, re := range reactives {
-		sfx := re.varSfx
-		buf.WriteStringLn("wg.Add(1)")
-		buf.WriteStringLn("go func() {")
-		buf.WriteStringLn("defer wg.Done()")
-		buf.WriteStringLn("defer func() {")
-		buf.WriteStringLn("if r := recover(); r != nil {")
-		buf.WriteStringLn("select { case errCh <- fmt.Errorf(\"subscribe panic: %v\", r): default: }")
-		buf.WriteStringLn("wsCancel()")
-		buf.WriteStringLn("}")
-		buf.WriteStringLn("}()")
-		buf.WriteStringLn("if err := dp" + sfx + ".Subscribe(wsCtx, muxReq, state" + sfx + "); err != nil {")
-		buf.WriteStringLn("select { case errCh <- err: default: }")
-		buf.WriteStringLn("wsCancel()")
-		buf.WriteStringLn("}")
-		buf.WriteStringLn("}()")
-	}
-
-	// Write loop: dispatches incoming write frames by routeKey.
-	if len(reactives) > 0 {
-		buf.WriteStringLn("go func() {")
-		buf.WriteStringLn("if err := conn.HandleWrites(wsCtx, func(msg reactive.WriteMsg) {")
-		buf.WriteStringLn("if fn, ok := dispatchWrite[msg.RouteKey]; ok {")
-		buf.WriteStringLn("fn(msg)")
-		buf.WriteStringLn("} else {")
-		buf.WriteStringLn("conn.SendJSON(reactive.NewErrMsg(\"\", msg.Var, \"unknown route\", \"unknown_route\"))")
-		buf.WriteStringLn("}")
-		buf.WriteStringLn("}); err != nil {")
-		buf.WriteStringLn("select { case errCh <- err: default: }")
-		buf.WriteStringLn("wsCancel()")
-		buf.WriteStringLn("}")
-		buf.WriteStringLn("}()")
-	}
-
-	// Wait for all Subscribe goroutines to finish, then close with appropriate code.
-	buf.WriteStringLn("wg.Wait()")
-	buf.WriteStringLn("select {")
-	buf.WriteStringLn("case <-errCh:")
-	buf.WriteStringLn("conn.CloseWithError(websocket.StatusInternalError, \"subscribe error\")")
-	buf.WriteStringLn("default:")
+	buf.WriteString("\n")
+	buf.WriteStringLn("func (c *ssrState) HandleWrite(ctx context.Context, r *mux.Request, conn *reactive.Conn, msg reactive.WriteMsg) {")
+	buf.WriteStringLn("HandleWrite(ctx, r, conn, c.dp, c.reactiveState(conn), &msg)")
 	buf.WriteStringLn("}")
-
-	buf.WriteStringLn("})")
+	buf.WriteString("\n")
+	buf.WriteStringLn("func (c *ssrState) reactiveState(conn *reactive.Conn) *ReactiveState {")
+	buf.WriteStringLn("c.liveOnce.Do(func() { c.live = NewReactiveState(conn, &c.RouteData) })")
+	buf.WriteStringLn("return c.live")
+	buf.WriteStringLn("}")
 	buf.WriteString("\n")
 }
 
@@ -703,7 +543,6 @@ func (g *Generator) genHandleWriteCode(buf *gobuf.GoBuf, r *routepkg.Route) {
 	buf.WriteStringLn("// HandleWrite processes a client→server write message for this route.")
 	buf.WriteStringLn("// It validates the value and, if valid, updates the ReactiveState.")
 	buf.WriteStringLn("// msg.RouteKey is echoed back in ack/err frames.")
-	buf.WriteStringLn("// Exported so ssrhandler_gen.go can call it with a package prefix.")
 	buf.WriteStringLn("func HandleWrite(ctx context.Context, r *mux.Request, conn *reactive.Conn, dp RouteDataProvider, state *ReactiveState, msg *reactive.WriteMsg) {")
 	buf.WriteStringLn("switch msg.Var {")
 	for _, v := range cv {
@@ -715,9 +554,24 @@ func (g *Generator) genHandleWriteCode(buf *gobuf.GoBuf, r *routepkg.Route) {
 		buf.WriteStringLn("{")
 		buf.WriteStringLn("var val " + v.Type)
 		buf.WriteStringLn("if err := json.Unmarshal(msg.Value, &val); err != nil {")
+		parse, refuse, assign, refusal := textParse(v.Type)
+		if parse != "" {
+			// An ssr:bind input writes its text, a JSON string.
+			buf.WriteStringLn("var s string")
+			buf.WriteStringLn("if json.Unmarshal(msg.Value, &s) != nil {")
+		}
 		buf.WriteStringLn("conn.SendJSON(reactive.NewErrMsg(msg.RouteKey, msg.Var, \"decode error: \"+err.Error(), \"decode_error\"))")
 		buf.WriteStringLn("return")
 		buf.WriteStringLn("}")
+		if parse != "" {
+			buf.WriteStringLn(parse)
+			buf.WriteStringLn("if " + refuse + " {")
+			buf.WriteStringLn("conn.SendJSON(reactive.NewErrMsg(msg.RouteKey, msg.Var, " + strconv.Quote(refusal) + ", \"validation_failed\"))")
+			buf.WriteStringLn("return")
+			buf.WriteStringLn("}")
+			buf.WriteStringLn(assign)
+			buf.WriteStringLn("}")
+		}
 		buf.WriteStringLn("validated, err := dp.Validate" + exportedName + "(ctx, r, val)")
 		buf.WriteStringLn("if err != nil {")
 		buf.WriteStringLn("conn.SendJSON(reactive.NewErrMsg(msg.RouteKey, msg.Var, err.Error(), \"validation_failed\"))")
@@ -734,13 +588,27 @@ func (g *Generator) genHandleWriteCode(buf *gobuf.GoBuf, r *routepkg.Route) {
 	buf.WriteString("\n")
 }
 
-// wsEndpointPath returns the WebSocket endpoint path for a route.
-// Convention: /foo/bar → /foo/bar/__ws
-func wsEndpointPath(routePath string) string {
-	if routePath == "/" {
-		return "/__ws"
+// textParse returns how the generated code reads s, the text of an ssr:bind
+// input, into val of the scalar type t: the statement that parses s, the
+// condition that refuses it, the assignment to val, and the message of the
+// refusal. All are "" for a type encoding/json reads from a JSON string itself.
+func textParse(t string) (parse, refuse, assign, refusal string) {
+	bits := map[string]string{
+		"int": "0", "int8": "8", "int16": "16", "int32": "32", "rune": "32", "int64": "64",
+		"uint": "0", "uintptr": "0", "uint8": "8", "byte": "8", "uint16": "16", "uint32": "32", "uint64": "64",
+		"float32": "32", "float64": "64",
+	}[t]
+	switch {
+	case t == "bool":
+		return "b, err := strconv.ParseBool(s)", "err != nil", "val = b", "not true or false"
+	case strings.HasPrefix(t, "float"):
+		return "f, err := strconv.ParseFloat(s, " + bits + ")", "err != nil || math.IsNaN(f) || math.IsInf(f, 0)", "val = " + t + "(f)", "not a number"
+	case strings.HasPrefix(t, "int") || t == "rune":
+		return "n, err := strconv.ParseInt(s, 10, " + bits + ")", "err != nil", "val = " + t + "(n)", "not a whole number"
+	case strings.HasPrefix(t, "uint") || t == "byte":
+		return "n, err := strconv.ParseUint(s, 10, " + bits + ")", "err != nil", "val = " + t + "(n)", "not a whole number"
 	}
-	return strings.TrimSuffix(routePath, "/") + "/__ws"
+	return "", "", "", ""
 }
 
 // isReactiveRoute returns true if the route has at least one reactive variable.
@@ -763,195 +631,27 @@ func routeKeyFor(rPath string) string {
 	return fmt.Sprintf("%x", sum[:4]) // 4 bytes = 8 hex chars
 }
 
-// routePathForRoute returns the route path key in g.routes for the given Route
-// pointer. Returns "" if not found (should not happen in practice).
-func (g *Generator) routePathForRoute(r *routepkg.Route) string {
-	for p, rr := range g.routes {
-		if rr == r {
-			return p
-		}
-	}
-	return ""
-}
-
-// ----------------------------------------------------------------------------
-// Go → TypeScript type mapping
-// ----------------------------------------------------------------------------
-
-// goTypeToTSType maps a Go type string to a TypeScript type reference string,
-// collecting any TS interface declarations needed for struct types into decls.
-//
-// structRegistry maps Go struct type names to their already-emitted TS
-// interface text (deduplicated by name). inProgress tracks type names currently
-// on the recursion stack to detect cycles.
-//
-// Returns (tsTypeRef, warning) where warning is non-empty when a cycle was
-// detected or a non-string map key type was encountered.
-func goTypeToTSType(goType string, structRegistry map[string]string, inProgress map[string]bool) (tsType string, warning string) {
-	goType = strings.TrimSpace(goType)
-
-	// Pointer: *T → T | null
-	if strings.HasPrefix(goType, "*") {
-		inner, w := goTypeToTSType(goType[1:], structRegistry, inProgress)
-		return inner + " | null", w
-	}
-
-	// Slice: []T → T[]
-	if strings.HasPrefix(goType, "[]") {
-		elemType, w := goTypeToTSType(goType[2:], structRegistry, inProgress)
-		return elemType + "[]", w
-	}
-
-	// Map: map[K]V → Record<string, V>
-	if strings.HasPrefix(goType, "map[") {
-		// Parse the key type between map[ and the first ].
-		rest := goType[4:] // after "map["
-		bracketDepth := 0
-		keyEnd := -1
-		for i, c := range rest {
-			if c == '[' {
-				bracketDepth++
-			} else if c == ']' {
-				if bracketDepth == 0 {
-					keyEnd = i
-					break
-				}
-				bracketDepth--
-			}
-		}
-		if keyEnd < 0 {
-			return "Record<string, unknown>", "go type " + goType + ": malformed map type"
-		}
-		keyType := rest[:keyEnd]
-		valType := rest[keyEnd+1:]
-		if keyType != "string" {
-			log.Printf("reactive: goTypeToTSType: map key type %q is not string; falling back to Record<string, unknown>", keyType)
-			return "Record<string, unknown>", fmt.Sprintf("map key type %q is not string; only map[string]T is supported. Falling back to Record<string, unknown>.", keyType)
-		}
-		valTSType, w := goTypeToTSType(valType, structRegistry, inProgress)
-		return "Record<string, " + valTSType + ">", w
-	}
-
-	// time.Time → string (JSON marshals as RFC3339)
-	if goType == "time.Time" {
-		return "string", ""
-	}
-
-	// Numeric types → number
-	switch goType {
-	case "int", "int8", "int16", "int32", "int64",
-		"uint", "uint8", "uint16", "uint32", "uint64",
-		"uintptr", "byte", "rune", "float32", "float64":
-		return "number", ""
-	case "complex64", "complex128":
-		// JSON encoding of complex numbers is not standard; fall back to unknown.
-		return "unknown", ""
-	case "string":
-		return "string", ""
-	case "bool":
-		return "boolean", ""
-	}
-
-	// Named struct type (simple identifier, no package qualifier beyond one dot).
-	// Only simple type names are supported, e.g. "User", "Profile".
-	// Types like "pkg.User" (imported from another package) fall through to any.
-	if isSimpleIdentifier(goType) {
-		// Cycle guard.
-		if inProgress[goType] {
-			log.Printf("reactive: goTypeToTSType: cyclic type %q detected; substituting unknown", goType)
-			return "unknown", fmt.Sprintf("cyclic type %q substituted with unknown in TypeScript interface", goType)
-		}
-		// If already registered, just return the name.
-		if _, ok := structRegistry[goType]; ok {
-			return goType, ""
-		}
-		// We cannot introspect the Go type at generator time without full type
-		// resolution. Emit a placeholder interface comment — the developer will
-		// need to ensure the generated TS matches their struct definition.
-		// In practice, for the generator test assertions we need at least the
-		// type name to appear in the output.
-		//
-		// NOTE: Full struct field introspection requires importing the Go type
-		// via go/types which is out of scope for this generator. We emit a
-		// placeholder comment interface for the interface shape.
-		// Developers can override or extend the generated __ssr_gen__.ts.
-		inProgress[goType] = true
-		// Emit an opaque interface for the struct. Field-accurate typing
-		// would require Go type introspection (go/types). Developers who want
-		// stronger typing can declare a TypeScript module augmentation
-		// alongside this file to add field declarations.
-		structRegistry[goType] = fmt.Sprintf("// %s: opaque struct type. Add a module augmentation for field-level typing.\nexport interface %s {\n  [key: string]: unknown;\n}", goType, goType)
-		delete(inProgress, goType)
-		return goType, ""
-	}
-
-	// Qualified name (e.g. "pkg.Type") or unrecognised → unknown.
-	return "unknown", ""
-}
-
-// isSimpleIdentifier returns true if s is a valid Go identifier (letters, digits,
-// underscores; starts with letter or underscore; no dots).
-func isSimpleIdentifier(s string) bool {
-	if len(s) == 0 {
-		return false
-	}
-	for i, c := range s {
-		if i == 0 {
-			if !isLetter(c) {
-				return false
-			}
-		} else {
-			if !isLetter(c) && !isDigit(c) {
-				return false
-			}
-		}
-	}
-	return true
-}
-
-func isLetter(c rune) bool {
-	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'
-}
-
-func isDigit(c rune) bool {
-	return c >= '0' && c <= '9'
-}
-
-// genRouteTSTypes generates the TypeScript type declarations for a reactive
-// route's variables and writes them to __ssr_gen__.ts alongside the
-// route's index.html. Only called for reactive routes.
-//
-// The file emits:
-//  1. TS interface declarations for any struct-typed reactive variables.
-//  2. A ReadVars / WriteVars type alias for typed ssr.get / ssr.set.
-//
-// Non-reactive routes skip this entirely (no __ssr_gen__.ts written).
+// genRouteTSTypes writes __ssr_gen__.ts next to the index.html of a route with
+// live values or calls: the TypeScript types of its client-writable variables
+// and its calls' arguments and results, mapped from the route package's declarations
+// as encoding/json writes them, and its typed client. A type the mapper cannot
+// name exactly becomes unknown, with a warning.
 func (g *Generator) genRouteTSTypes(rPath string, r *routepkg.Route) error {
-	if !isReactiveRoute(r) {
+	if !hasLiveConnection(r) {
 		return nil
 	}
 
+	indexPath := g.routeIndexPath(rPath)
+	m := newTSMapper(g, loadGoPackage(filepath.Dir(indexPath)))
 	vars := r.Template().GetVariables()
-	rv := reactiveVars(vars)
-	if len(rv) == 0 {
-		return nil
+	writeTS := map[string]string{}
+	for _, v := range clientWritableVars(vars) {
+		writeTS[v.Name] = m.typeOf(v.Type, indexPath, v.Line)
 	}
-
-	structRegistry := make(map[string]string) // typeName → TS interface text
-	inProgress := make(map[string]bool)
-
-	// Map each reactive var to its TS type.
-	type varTSEntry struct {
-		name   string
-		tsType string
-	}
-	entries := make([]varTSEntry, 0, len(rv))
-	for _, v := range rv {
-		tsType, warn := goTypeToTSType(v.Type, structRegistry, inProgress)
-		if warn != "" {
-			log.Printf("reactive[%s]: TS type mapping warning for variable %q (Go type %q): %s", rPath, v.Name, v.Type, warn)
-		}
-		entries = append(entries, varTSEntry{name: v.Name, tsType: tsType})
+	calls := r.Template().GetCalls()
+	callTS := make([][2]string, len(calls))
+	for i, c := range calls {
+		callTS[i] = [2]string{m.typeOf(c.In, indexPath, c.Line), m.typeOf(c.Out, indexPath, c.Line)}
 	}
 
 	var sb strings.Builder
@@ -962,56 +662,45 @@ func (g *Generator) genRouteTSTypes(rPath string, r *routepkg.Route) error {
 	sb.WriteString("import { createSsrClient } from 'gossr-runtime';\n")
 	sb.WriteString("import 'gossr-runtime/ssr-block.css';\n\n")
 
-	// Emit struct interface declarations in stable order.
-	sortedNames := make([]string, 0, len(structRegistry))
-	for k := range structRegistry {
-		sortedNames = append(sortedNames, k)
-	}
-	sort.Strings(sortedNames)
-	for _, name := range sortedNames {
-		sb.WriteString(structRegistry[name])
+	for _, decl := range m.declarations() {
+		sb.WriteString(decl)
 		sb.WriteString("\n\n")
 	}
 
-	// Emit ReadVars type (all reactive vars — used by ssr.get<T>).
+	// ReadVars: every reactive variable, for ssr.get and ssr.on, which give the
+	// markup the server rendered for it.
 	sb.WriteString("export type ReadVars = {\n")
-	for _, e := range entries {
-		sb.WriteString("  ")
-		sb.WriteString(e.name)
-		sb.WriteString(": ")
-		sb.WriteString(e.tsType)
-		sb.WriteString(";\n")
+	for _, v := range reactiveVars(vars) {
+		sb.WriteString("  " + v.Name + ": string;\n")
 	}
 	sb.WriteString("}\n\n")
 
-	// Emit WriteVars type (only client-writable vars — used by ssr.set<T>).
-	cwEntries := make([]varTSEntry, 0)
-	cwSet := make(map[string]bool)
-	for _, v := range clientWritableVars(vars) {
-		cwSet[v.Name] = true
-	}
-	for _, e := range entries {
-		if cwSet[e.name] {
-			cwEntries = append(cwEntries, e)
-		}
-	}
+	// WriteVars: the client-writable variables, for ssr.set, which sends a
+	// JSON value.
 	sb.WriteString("export type WriteVars = {\n")
-	for _, e := range cwEntries {
-		sb.WriteString("  ")
-		sb.WriteString(e.name)
-		sb.WriteString(": ")
-		sb.WriteString(e.tsType)
-		sb.WriteString(";\n")
+	for _, v := range clientWritableVars(vars) {
+		sb.WriteString("  " + v.Name + ": " + writeTS[v.Name] + ";\n")
 	}
 	sb.WriteString("}\n\n")
 
-	// Emit a fully-wired, typed ssr client. The wsUrl is computed at runtime
-	// from window.location.pathname so the connection points at whichever
-	// leaf route the user navigated to. routeKey is baked from the route's
-	// path hash. Developers import { ssr } and call it directly.
-	sb.WriteString("export const ssr = createSsrClient<ReadVars, WriteVars>({\n")
+	// Calls: each call's argument and result, for ssr.call. A route without
+	// calls passes an empty type, so no name type-checks.
+	if len(calls) == 0 {
+		sb.WriteString("export type Calls = {};\n\n")
+	} else {
+		sb.WriteString("export type Calls = {\n")
+		for i, c := range calls {
+			sb.WriteString("  " + c.Name + ": { in: " + callTS[i][0] + "; out: " + callTS[i][1] + " };\n")
+		}
+		sb.WriteString("}\n\n")
+	}
+
+	// The client's wsUrl is computed at runtime from the page's own address,
+	// query included, so the live connection's hooks see what the page's hooks
+	// saw.
+	sb.WriteString("export const ssr = createSsrClient<ReadVars, WriteVars, Calls>({\n")
 	sb.WriteString("  wsUrl: typeof window !== 'undefined'\n")
-	sb.WriteString("    ? window.location.pathname.replace(/\\/$/, '') + '/__ws'\n")
+	sb.WriteString("    ? window.location.pathname.replace(/\\/$/, '') + '/__ws' + window.location.search\n")
 	sb.WriteString("    : '',\n")
 	sb.WriteString("  routeKey: '")
 	sb.WriteString(routeKeyFor(rPath))

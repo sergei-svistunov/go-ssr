@@ -62,6 +62,23 @@ func (p *DP) Subscribe(ctx context.Context, r *mux.Request, state *ReactiveState
 	}
 }
 
+// LastSeenOut is the result of the refreshLastSeen call.
+type LastSeenOut struct {
+	LastSeen string    `json:"lastSeen"`
+	At       time.Time `json:"at"`
+}
+
+// CallRefreshLastSeen marks the user as seen now and returns the new value.
+func (p *DP) CallRefreshLastSeen(_ context.Context, r *mux.Request, _ struct{}) (LastSeenOut, error) {
+	login := r.URLParam("userId")
+	if p.model.GetUserByLogin(login) == nil {
+		return LastSeenOut{}, mux.NewHttpError(http.StatusNotFound, "user wasn't found")
+	}
+	now := time.Now()
+	p.model.TouchUserLastSeen(login, now.Unix())
+	return LastSeenOut{LastSeen: formatLastSeen(now.Unix()), At: now.UTC()}, nil
+}
+
 func formatLastSeen(ts int64) string {
 	elapsed := time.Since(time.Unix(ts, 0))
 	switch {

@@ -5,6 +5,7 @@ import (
 	"go/parser"
 	"go/printer"
 	"go/token"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -133,17 +134,30 @@ func TestDocs_EveryDiagnosticCodeIsDocumented(t *testing.T) {
 	}
 
 	codes := diagnosticCodes(t)
-	if len(codes) == 0 {
-		t.Fatal("no diagnostic codes found in the generator; this test no longer reads them correctly")
+	// One code from each place the scan reads: the generator, the template
+	// package and pkg/mux. Missing one means the scan no longer reaches it.
+	for _, want := range []string{"E01", "E13", "E21"} {
+		if !slices.Contains(codes, want) {
+			t.Fatalf("found %v, without %s; this test no longer reads the codes correctly", codes, want)
+		}
 	}
 
 	for _, code := range codes {
-		if !strings.Contains(errorsTopic.Body, code) {
-			t.Errorf("the generator reports %s but docs/errors.md does not explain it", code)
+		if !hasHeading(errorsTopic.Body, "### "+code+" ") {
+			t.Errorf("%s can be reported but docs/errors.md has no \"### %s\" heading for it", code, code)
 		}
 	}
 
 	t.Logf("documented codes %v", codes)
+}
+
+func hasHeading(body, prefix string) bool {
+	for line := range strings.SplitSeq(body, "\n") {
+		if strings.HasPrefix(line, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // Cross-references between topics are written as `slug`, and a broken one sends a
@@ -229,29 +243,36 @@ func switchCases(t *testing.T, want string) []string {
 	return slices.Compact(found)
 }
 
-// diagnosticCodes collects the codes the generator attaches to diagnostics.
+// diagnosticCodes collects the codes the generator, the template package and
+// pkg/mux can report: in a Code field, a refuse call or a panic.
 func diagnosticCodes(t *testing.T) []string {
 	t.Helper()
 
-	dir := filepath.Join("..", "generator")
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	re := regexp.MustCompile(`Code(?::|\s*=)\s*"([A-Z]\d+)"`)
+	re := regexp.MustCompile(`(?:Code(?::|\s*=)\s*|refuse\([^\n]*?|panic\([^\n]*?)"(E\d\d)\b`)
 	var codes []string
 
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
-			continue
-		}
-		body, err := os.ReadFile(filepath.Join(dir, e.Name()))
+	for _, root := range []string{filepath.Join("..", "generator"), filepath.Join("..", "..", "pkg", "mux")} {
+		err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.IsDir() && d.Name() == "testdata" {
+				return filepath.SkipDir
+			}
+			if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+				return nil
+			}
+			body, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			for _, m := range re.FindAllStringSubmatch(string(body), -1) {
+				codes = append(codes, m[1])
+			}
+			return nil
+		})
 		if err != nil {
 			t.Fatal(err)
-		}
-		for _, m := range re.FindAllStringSubmatch(string(body), -1) {
-			codes = append(codes, m[1])
 		}
 	}
 

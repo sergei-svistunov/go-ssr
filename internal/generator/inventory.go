@@ -33,10 +33,13 @@ type RouteInfo struct {
 
 	Variables []VariableInfo `json:"variables,omitempty"`
 	Forms     []FormInfo     `json:"forms,omitempty"`
+	// Calls are the names of the route's page calls, sorted.
+	Calls []string `json:"calls,omitempty"`
 
 	// DataProviderMethods lists the methods the route's RouteDataProvider
 	// interface requires. The generated dataprovider.go stub starts with all of
-	// them; the compiler enforces the set from then on.
+	// them; the compiler enforces the set from then on. The optional Guard is
+	// not listed.
 	DataProviderMethods []string `json:"dataProviderMethods"`
 	HasDataProvider     bool     `json:"hasDataProvider"`
 }
@@ -90,7 +93,7 @@ func (g *Generator) Inventory(routePath string) (Inventory, error) {
 	inv := Inventory{
 		ProjectDir:  g.dir,
 		WebDir:      g.relPath(g.webDir),
-		WSEndpoints: g.computeWSLeafPaths(),
+		WSEndpoints: g.livePagePaths(),
 	}
 
 	if routePath != "" {
@@ -168,6 +171,10 @@ func (g *Generator) routeInfo(rPath string, r *routepkg.Route, wsEndpoint string
 		info.Forms = append(info.Forms, form)
 	}
 
+	for _, c := range tmpl.GetCalls() {
+		info.Calls = append(info.Calls, c.Name)
+	}
+
 	info.DataProviderMethods = dataProviderMethods(tmpl, info.Reactive)
 
 	return info
@@ -191,6 +198,10 @@ func dataProviderMethods(tmpl *template.Template, reactive bool) []string {
 		for _, v := range clientWritableVars(tmpl.GetVariables()) {
 			methods = append(methods, "Validate"+getExportedName(v.Name))
 		}
+	}
+
+	for _, c := range tmpl.GetCalls() {
+		methods = append(methods, callMethod(c.Name))
 	}
 
 	return methods

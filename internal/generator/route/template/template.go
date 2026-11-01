@@ -6,10 +6,14 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"fmt"
+	"go/ast"
+	"go/parser"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -49,6 +53,9 @@ type Template struct {
 	forms       []*Form
 	contentNode *node.SsrContent
 	ssrBindRefs []SsrBindRef
+	// bindElements are the elements with ssr:bind.
+	bindElements []*node.HtmlElement
+	calls        []*node.SsrCall
 }
 
 type Variable struct {
@@ -131,67 +138,124 @@ func Parse(filename string, imageResolver func(string) string) (*Template, error
 	rootNode := node.HtmlElement{}
 	stack := NodesStack{&rootNode}
 	var (
-		variables   []Variable
-		forms       []*Form
-		activeForm  *Form
-		contentNode *node.SsrContent
-		ssrBindRefs []SsrBindRef
+		variables    []Variable
+		forms        []*Form
+		activeForm   *Form
+		contentNode  *node.SsrContent
+		ssrBindRefs  []SsrBindRef
+		bindElements []*node.HtmlElement
+		calls        []*node.SsrCall
+		// wrapped are the elements with ssr:if, ssr:else-if, ssr:else or ssr:for.
+		wrapped = map[*node.HtmlElement]bool{}
+		// rcdata holds the values in the text of <title> and <textarea>, by element.
+		rcdata []rcdataValue
+
+		// raw is the element whose text the tokenizer reads next without parsing markup.
+		raw       string
+		rawLine   int
+		rawClosed bool // its start tag ends with "/>"
+		rawData   bool // it is a <script> data block
 	)
 
 	for {
 		tokenType := tok.Next()
 		tokenLines := bytes.Count(tok.Raw(), []byte{'\n'})
+		inRaw, inRawLine, inRawClosed, inRawData := raw, rawLine, rawClosed, rawData
+		raw = ""
+		if inRaw == "style" && tokenType != html.TextToken {
+			return nil, refuse(filename, inRawLine, "E16", fixInline, "a <style> element")
+		}
 		switch tokenType {
 		case html.ErrorToken:
 			if tok.Err() == io.EOF {
+				if err := checkLiveRCDATA(filename, rcdata, variables); err != nil {
+					return nil, err
+				}
 				return &Template{
-					nodes:       rootNode.Children,
-					variables:   variables,
-					forms:       forms,
-					contentNode: contentNode,
-					ssrBindRefs: ssrBindRefs,
+					nodes:        rootNode.Children,
+					variables:    variables,
+					forms:        forms,
+					contentNode:  contentNode,
+					ssrBindRefs:  ssrBindRefs,
+					bindElements: bindElements,
+					calls:        calls,
 				}, nil
 			}
 			return nil, syntaxErrf(filename, curLine, "cannot parse HTML: %v", tok.Err())
 		case html.TextToken:
 			text := string(tok.Text())
-			if !stack.isWhitespacePreserved() {
-				if strings.TrimSpace(text) == "" {
-					break
-				}
-				text = reWhitespace.ReplaceAllString(text, " ")
+			preserve := stack.isWhitespacePreserved()
+			if !preserve && strings.TrimSpace(text) == "" {
+				break
 			}
 			nodes, err := parseText(text, filename, curLine, false)
 			if err != nil {
 				return nil, err
 			}
+			if !preserve {
+				for _, n := range nodes {
+					if t, ok := n.(*node.Text); ok {
+						t.Text = reWhitespace.ReplaceAllString(t.Text, " ")
+					}
+				}
+			}
+			if err := checkTextValues(filename, inRaw, nodes); err != nil {
+				return nil, err
+			}
+			if rcdataTags[inRaw] {
+				for _, n := range nodes {
+					if e, ok := n.(*node.Expression); ok {
+						rcdata = append(rcdata, rcdataValue{inRaw, e})
+					}
+				}
+			}
+			switch {
+			case inRaw == "style":
+				return nil, refuse(filename, inRawLine, "E16", fixInline, "a <style> element")
+			case inRaw == "script" && !inRawData && strings.TrimSpace(text) != "":
+				msg := "<script> has an inline body"
+				if inRawClosed {
+					msg = "<script/> does not end the element, so the text after it is an inline script body"
+				}
+				return nil, refuse(filename, inRawLine, "E16", fixInline, msg)
+			case (undecodedTags[inRaw] || inRaw == "script") && hasMarkup(text):
+				return nil, syntaxErrf(filename, inRawLine, "markup inside <%s>, which some browsers parse and others show as text; it may hold only plain text", inRaw)
+			}
 			stack.Top().AddChildren(nodes...)
 
 		case html.StartTagToken, html.SelfClosingTagToken:
 			tagName, hasAttrs := tok.TagName()
+			if hasValueMarker(string(tagName)) {
+				return nil, refuse(filename, curLine, "E17", fixName, "a value in the tag name <"+string(tagName)+">")
+			}
+			attrs, err := readAttrs(tok, hasAttrs, filename, curLine, string(tagName))
+			if err != nil {
+				return nil, err
+			}
 
 			if bytes.HasPrefix(tagName, []byte("ssr:")) {
+				ssrTag := string(tagName[4:])
+				rendered := ssrTag == "form" || ssrTag == "input" || ssrTag == "select" || ssrTag == "textarea"
 				attrsMap := map[string]string{}
-				attributes := make([]node.HtmlAttribute, 0, len(attrsMap))
-				for {
-					key, value, more := tok.TagAttr()
-					attrsMap[string(key)] = string(value)
+				attributes := make([]node.HtmlAttribute, 0, len(attrs))
+				for _, a := range attrs {
+					attrsMap[a.key] = a.value
 					var nodes []node.Node
-					if len(value) > 0 {
-						n, err := parseText(string(value), filename, curLine, false)
-						if err != nil {
-							return nil, err
-						}
-						nodes = n
+					var err error
+					switch {
+					case rendered && !strings.HasPrefix(a.key, "ssr:"):
+						nodes, err = attrValues(filename, curLine, ssrTag, a.key, a.value, a.quoted)
+					case len(a.value) > 0:
+						nodes, err = parseText(a.value, filename, curLine, false)
+					}
+					if err != nil {
+						return nil, err
 					}
 
 					attributes = append(attributes, node.HtmlAttribute{
-						Key:    string(key),
+						Key:    a.key,
 						Values: nodes,
 					})
-					if !more {
-						break
-					}
 				}
 
 				switch string(tagName[4:]) {
@@ -218,6 +282,12 @@ func Parse(filename string, imageResolver func(string) string) (*Template, error
 					stack.Top().AddChildren(contentNode)
 				case "assets":
 					stack.Top().AddChildren(&node.SsrAssets{node.BaseNode{filename, curLine}})
+				case "call":
+					call, err := parseCall(filename, curLine, attrs, stack, wrapped, calls)
+					if err != nil {
+						return nil, err
+					}
+					calls = append(calls, call)
 				case "form":
 					if activeForm != nil {
 						return nil, syntaxErrf(filename, curLine, "<ssr:form> cannot be nested inside another <ssr:form>")
@@ -270,6 +340,19 @@ func Parse(filename string, imageResolver func(string) string) (*Template, error
 
 					switch string(tagName[4:]) {
 					case "input":
+						inputType := strings.ToLower(attrsMap["type"])
+						if !inputTypes[inputType] {
+							return nil, syntaxErrf(filename, curLine, "unknown type %q on <ssr:input name=%q>", attrsMap["type"], attrsMap["name"])
+						}
+						attrsMap["type"] = inputType
+						goValue := ""
+						if inputType == "checkbox" || inputType == "radio" {
+							v, ok := goLiteral(goType, attrsMap["value"])
+							if !ok {
+								return nil, syntaxErrf(filename, curLine, "value %q of <ssr:input name=%q> is not a %s", attrsMap["value"], attrsMap["name"], goType)
+							}
+							goValue = v
+						}
 						if attrsMap["type"] == "file" {
 							if activeForm.Node.EncType == "" {
 								activeForm.Node.EncType = node.FormEncTypeMultipart
@@ -285,6 +368,7 @@ func Parse(filename string, imageResolver func(string) string) (*Template, error
 							Name:       attrsMap["name"],
 							Type:       attrsMap["type"],
 							Value:      attrsMap["value"],
+							GoValue:    goValue,
 							Attributes: attributes,
 						}
 						if attrsMap["type"] == "file" {
@@ -347,153 +431,159 @@ func Parse(filename string, imageResolver func(string) string) (*Template, error
 
 					stack.Top().AddChildren(n)
 				default:
-					return nil, syntaxErrf(filename, curLine, "unknown GoSSR tag <%s>", tagName)
+					return nil, syntaxErrf(filename, curLine, "unknown GoSSR tag <%s>; the tags are ssr:var, ssr:content, ssr:assets, ssr:form, ssr:input, ssr:select, ssr:textarea and ssr:call", tagName)
 				}
 
 				continue
 			}
 
+			tag := string(tagName)
 			n := &node.HtmlElement{
-				BaseNode:   node.BaseNode{filename, curLine},
-				TagName:    string(tagName),
-				SelfClosed: tokenType == html.SelfClosingTagToken,
+				BaseNode: node.BaseNode{filename, curLine},
+				TagName:  tag,
+				// The tokenizer reads the text after "<title/>" as the element's, as browsers do.
+				SelfClosed: tokenType == html.SelfClosingTagToken && !rawTags[tag],
 			}
 			hasWrapper := false
-			if hasAttrs {
-				for {
-					key, value, more := tok.TagAttr()
+			for _, a := range attrs {
+				key, value := []byte(a.key), []byte(a.value)
 
-					// Process SSR attributes
-					if bytes.HasPrefix(key, []byte("ssr:")) {
-						switch key := string(key[4:]); key {
-						case "bind":
-							// Record ssr:bind reference for generator validation (E05, E06).
-							ssrBindRefs = append(ssrBindRefs, SsrBindRef{
-								File:    filename,
-								Line:    curLine,
-								VarName: string(value),
-							})
-							// Preserve the ssr:bind attribute in the rendered HTML so the
-							// TypeScript runtime's wireSsrBindElements() can discover it via
-							// el.getAttribute('ssr:bind'). Without this the attribute is
-							// consumed silently and the input is never wired.
-							n.Attributes = append(n.Attributes, node.HtmlAttribute{
-								Key:    "ssr:bind",
-								Values: []node.Node{&node.Text{Text: string(value)}},
-							})
-							if !more {
-								break
-							}
-							continue
-						case "for":
-							expr, err := parseText(string(value), filename, curLine, true)
-							if err != nil {
-								return nil, err
-							}
-							loop, ok := expr[0].(*node.Loop)
-							if !ok {
-								return nil, syntaxErrf(filename, curLine, "invalid ssr:for expression %q, expected \"item in collection\" or \"i, item in collection\"", string(value))
-							}
-							loop.Children = []node.Node{n}
-							hasWrapper = true
-							stack.Top().AddChildren(loop)
-						case "if":
-							expr, err := parseText(string(value), filename, curLine, true)
-							if err != nil {
-								return nil, err
-							}
-							hasWrapper = true
-							stack.Top().AddChildren(&node.SsrCondition{
-								BaseNode: node.BaseNode{filename, curLine},
-								Conditions: []node.SsrConditionData{{
-									BaseNode:  node.BaseNode{filename, curLine},
-									Condition: expr[0],
-									Body:      n,
-								}}},
-							)
-
-						case "else", "else-if":
-							elseErr := func() *SyntaxError {
-								return syntaxErrf(filename, curLine, "ssr:%s must directly follow an element with ssr:if or ssr:else-if", key)
-							}
-							lastChild := stack.Top().LastChild()
-							if lastChild == nil {
-								return nil, elseErr()
-							}
-							for {
-								nodeText, ok := lastChild.(*node.Text)
-								if !ok || strings.TrimSpace(nodeText.Text) != "" {
-									break
-								}
-								stack.Top().PopChild()
-								lastChild = stack.Top().LastChild()
-								if lastChild == nil {
-									return nil, elseErr()
-								}
-							}
-							nodeCond, ok := lastChild.(*node.SsrCondition)
-							if !ok {
-								return nil, elseErr()
-							}
-							hasWrapper = true
-							if key == "else" {
-								nodeCond.ElseBody = n
-							} else {
-								expr, err := parseText(string(value), filename, curLine, true)
-								if err != nil {
-									return nil, err
-								}
-								nodeCond.Conditions = append(nodeCond.Conditions, node.SsrConditionData{
-									BaseNode:  node.BaseNode{filename, curLine},
-									Condition: expr[0],
-									Body:      n,
-								})
-							}
-						default:
-							return nil, syntaxErrf(filename, curLine, "unknown GoSSR attribute \"ssr:%s\"", key)
-						}
-						if more {
-							continue
-						}
-						break
-					}
-
-					// Fix assets for local images
-					if string(key) == "src" && n.TagName == "img" {
-						value = []byte(imageResolver(string(value)))
-					}
-
-					var nodes []node.Node
-					if len(value) > 0 {
-						n, err := parseText(string(value), filename, curLine, false)
+				// Process SSR attributes
+				if bytes.HasPrefix(key, []byte("ssr:")) {
+					switch key := string(key[4:]); key {
+					case "bind":
+						// Record ssr:bind reference for generator validation (E05, E06).
+						ssrBindRefs = append(ssrBindRefs, SsrBindRef{
+							File:    filename,
+							Line:    curLine,
+							VarName: string(value),
+						})
+						// Preserve the ssr:bind attribute in the rendered HTML so the
+						// TypeScript runtime's wireSsrBindElements() can discover it via
+						// el.getAttribute('ssr:bind'). Without this the attribute is
+						// consumed silently and the input is never wired.
+						n.Attributes = append(n.Attributes, node.HtmlAttribute{
+							Key:    "ssr:bind",
+							Values: []node.Node{&node.Text{Text: string(value)}},
+						})
+						bindElements = append(bindElements, n)
+						continue
+					case "for":
+						expr, err := parseText(string(value), filename, curLine, true)
 						if err != nil {
 							return nil, err
 						}
-						nodes = n
-					}
+						loop, ok := expr[0].(*node.Loop)
+						if !ok {
+							return nil, syntaxErrf(filename, curLine, "invalid ssr:for expression %q, expected \"item in collection\" or \"i, item in collection\"", string(value))
+						}
+						loop.Children = []node.Node{n}
+						hasWrapper = true
+						stack.Top().AddChildren(loop)
+					case "if":
+						expr, err := parseText(string(value), filename, curLine, true)
+						if err != nil {
+							return nil, err
+						}
+						hasWrapper = true
+						stack.Top().AddChildren(&node.SsrCondition{
+							BaseNode: node.BaseNode{filename, curLine},
+							Conditions: []node.SsrConditionData{{
+								BaseNode:  node.BaseNode{filename, curLine},
+								Condition: expr[0],
+								Body:      n,
+							}}},
+						)
 
-					n.Attributes = append(n.Attributes, node.HtmlAttribute{
-						Key:    string(key),
-						Values: nodes,
-					})
-					if !more {
-						break
+					case "else", "else-if":
+						elseErr := func() *SyntaxError {
+							return syntaxErrf(filename, curLine, "ssr:%s must directly follow an element with ssr:if or ssr:else-if", key)
+						}
+						lastChild := stack.Top().LastChild()
+						if lastChild == nil {
+							return nil, elseErr()
+						}
+						for {
+							nodeText, ok := lastChild.(*node.Text)
+							if !ok || strings.TrimSpace(nodeText.Text) != "" {
+								break
+							}
+							stack.Top().PopChild()
+							lastChild = stack.Top().LastChild()
+							if lastChild == nil {
+								return nil, elseErr()
+							}
+						}
+						nodeCond, ok := lastChild.(*node.SsrCondition)
+						if !ok {
+							return nil, elseErr()
+						}
+						hasWrapper = true
+						if key == "else" {
+							nodeCond.ElseBody = n
+						} else {
+							expr, err := parseText(string(value), filename, curLine, true)
+							if err != nil {
+								return nil, err
+							}
+							nodeCond.Conditions = append(nodeCond.Conditions, node.SsrConditionData{
+								BaseNode:  node.BaseNode{filename, curLine},
+								Condition: expr[0],
+								Body:      n,
+							})
+						}
+					default:
+						return nil, syntaxErrf(filename, curLine, "unknown GoSSR attribute \"ssr:%s\"", key)
 					}
+					continue
 				}
+
+				// Fix assets for local images
+				if string(key) == "src" && n.TagName == "img" {
+					value = []byte(imageResolver(string(value)))
+				}
+
+				nodes, err := attrValues(filename, curLine, tag, string(key), string(value), a.quoted)
+				if err != nil {
+					return nil, err
+				}
+
+				n.Attributes = append(n.Attributes, node.HtmlAttribute{
+					Key:    string(key),
+					Values: nodes,
+				})
 			}
 
-			if !hasWrapper {
+			if hasWrapper {
+				wrapped[n] = true
+			} else {
 				stack.Top().AddChildren(n)
 			}
-			if tokenType == html.StartTagToken && !htmlutils.VoidElements[n.TagName] {
+			switch {
+			case rawTags[tag]:
+				raw, rawLine, rawClosed = tag, curLine, tokenType == html.SelfClosingTagToken
+				rawData = tag == "script" && isDataBlock(n)
+				stack.Push(n)
+			case tokenType == html.StartTagToken && !htmlutils.VoidElements[tag]:
 				stack.Push(n)
 			}
 		case html.EndTagToken:
 			tagName, _ := tok.TagName()
-			if string(tagName) == "ssr:form" {
-				activeForm = nil
+			name := string(tagName)
+			// An end tag closes the nearest open element of its name and every element
+			// opened after it; one that matches no open element is ignored.
+			for i := len(stack) - 1; i > 0; i-- {
+				if tagOf(stack[i]) != name {
+					continue
+				}
+				for _, open := range stack[i:] {
+					if _, ok := open.(*node.SsrForm); ok {
+						activeForm = nil
+					}
+				}
+				stack = stack[:i]
+				break
 			}
-			stack.Pop()
 
 		case html.CommentToken:
 			// Ignore comments
@@ -505,6 +595,197 @@ func Parse(filename string, imageResolver func(string) string) (*Template, error
 		}
 		curLine += tokenLines
 	}
+}
+
+const fixCall = `declare <ssr:call name="lowerCamel" in="Type" out="Type"/> once, at the template's top level`
+
+var reCallName = regexp.MustCompile(`^[a-z][A-Za-z0-9]*$`)
+
+// parseCall reads the <ssr:call> with attrs at line. It refuses the tag inside an element
+// with ssr:if, ssr:else-if, ssr:else or ssr:for or inside an <ssr:form>, and a name that
+// one of calls, those declared before it, has.
+func parseCall(filename string, line int, attrs []tagAttr, stack NodesStack, wrapped map[*node.HtmlElement]bool, calls []*node.SsrCall) (*node.SsrCall, error) {
+	call := &node.SsrCall{BaseNode: node.BaseNode{File: filename, Line: line}}
+	set := map[string]bool{}
+	for _, a := range attrs {
+		switch a.key {
+		case "name":
+			call.Name = a.value
+		case "in":
+			call.In = a.value
+		case "out":
+			call.Out = a.value
+		default:
+			return nil, refuse(filename, line, "E19", fixCall, fmt.Sprintf("<ssr:call> has the unknown attribute %q", a.key))
+		}
+		set[a.key] = true
+	}
+	switch {
+	case call.Name == "":
+		return nil, refuse(filename, line, "E19", fixCall, "<ssr:call> has no name")
+	case !reCallName.MatchString(call.Name):
+		return nil, refuse(filename, line, "E19", fixCall, fmt.Sprintf("<ssr:call> has the name %q; a name is an ASCII letter in lower case followed by letters and digits", call.Name))
+	}
+	for _, t := range []struct{ attr, value string }{{"in", call.In}, {"out", call.Out}} {
+		if !set[t.attr] || strings.TrimSpace(t.value) == "" {
+			return nil, refuse(filename, line, "E19", fixCall, fmt.Sprintf("<ssr:call name=%q> has no %s type; write struct{} for none", call.Name, t.attr))
+		}
+		if !isGoType(t.value) {
+			return nil, refuse(filename, line, "E19", fixCall, fmt.Sprintf("<ssr:call name=%q>: the %s type %q is not a Go type", call.Name, t.attr, t.value))
+		}
+	}
+	for _, open := range stack {
+		el, isElement := open.(*node.HtmlElement)
+		if _, isForm := open.(*node.SsrForm); isForm || isElement && wrapped[el] {
+			return nil, refuse(filename, line, "E19", fixCall, fmt.Sprintf("<ssr:call name=%q> is inside ssr:if, ssr:for or <ssr:form>", call.Name))
+		}
+	}
+	for _, c := range calls {
+		if c.Name == call.Name {
+			return nil, refuse(filename, line, "E19", fixCall, fmt.Sprintf("<ssr:call name=%q> is declared twice; the first is on line %d", call.Name, c.Line))
+		}
+	}
+	return call, nil
+}
+
+// isGoType reports whether s is written as a Go type.
+func isGoType(s string) bool {
+	e, err := parser.ParseExpr(s)
+	return err == nil && isTypeExpr(e)
+}
+
+func isTypeExpr(e ast.Expr) bool {
+	switch t := e.(type) {
+	case *ast.Ident, *ast.StructType, *ast.InterfaceType, *ast.FuncType:
+		return true
+	case *ast.SelectorExpr:
+		_, ok := t.X.(*ast.Ident)
+		return ok
+	case *ast.ParenExpr:
+		return isTypeExpr(t.X)
+	case *ast.StarExpr:
+		return isTypeExpr(t.X)
+	case *ast.ArrayType:
+		return isTypeExpr(t.Elt)
+	case *ast.MapType:
+		return isTypeExpr(t.Key) && isTypeExpr(t.Value)
+	case *ast.ChanType:
+		return isTypeExpr(t.Value)
+	case *ast.IndexExpr:
+		return isTypeExpr(t.X) && isTypeExpr(t.Index)
+	case *ast.IndexListExpr:
+		if !isTypeExpr(t.X) {
+			return false
+		}
+		for _, i := range t.Indices {
+			if !isTypeExpr(i) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
+// tagAttr is an attribute of the current start tag.
+type tagAttr struct {
+	key, value string
+	quoted     bool
+}
+
+// readAttrs returns the attributes of the current start tag of tok. It refuses a tag whose
+// attributes the tokenizer and scanAttrs read differently, since then it cannot tell which
+// values are quoted.
+func readAttrs(tok *html.Tokenizer, hasAttrs bool, filename string, line int, tag string) ([]tagAttr, error) {
+	scanned := scanAttrs(tok.Raw())
+	var attrs []tagAttr
+	for more := hasAttrs; more; {
+		var k, v []byte
+		k, v, more = tok.TagAttr()
+		attrs = append(attrs, tagAttr{key: string(k), value: string(v)})
+	}
+	if len(attrs) != len(scanned) {
+		return nil, syntaxErrf(filename, line, "cannot read the attributes of <%s>", tag)
+	}
+	seen := make(map[string]bool, len(attrs))
+	for i := range attrs {
+		if attrs[i].key != scanned[i].name {
+			return nil, syntaxErrf(filename, line, "cannot read the attributes of <%s>", tag)
+		}
+		if strings.ContainsRune(attrs[i].key, 0) {
+			return nil, syntaxErrf(filename, line, "<%s> has an attribute name with a NUL character", tag)
+		}
+		if attrs[i].key == bindRouteAttr {
+			return nil, syntaxErrf(filename, line, "<%s> sets %s, which the generator writes on elements with ssr:bind; remove it", tag, bindRouteAttr)
+		}
+		// Browsers keep the first of two attributes with one name, other parsers the last.
+		if seen[attrs[i].key] {
+			return nil, syntaxErrf(filename, line, "<%s> has the attribute %s twice", tag, attrs[i].key)
+		}
+		seen[attrs[i].key] = true
+		attrs[i].quoted = scanned[i].quoted
+	}
+	return attrs, nil
+}
+
+// inputTypes are the type values of an HTML <input>, "" for the default.
+var inputTypes = map[string]bool{
+	"": true, "button": true, "checkbox": true, "color": true, "date": true, "datetime-local": true,
+	"email": true, "file": true, "hidden": true, "image": true, "month": true, "number": true,
+	"password": true, "radio": true, "range": true, "reset": true, "search": true, "submit": true,
+	"tel": true, "text": true, "time": true, "url": true, "week": true,
+}
+
+// goLiteral returns the Go literal of value as a goType, the type of a form field, and whether
+// value is one.
+func goLiteral(goType, value string) (string, bool) {
+	bits := 0
+	if i := strings.IndexAny(goType, "0123456789"); i >= 0 {
+		bits, _ = strconv.Atoi(goType[i:])
+	}
+	switch goType {
+	case "string":
+		return strconv.Quote(value), true
+	case "bool":
+		b, err := strconv.ParseBool(value)
+		return strconv.FormatBool(b), err == nil
+	case "int", "int8", "int16", "int32", "int64":
+		i, err := strconv.ParseInt(value, 10, bits)
+		return strconv.FormatInt(i, 10), err == nil
+	case "uint", "uint8", "uint16", "uint32", "uint64":
+		u, err := strconv.ParseUint(value, 10, bits)
+		return strconv.FormatUint(u, 10), err == nil
+	case "float32", "float64":
+		f, err := strconv.ParseFloat(value, bits)
+		if err != nil || math.IsNaN(f) || math.IsInf(f, 0) {
+			return "", false
+		}
+		return strconv.FormatFloat(f, 'g', -1, bits), true
+	}
+	return "", false
+}
+
+// isDataBlock reports whether the <script> element n holds data rather than code.
+func isDataBlock(n *node.HtmlElement) bool {
+	for _, a := range n.Attributes {
+		if a.Key == "type" {
+			switch strings.ToLower(strings.Trim(literalText(a.Values), " \t\n\f\r")) {
+			case "application/json", "application/ld+json":
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func tagOf(n node.WithChildren) string {
+	switch n := n.(type) {
+	case *node.HtmlElement:
+		return n.TagName
+	case *node.SsrForm:
+		return "ssr:form"
+	}
+	return ""
 }
 
 func (t *Template) GetVariables() []Variable {
@@ -523,8 +804,30 @@ func (t *Template) GetForms() []*Form {
 
 func (t *Template) GetContentNode() *node.SsrContent { return t.contentNode }
 
+// GetCalls returns the template's <ssr:call> declarations, sorted by name.
+func (t *Template) GetCalls() []*node.SsrCall {
+	sort.Slice(t.calls, func(i, j int) bool { return t.calls[i].Name < t.calls[j].Name })
+	return t.calls
+}
+
 // GetSsrBindRefs returns all ssr:bind references found on native HTML elements.
 func (t *Template) GetSsrBindRefs() []SsrBindRef { return t.ssrBindRefs }
+
+// bindRouteAttr names the route whose client runtime owns an ssr:bind element.
+const bindRouteAttr = "data-ssr-route"
+
+// MarkBindRoute writes data-ssr-route="routeKey" on every element with ssr:bind,
+// so that only the client runtime of the route with that key wires it.
+func (t *Template) MarkBindRoute(routeKey string) {
+	for _, el := range t.bindElements {
+		attr := node.HtmlAttribute{Key: bindRouteAttr, Values: []node.Node{&node.Text{Text: routeKey}}}
+		if i := slices.IndexFunc(el.Attributes, func(a node.HtmlAttribute) bool { return a.Key == bindRouteAttr }); i >= 0 {
+			el.Attributes[i] = attr
+		} else {
+			el.Attributes = append(el.Attributes, attr)
+		}
+	}
+}
 
 // GetNodes returns the top-level AST nodes of the template.
 // Used by the generator's CollectVarRefs analysis pass.
@@ -621,7 +924,8 @@ func blockNodeKey(file string, line int, nodeType string, ordinal int) string {
 //
 // reactive is the map of reactive variable names (built from <ssr:var reactive="true">).
 // keyer is called with the sorted slice of reactive var names the expression
-// references; it returns the LOCAL (un-prefixed) binding key string.
+// references and its source, prefixed with "$" for a {{$ }} site; it returns
+// the LOCAL (un-prefixed) binding key string.
 // routeKeyPrefix is prepended to every emitted key to produce the namespaced
 // wire key (routeKey + "." + localKey). Pass "" for tests or
 // single-route pages where namespacing is still applied consistently.
@@ -682,8 +986,9 @@ func annotateBindingsNode(n node.Node, reactive map[string]bool, keyer func([]st
 		}
 		refs := v.CollectVarRefs(reactive)
 		if len(refs) > 0 {
-			// NOTE: v.Source must be non-empty for composite (multi-ref) expressions.
-			localKey := keyer(refs, v.Source)
+			// The "$" keeps the key apart from a {{ }} site of the same source,
+			// whose markup differs.
+			localKey := keyer(refs, "$"+v.Source)
 			nsKey := namespacedKey(routeKeyPrefix, localKey)
 			v.BindingKey = nsKey
 			bindings[nsKey] = refs

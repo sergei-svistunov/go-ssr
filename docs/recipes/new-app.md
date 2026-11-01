@@ -7,11 +7,13 @@ From nothing to a running app with a layout, two pages and injected dependencies
 ```bash
 mkdir myapp && cd myapp
 go-ssr -init -pkg-name example.com/myapp
-go run .          # http://localhost:8080/
+export CSRF_KEY=$(openssl rand -hex 32)   # a development key
+go run .                                  # http://localhost:8080/
 ```
 
 The directory must be empty. This writes the project, installs npm dependencies, builds assets, generates code
-and runs `go mod tidy`. See `quickstart` for the file list.
+and runs `go mod tidy`. The app signs its CSRF tokens with `CSRF_KEY` and refuses to start without one. See
+`quickstart` for the file list and `config` for the key.
 
 ## 2. Decide on a dependency container
 
@@ -47,18 +49,29 @@ Pass it in when mounting:
 
 ```go
 // internal/web/web.go
-func New(m *model.Model) http.Handler {
+func New(m *model.Model, csrfKey []byte) (http.Handler, error) {
+    ssrHandler, err := pages.NewSsrHandler(m, ssrMux.Options{CSRFKey: csrfKey})
+    if err != nil {
+        return nil, err
+    }
     mux := http.NewServeMux()
-    mux.Handle("/", pages.NewSsrHandler(m, ssrMux.Options{}))
-    return mux
+    mux.Handle("/", ssrHandler)
+    return mux, nil
 }
 ```
 
 ```go
 // main.go
 func main() {
-    m := model.New(openDB())
-    log.Fatal(http.ListenAndServe(":8080", web.New(m)))
+    csrfKey, err := hex.DecodeString(os.Getenv("CSRF_KEY"))
+    if err != nil || len(csrfKey) != 32 {
+        log.Fatal("CSRF_KEY must be 64 hex characters; generate one with: openssl rand -hex 32")
+    }
+    handler, err := web.New(model.New(openDB()), csrfKey)
+    if err != nil {
+        log.Fatal(err)
+    }
+    log.Fatal(http.ListenAndServe(":8080", handler))
 }
 ```
 
@@ -87,7 +100,8 @@ func main() {
 ```
 
 The `default` attribute means a request to `/` redirects to `/home`. Without it the route needs a
-`DefaultRoute` hook.
+`DefaultRoute` hook. A root template without `<ssr:content/>` would be a gate instead: `/` would render its own
+page, and `/home` would render without the layout (`routing`).
 
 ## 4. Add the pages
 
@@ -160,6 +174,8 @@ func NewDP(d *model.Model) *DP { return &DP{m: d} }
 go-ssr -watch
 ```
 
+The app it starts inherits the shell's `CSRF_KEY`, or takes one from `env` in `gossr.yaml`.
+
 Then keep going: `recipes/add-route`, `recipes/add-form`, `recipes/add-reactive-var`. For a release build see
 `recipes/deploy-prod`.
 
@@ -168,5 +184,6 @@ Then keep going: `recipes/add-route`, `recipes/add-form`, `recipes/add-reactive-
 - [ ] `gossr.yaml` has `webPackage`, and `depsPackage`/`depsType` if dependencies are needed
 - [ ] the deps package does not import the `pages` tree
 - [ ] the root template has `<ssr:assets/>` in `<head>` and one `<ssr:content/>`
-- [ ] every route with children has a default child, via `default` or `DefaultRoute`
+- [ ] every layout with children has a default child, via `default` or `DefaultRoute`
+- [ ] `CSRF_KEY` is set for development, and production reads its key from the secret store
 - [ ] `go-ssr` runs clean and `go build ./...` compiles

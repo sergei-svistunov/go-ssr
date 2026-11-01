@@ -2,7 +2,6 @@ package mux
 
 import (
 	"crypto/tls"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -89,17 +88,15 @@ func TestCrossSite_SchemeAware(t *testing.T) {
 	}
 }
 
-func TestNew_PanicsOnMalformedOriginPattern(t *testing.T) {
-	defer func() {
-		if recover() == nil {
-			t.Fatal("expected New to panic on a malformed OriginPatterns entry")
-		}
-	}()
-	New(map[string]Route{}, Options{OriginPatterns: []string{"dev.example:[3000"}})
+func TestInvalidOriginPatternIsAnError(t *testing.T) {
+	m, err := New(map[string]Route{}, Options{CSRFKey: testKey, OriginPatterns: []string{"dev.example:[3000"}})
+	if m != nil || err == nil || !strings.Contains(err.Error(), `"dev.example:[3000"`) {
+		t.Fatalf("New = %v, %v; want nil and an error naming the malformed OriginPatterns entry", m, err)
+	}
 }
 
 func TestNew_AcceptsEscapedIPv6Pattern(t *testing.T) {
-	m := New(map[string]Route{}, Options{OriginPatterns: []string{`\[::1\]:*`}})
+	m := newMux(map[string]Route{}, Options{OriginPatterns: []string{`\[::1\]:*`}})
 	r := httptest.NewRequest(http.MethodPost, "/", nil)
 	r.Host = "app.example"
 	r.Header.Set("Sec-Fetch-Site", "cross-site")
@@ -190,29 +187,28 @@ func TestSecureRequest(t *testing.T) {
 	}
 }
 
-func TestNew_PanicsOnUnescapedIPv6Pattern(t *testing.T) {
+func TestNew_RefusesUnescapedIPv6Pattern(t *testing.T) {
 	// path.Match parses "[::1]:*" happily as a character class: it never
 	// matches the intended origin and does match unintended hosts, so the
 	// mistake has to be caught at startup like any other bad pattern.
 	for _, p := range []string{"[::1]:*", "[::1]", "https://[::1]:*"} {
 		t.Run(p, func(t *testing.T) {
-			defer func() {
-				r := recover()
-				if r == nil {
-					t.Fatalf("expected New to panic on %q", p)
-				}
-				if !strings.Contains(fmt.Sprint(r), `\[`) {
-					t.Errorf("panic %v should show the escaped form", r)
-				}
-			}()
-			New(map[string]Route{}, Options{OriginPatterns: []string{p}})
+			m, err := New(map[string]Route{}, Options{CSRFKey: testKey, OriginPatterns: []string{p}})
+			if m != nil || err == nil {
+				t.Fatalf("New = %v, %v; want nil and an error for %q", m, err, p)
+			}
+			if !strings.Contains(err.Error(), `\[`) {
+				t.Errorf("error %v should show the escaped form", err)
+			}
 		})
 	}
 }
 
 func TestNew_AcceptsOrdinaryPatterns(t *testing.T) {
 	for _, p := range []string{"dev.example", "dev.example:*", "https://dev.example", `\[::1\]:*`, "*.dev.example"} {
-		New(map[string]Route{}, Options{OriginPatterns: []string{p}})
+		if _, err := New(map[string]Route{}, Options{CSRFKey: testKey, OriginPatterns: []string{p}}); err != nil {
+			t.Errorf("%q: %v", p, err)
+		}
 	}
 }
 

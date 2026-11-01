@@ -25,6 +25,13 @@ func TestInit_CustomWebDirIsImportedCorrectly(t *testing.T) {
 	if got := read(t, filepath.Join(dir, "web", "web.go")); !strings.Contains(got, `"example.com/app/web/pages"`) {
 		t.Errorf("web.go does not import the configured pages directory:\n%s", got)
 	}
+	if got := read(t, filepath.Join(dir, "main.go")); !strings.Contains(got, `os.Getenv("CSRF_KEY")`) ||
+		!strings.Contains(got, "web.New(csrfKey)") {
+		t.Errorf("main.go does not hand CSRF_KEY to the handler:\n%s", got)
+	}
+	if got := read(t, filepath.Join(dir, "web", "web.go")); !strings.Contains(got, "CSRFKey: csrfKey") {
+		t.Errorf("web.go does not configure the CSRF key:\n%s", got)
+	}
 	if got := read(t, filepath.Join(dir, "gossr.yaml")); !strings.Contains(got, "webDir: ./web") {
 		t.Errorf("gossr.yaml does not record the configured web directory:\n%s", got)
 	}
@@ -77,12 +84,13 @@ func TestInit_DepsPackageIsScaffolded(t *testing.T) {
 	}
 
 	web := read(t, filepath.Join(dir, "internal", "web", "web.go"))
-	if !strings.Contains(web, "func New(d *model.Model)") || !strings.Contains(web, "NewSsrHandler(d,") {
+	if !strings.Contains(web, "func New(d *model.Model, csrfKey []byte) (http.Handler, error)") ||
+		!strings.Contains(web, "NewSsrHandler(d,") || !strings.Contains(web, "CSRFKey: csrfKey") {
 		t.Errorf("web.go does not pass the injected value to the handler:\n%s", web)
 	}
 
 	main := read(t, filepath.Join(dir, "main.go"))
-	if !strings.Contains(main, "web.New(model.New())") {
+	if !strings.Contains(main, "web.New(model.New(), csrfKey)") {
 		t.Errorf("main.go does not construct the injected value:\n%s", main)
 	}
 }

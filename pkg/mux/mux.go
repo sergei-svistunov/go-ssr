@@ -1,12 +1,13 @@
 package mux
 
 import (
+	"bytes"
 	"context"
-	"crypto/rand"
 	"errors"
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"path"
 	"regexp"
 	"slices"
@@ -16,36 +17,19 @@ import (
 	"time"
 )
 
-type Route interface {
-	GetDataContext(ctx context.Context, r *Request, w ResponseWriter, child DataContext) (DataContext, error)
-	GetDefaultRoute(ctx context.Context, r *Request) (string, error)
-}
-
 type Mux struct {
 	rootRoute      *muxRoute
 	errorHandler   ErrorHandler
-	wsHandlers     map[string]http.Handler
 	options        requestOptions
 	allowCrossSite func(*Request) bool
+	live           liveConns
+	liveMaxAge     time.Duration
 }
 
 // allowsCrossSite reports whether the application exempts this request from
 // the cross-site refusal.
 func (m *Mux) allowsCrossSite(r *Request) bool {
 	return m.allowCrossSite != nil && m.allowCrossSite(r)
-}
-
-// WithWSHandlers returns a functional option that registers WebSocket handlers
-// for specific paths. When a request with "Upgrade: websocket" matches a key
-// in the handlers map, the call is delegated to the registered handler and the
-// normal SSR rendering path is bypassed.
-//
-// This option is additive and non-breaking: callers that do not use WebSocket
-// functionality pass no options and mux.New's signature is unchanged.
-func WithWSHandlers(handlers map[string]http.Handler) func(*Mux) {
-	return func(m *Mux) {
-		m.wsHandlers = handlers
-	}
 }
 
 type muxRoute struct {
@@ -57,32 +41,35 @@ type muxRoute struct {
 type Options struct {
 	ErrorHandler ErrorHandler
 	// InsecureCookies drops the Secure flag and the __Host- prefix from the
-	// cookies the framework sets, so forms work over plain http on hosts other
+	// cookies the mux sets, so forms work over plain http on hosts other
 	// than localhost (Chrome and Firefox already treat http://localhost as
 	// secure; Safari does not). Never enable it in production.
 	InsecureCookies bool
 	// OriginPatterns lists additional origins allowed to submit forms and open
-	// reactive WebSockets. Empty means the browser's Origin must match the
+	// live connections. Empty means the browser's Origin must match the
 	// request Host. Each pattern is matched (path.Match) against the Origin's
 	// host as the browser sends it, which omits default ports: "dev.example"
 	// matches https://dev.example, "dev.example:*" matches any explicit port
 	// such as http://dev.example:3000, and "https://dev.example" also pins the
-	// scheme. The mux refuses cross-site POST/PUT/PATCH/DELETE requests before
-	// a route's hooks run and cross-site WebSocket handshakes before
-	// dispatching them; AllowCrossSite exempts either kind.
+	// scheme. The mux refuses cross-site POST/PUT/PATCH/DELETE requests and
+	// cross-site live connection handshakes before a route's hooks run;
+	// AllowCrossSite exempts either kind.
 	OriginPatterns []string
 	// AllowCrossSite lets a request through the cross-site refusal that
-	// OriginPatterns describes — a routed request or a WebSocket handshake —
-	// for a route that receives third-party browser traffic by design: an
-	// OpenID Connect form_post or SAML callback, a payment return. The route
-	// must then validate that request itself. nil exempts nothing.
+	// OriginPatterns describes — a routed request or a live connection
+	// handshake, which it sees at its own address, ending in /__ws. It lifts
+	// only that refusal: an exempt POST to a page still needs the CSRF cookie
+	// and a token the mux signed, and is refused with 400 without them. Use
+	// it when which routes another origin may reach depends on the request,
+	// not on one list for the whole site. A third-party POST that carries no
+	// token, such as a sign-in or payment callback, belongs in an
+	// http.Handler outside the mux. nil exempts nothing.
 	AllowCrossSite func(r *Request) bool
-	// CSRFKey signs the CSRF tokens pkg/form mints, so a token the server
-	// did not issue is rejected instead of being trusted because it happens
-	// to match a cookie. Empty means a key generated when the handler is
-	// built: zero configuration, but tokens minted by one process are not
-	// accepted by another, so set it explicitly when more than one instance
-	// serves the same site or when tokens must survive a restart.
+	// CSRFKey signs the CSRF tokens the mux mints, so a token the server did
+	// not issue is rejected instead of being trusted because it happens to
+	// match a cookie. It is required and must be at least 32 bytes; New
+	// refuses anything shorter. Every instance serving the same site needs
+	// the same key, and tokens survive a restart only if the key does.
 	CSRFKey []byte
 	// CSRFSession binds each token to the session it was minted for, so a
 	// token captured before a login is not accepted after one. Return the
@@ -91,16 +78,47 @@ type Options struct {
 	// on every render that issues or reuses a token — so it must be cheap:
 	// read an already-loaded session rather than querying. nil binds nothing.
 	CSRFSession func(r *Request) string
+	// MaxLiveConnsPerSession caps the live connections open at once for one
+	// CSRFSession value; a handshake beyond it is refused with 429. A request
+	// without a session is not counted. 0 means no limit.
+	MaxLiveConnsPerSession int
+	// CSPSources adds sources to directives of the Content-Security-Policy
+	// the mux sends with every response, after the directive's defaults;
+	// nothing removes a default. The directives that take sources are
+	// default-src, script-src, style-src, img-src, font-src, connect-src,
+	// form-action, media-src, worker-src, frame-src and manifest-src. New
+	// refuses any other directive, and a source that is empty, contains
+	// whitespace, ';', ',' or a control character, is "*" or has "*" as its
+	// whole host (https://*, *:443), is a quoted keyword containing unsafe-
+	// ('unsafe-inline', 'unsafe-eval', 'unsafe-hashes', 'wasm-unsafe-eval')
+	// or is 'strict-dynamic'. In script-src it also refuses a scheme on its
+	// own, such as https: or data:.
+	CSPSources map[string][]string
 }
 
 type ErrorHandler func(w http.ResponseWriter, r *Request, err error)
 
-func New(routes map[string]Route, opts Options) *Mux {
+// New builds the handler for routes. It refuses an Options.CSRFKey shorter
+// than 32 bytes, a malformed Options.OriginPatterns entry and an
+// Options.CSPSources entry that would weaken the policy.
+func New(routes map[string]Route, opts Options) (*Mux, error) {
+	switch {
+	case len(opts.CSRFKey) == 0:
+		return nil, errors.New("mux: CSRFKey is empty")
+	case len(opts.CSRFKey) < minCSRFKeyLen:
+		return nil, errors.New("mux: CSRFKey must be at least 32 bytes")
+	}
+	if err := validateOriginPatterns(opts.OriginPatterns); err != nil {
+		return nil, err
+	}
+	csp, err := newCSP(opts.CSPSources)
+	if err != nil {
+		return nil, err
+	}
+
 	rootRoute := &muxRoute{
 		children: map[string]*muxRoute{},
 	}
-
-	reDynParam := regexp.MustCompile("^_[^_]+_$")
 
 	for rPath, r := range routes {
 		pathParts := strings.Split(strings.TrimSuffix(rPath, "/"), "/")[1:]
@@ -112,7 +130,7 @@ func New(routes map[string]Route, opts Options) *Mux {
 				}
 			}
 
-			if reDynParam.MatchString(p) {
+			if reDynParamGlobal.MatchString(p) {
 				currentRoute.paramId = p[1 : len(p)-1]
 			}
 			currentRoute = currentRoute.children[p]
@@ -124,7 +142,6 @@ func New(routes map[string]Route, opts Options) *Mux {
 	if opts.ErrorHandler == nil {
 		opts.ErrorHandler = defaultErrorHandler
 	}
-	validateOriginPatterns(opts.OriginPatterns)
 
 	return &Mux{
 		rootRoute:    rootRoute,
@@ -134,85 +151,54 @@ func New(routes map[string]Route, opts Options) *Mux {
 		options: requestOptions{
 			insecureCookies: opts.InsecureCookies,
 			originPatterns:  slices.Clip(slices.Clone(opts.OriginPatterns)),
-			csrfKey:         csrfKey(opts.CSRFKey),
+			csrfKey:         slices.Clip(slices.Clone(opts.CSRFKey)),
 			csrfSessionFn:   opts.CSRFSession,
+			csp:             csp,
 		},
 		allowCrossSite: opts.AllowCrossSite,
-	}
+		live:           liveConns{max: opts.MaxLiveConnsPerSession},
+		liveMaxAge:     liveMaxAge,
+	}, nil
 }
 
 func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Every Request built from this request — here, in a WebSocket handler,
+	// Every Request built from this request — here, on a live connection,
 	// or by a hook rebuilding one — reads its settings from the context, so
 	// they cannot drift and a NoStore mark survives the rebuild.
 	options := m.options
 	options.noStore = new(atomic.Bool)
 	options.csrfSession = &arrivalSession{}
 	r = withOptions(r, options)
+	setHeaders(w.Header(), r)
 
-	// Check WebSocket upgrade requests first when WS handlers are registered.
-	// Upgrade is a case-insensitive token (RFC 6455).
-	if len(m.wsHandlers) > 0 && strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
-		if h, pattern := m.matchWSHandler(r.URL.Path); h != nil {
-			// Extract URL params from the matched WS pattern so that
-			// r.UrlParam(…) works inside the WS handler / Subscribe.
-			params := extractWSURLParams(pattern, r.URL.Path)
-			if len(params) > 0 {
-				r = r.WithContext(context.WithValue(r.Context(), urlParamsKey{}, params))
-			}
-			// The handshake carries the browser's cookies, so the rule that
-			// guards form submissions guards it too, for every handler
-			// registered here — and more strictly, since no token follows it.
-			if CrossSiteStrict(r, m.options.originPatterns) {
-				wsRequest := NewRequest(r)
-				wsRequest.URLParams = params
-				if !m.allowsCrossSite(wsRequest) {
-					handshakeRefusals.logf("mux: WebSocket handshake for %q refused as cross-site (Origin %q, Host %q)",
-						r.URL.Path, r.Header.Get("Origin"), r.Host)
-					http.Error(w, "cross-site WebSocket handshake", http.StatusForbidden)
-					return
-				}
-			}
-			checked := options
-			checked.originChecked = true
-			h.ServeHTTP(w, withOptions(r, checked))
-			return
-		}
+	if page, ok := liveAddress(r.URL.Path); ok {
+		m.serveLive(w, r, page)
+		return
 	}
 
-	routePath := r.URL.Path
-	if len(routePath) > 0 && routePath[len(routePath)-1] == '/' {
-		routePath = routePath[:len(routePath)-1]
-	}
-
-	routePathParts := strings.Split(routePath, "/")[1:]
-
-	currentRoute := m.rootRoute
-	routesStack := []Route{currentRoute.route}
 	muxRequest := NewRequest(r)
-	for _, routePathPart := range routePathParts {
-		child := currentRoute.children[routePathPart]
-		if child == nil && currentRoute.paramId != "" {
-			muxRequest.URLParams[currentRoute.paramId] = routePathPart
-			child = currentRoute.children["_"+currentRoute.paramId+"_"]
-		}
-
-		if child == nil {
-			m.errorHandler(w, muxRequest, NewHttpError(http.StatusNotFound, http.StatusText(http.StatusNotFound)))
-			return
-		}
-
-		currentRoute = child
-		routesStack = append(routesStack, currentRoute.route)
+	routes, end, err := m.match(muxRequest)
+	if err != nil {
+		m.errorHandler(w, muxRequest, err)
+		return
 	}
+	parent := end.route.Layout() && len(end.children) > 0
 
 	// A state-changing request from another origin is refused once the route
 	// is known and before any of its hooks run; the CSRF cookie/token
-	// comparison in form.Parse stays as the second line of defence.
+	// comparison in readForm stays as the second line of defence.
 	if !SafeMethod(r.Method) && muxRequest.CrossSite() && !m.allowsCrossSite(muxRequest) {
 		routedRefusals.logf("mux: %s %q refused as cross-site (Origin %q, Host %q)",
 			r.Method, r.URL.Path, r.Header.Get("Origin"), r.Host)
 		m.errorHandler(w, muxRequest, NewHttpError(http.StatusForbidden, "Cross-site request"))
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet, http.MethodHead, http.MethodPost:
+	default:
+		w.Header().Set("Allow", "GET, HEAD, POST")
+		m.errorHandler(w, muxRequest, NewHttpError(http.StatusMethodNotAllowed, http.StatusText(http.StatusMethodNotAllowed)))
 		return
 	}
 
@@ -223,80 +209,109 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Once a route has had a say, whatever the outcome — page, redirect or
-	// error — a response marked NoStore leaves with that header; a later
-	// route in the stack may have set a cacheable policy of its own.
-	noStore := func() {
+	// error — the response leaves with the security headers whatever a hook
+	// set, and one marked NoStore with that header too; a later route in the
+	// stack may have set a cacheable policy of its own.
+	finish := func() {
+		setHeaders(w.Header(), r)
 		if options.noStore.Load() {
 			w.Header().Set("Cache-Control", "no-store")
 		}
 	}
+	fail := func(err error) {
+		finish()
+		m.errorHandler(w, muxRequest, err)
+	}
 
-	if len(currentRoute.children) > 0 {
-		if currentRoute.route == nil {
-			// The path only groups child routes; there is no template of its own
-			// to render and nothing to redirect to.
-			m.errorHandler(w, muxRequest, NewHttpError(http.StatusNotFound, http.StatusText(http.StatusNotFound)))
-			return
-		}
-
-		subRoute, err := currentRoute.route.GetDefaultRoute(r.Context(), muxRequest)
-		if err != nil {
-			noStore()
-			m.errorHandler(w, muxRequest, err)
-			return
-		}
-
-		noStore()
-		http.Redirect(w, r, path.Join(r.URL.Path, subRoute), http.StatusFound)
+	ctx := r.Context()
+	states, err := guard(ctx, muxRequest, routes)
+	if err != nil {
+		fail(err)
 		return
 	}
 
-	var dataContext DataContext
-	for len(routesStack) > 0 {
-		route := routesStack[len(routesStack)-1]
-		routesStack = routesStack[:len(routesStack)-1]
-
-		if route == nil {
-			continue
-		}
-
-		dc, err := route.GetDataContext(r.Context(), muxRequest, w, dataContext)
-		if err != nil {
-			noStore()
-			m.errorHandler(w, muxRequest, err)
+	post := r.Method == http.MethodPost
+	if parent {
+		if post {
+			w.Header().Set("Allow", "GET, HEAD")
+			fail(NewHttpError(http.StatusMethodNotAllowed, http.StatusText(http.StatusMethodNotAllowed)))
 			return
 		}
-		dataContext = dc
-	}
-
-	if dataContext == nil {
-		noStore()
-		m.errorHandler(w, muxRequest, NewHttpError(http.StatusNotFound, http.StatusText(http.StatusNotFound)))
+		subRoute, err := states[len(states)-1].DefaultRoute(ctx, muxRequest)
+		if err != nil {
+			fail(err)
+			return
+		}
+		self := path.Join("/", r.URL.Path)
+		target := path.Join(self, subRoute)
+		if target == self {
+			fail(NotFound())
+			return
+		}
+		finish()
+		http.Redirect(w, r, (&url.URL{Path: target}).EscapedPath(), http.StatusFound)
 		return
 	}
 
-	noStore()
+	states = rendered(routes, states)
+
+	var formID string
+	if post {
+		id, err := readForm(muxRequest)
+		if err != nil {
+			fail(err)
+			return
+		}
+		formID = id
+	}
+	for _, s := range states {
+		if err := s.InitForms(ctx, muxRequest, w); err != nil {
+			fail(err)
+			return
+		}
+	}
+	if post {
+		owned := false
+		for _, s := range states {
+			ok, err := s.SubmitForm(ctx, muxRequest, w, formID)
+			if err != nil {
+				fail(err)
+				return
+			}
+			if ok {
+				owned = true
+				break
+			}
+		}
+		if !owned {
+			fail(NewHttpError(http.StatusBadRequest, "This form is not on this page."))
+			return
+		}
+	}
+	for _, s := range states {
+		if err := s.Data(ctx, muxRequest, w); err != nil {
+			fail(err)
+			return
+		}
+	}
+
+	for i := 0; i+1 < len(states); i++ {
+		states[i].SetChild(states[i+1])
+	}
+	// Rendered whole before anything is sent, so a failing template leaves
+	// the error handler a clean response instead of half a page.
+	var body bytes.Buffer
+	if err := states[0].Write(&body); err != nil {
+		fail(err)
+		return
+	}
+
+	finish()
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-
-	if err := dataContext.Write(w); err != nil {
+	if _, err := body.WriteTo(w); err != nil {
 		log.Println(err)
 	}
-}
-
-// csrfKey returns the configured key, or one generated for this handler.
-// Generating is what makes the default configuration work with no setup; the
-// cost is that tokens do not survive a restart or span instances, which
-// Options.CSRFKey documents.
-func csrfKey(configured []byte) []byte {
-	if len(configured) > 0 {
-		return slices.Clip(slices.Clone(configured))
-	}
-	key := make([]byte, 32)
-	if _, err := rand.Read(key); err != nil {
-		panic("mux: generating a CSRF key: " + err.Error())
-	}
-	return key
 }
 
 // logThrottle keeps a diagnostic any unauthenticated client can trigger from
@@ -348,59 +363,72 @@ func SafeMethod(method string) bool {
 	return false
 }
 
-// matchWSHandler finds the WS handler for the given request path. It supports
-// dynamic segments (using the same _paramName_ convention as SSR routes).
-// Returns (nil, "") if no handler matches.
-// Returns (handler, pattern) on a match so the caller can extract URL params.
-func (m *Mux) matchWSHandler(requestPath string) (http.Handler, string) {
-	// Fast path: exact match (no dynamic segments, no extraction needed).
-	if h, ok := m.wsHandlers[requestPath]; ok {
-		return h, requestPath
+// match finds the routes on r's path, root first, and the node the path ends
+// at, recording URL parameters in r.URLParams. A path that names no route is
+// NotFound.
+func (m *Mux) match(r *Request) ([]Route, *muxRoute, error) {
+	current := m.rootRoute
+	var routes []Route
+	if current.route != nil {
+		routes = append(routes, current.route)
 	}
-	// Slow path: pattern match (for dynamic segments like _userId_).
-	reDynParam := reDynParamGlobal
-	reqParts := strings.Split(strings.TrimSuffix(requestPath, "/"), "/")
-	for pattern, h := range m.wsHandlers {
-		patParts := strings.Split(strings.TrimSuffix(pattern, "/"), "/")
-		if len(patParts) != len(reqParts) {
-			continue
+	for _, part := range strings.Split(strings.TrimSuffix(r.URL.Path, "/"), "/")[1:] {
+		// An empty segment names no route and is never a parameter's value.
+		if part == "" {
+			return nil, nil, NotFound()
 		}
-		match := true
-		for i, pp := range patParts {
-			if reDynParam.MatchString(pp) {
-				continue // dynamic segment matches anything
-			}
-			if pp != reqParts[i] {
-				match = false
-				break
-			}
+		// A segment shaped like a parameter folder's name is a value, never
+		// that folder.
+		var child *muxRoute
+		if !reDynParamGlobal.MatchString(part) {
+			child = current.children[part]
 		}
-		if match {
-			return h, pattern
+		if child == nil && current.paramId != "" {
+			r.URLParams[current.paramId] = part
+			child = current.children["_"+current.paramId+"_"]
+		}
+		if child == nil {
+			return nil, nil, NotFound()
+		}
+		current = child
+		if current.route != nil {
+			routes = append(routes, current.route)
 		}
 	}
-	return nil, ""
+	// A path that only groups child routes has nothing of its own to render
+	// or redirect from.
+	if current.route == nil {
+		return nil, nil, NotFound()
+	}
+	return routes, current, nil
 }
 
-// extractWSURLParams walks the matched WS pattern and the actual request path
-// in parallel, extracting values for each dynamic segment (_paramName_).
-// Returns an empty map (not nil) when there are no dynamic segments.
-func extractWSURLParams(pattern, requestPath string) map[string]string {
-	params := map[string]string{}
-	patParts := strings.Split(strings.TrimSuffix(pattern, "/"), "/")
-	reqParts := strings.Split(strings.TrimSuffix(requestPath, "/"), "/")
-	if len(patParts) != len(reqParts) {
-		return params
+// guard makes a fresh state for every route and runs their Guards, root
+// first, stopping at the first error.
+func guard(ctx context.Context, r *Request, routes []Route) ([]RouteState, error) {
+	states := make([]RouteState, len(routes))
+	for i, route := range routes {
+		states[i] = route.NewState()
 	}
-	reDynParam := reDynParamGlobal
-	for i, pp := range patParts {
-		if reDynParam.MatchString(pp) {
-			// pp is "_paramName_"; strip the underscores to get the key.
-			key := pp[1 : len(pp)-1]
-			params[key] = reqParts[i]
+	for _, s := range states {
+		if err := s.Guard(ctx, r); err != nil {
+			return nil, err
 		}
 	}
-	return params
+	return states, nil
+}
+
+// rendered returns the states that render the page at the end of the path:
+// every layout on the path and the last route. The gates above it have had
+// their Guard and take no further part.
+func rendered(routes []Route, states []RouteState) []RouteState {
+	page := make([]RouteState, 0, len(states))
+	for i, route := range routes {
+		if i == len(routes)-1 || route.Layout() {
+			page = append(page, states[i])
+		}
+	}
+	return page
 }
 
 var reDynParamGlobal = regexp.MustCompile("^_[^_]+_$")
@@ -411,6 +439,7 @@ func defaultErrorHandler(w http.ResponseWriter, r *Request, err error) {
 		redirectErr *HttpRedirect
 	)
 	if errors.As(err, &httpErr) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(httpErr.Code)
 		if _, err := w.Write([]byte(httpErr.Message)); err != nil {
 			log.Println(err)

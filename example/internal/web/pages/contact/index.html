@@ -32,7 +32,7 @@
             </div>
 
             <div class="form-floating mb-3">
-                <ssr:textarea name="message" required style="height: 120px" placeholder="Your message" id="contact-message"
+                <ssr:textarea name="message" required placeholder="Your message" id="contact-message"
                               class="form-control {{ form.IsValidated() ? textarea.HasError() ? 'is-invalid' : 'is-valid' : '' }}"/>
                 <label for="contact-message">Message</label>
                 <div class="invalid-feedback" ssr:if="form.Message.HasError()">{{ form.Message.GetError() }}</div>

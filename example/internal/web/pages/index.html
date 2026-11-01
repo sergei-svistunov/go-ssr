@@ -30,7 +30,7 @@
                 </span>
                 <span class="navbar-text">
                     <ssr:var name="user" type="User"/>
-                    <img src="{{user.Image}}" alt="{{ user.Name }}" width="24" height="24"
+                    <img src="avatar.png" alt="{{ user.Name }}" width="24" height="24"
                          class="d-inline-block align-text-top">
                     {{ user.Name }}
                 </span>
@@ -41,11 +41,5 @@
 <div class="container-fluid">
     <ssr:content default="/home"/>
 </div>
-
-<script>
-    console.log("Test <123> {{title}}")
-    const a = 10, b = 20;
-    if (a<b>10) {}
-</script>
 </body>
 </html>

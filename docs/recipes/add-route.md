@@ -1,6 +1,6 @@
 # Recipe: add a route
 
-Adding a page, a route with a URL parameter, or turning an existing route into a layout.
+Adding a page, a route with a URL parameter, a guard, or child routes below an existing route.
 
 ## Static route
 
@@ -23,7 +23,8 @@ func (p *DP) Data(ctx context.Context, r *mux.Request, w mux.ResponseWriter, dat
 }
 ```
 
-The parent template needs an `<ssr:content/>` for the page to appear inside it. `/about` is now live.
+The parent template needs an `<ssr:content/>` for the page to appear inside it; without one the parent is a
+gate and `/about` renders on its own. `/about` is now live.
 
 ## Route with a URL parameter
 
@@ -52,16 +53,34 @@ func (p *DP) Data(ctx context.Context, r *mux.Request, w mux.ResponseWriter, dat
 The parameter name must not contain underscores. A literal sibling directory wins over the parameter, so
 `users/add/` and `users/_userId_/` coexist.
 
-## Route that becomes a layout
+## Guard a route
 
-Adding a child directory to an existing route changes its behaviour: a route with children no longer renders
-itself, it redirects to a default child. Two things to do:
+Add a `Guard` method to the data provider to decide who may reach the route and every route below it:
 
-1. add `<ssr:content/>` where the child should render,
-2. give it a default child — `<ssr:content default="/info"/>`, or implement `DefaultRoute`.
+```go
+func (p *DP) Guard(ctx context.Context, r *mux.Request) error {
+    if !p.m.CanSeeUser(ctx, r.URLParam("userId")) {
+        return mux.NotFound()
+    }
+    return nil
+}
+```
+
+It runs before any other hook of any route on the path, on page loads, form posts, live connections and page
+calls. Put a check in the guard of the highest route it applies to. See `routing`.
+
+## Child routes below an existing route
+
+Adding a child directory to an existing route makes it a layout or a gate, depending on its template:
+
+- **a layout** has `<ssr:content/>` where the child renders. Opened itself, it redirects to a default child —
+  `<ssr:content default="/info"/>`, or implement `DefaultRoute`. A default that is empty or points at the
+  layout itself answers 404;
+- **a gate** has no `<ssr:content/>`. It keeps rendering its own page, and for the pages below it only its
+  `Guard` runs.
 
 ```html
-<!-- internal/web/pages/users/_userId_/index.html -->
+<!-- internal/web/pages/users/_userId_/index.html, as a layout -->
 <ssr:var name="user" type="User"/>
 <h1>{{ user.Name }}</h1>
 <nav>
@@ -94,5 +113,6 @@ but delete `index.html`, it stops being a route.
 - [ ] directory contains `index.html`
 - [ ] every `<ssr:var>` has a `type` that resolves in this directory's package
 - [ ] the parent has `<ssr:content/>`
-- [ ] a route that gained children has a default child
+- [ ] a route that gained children is a layout with a default child, or a gate on purpose
+- [ ] access checks live in `Guard`, on the highest route they apply to
 - [ ] `go-ssr` run, `dataprovider.go` filled in, `go build ./...` clean

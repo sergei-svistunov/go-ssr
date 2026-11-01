@@ -3,7 +3,7 @@ package form
 import (
 	"io"
 
-	"github.com/sergei-svistunov/go-ssr/pkg/mux"
+	"github.com/sergei-svistunov/go-ssr/pkg/render"
 )
 
 var (
@@ -26,7 +26,7 @@ func (o SelectOption[T]) WriteHtml(w io.Writer, isSelected func(v T) bool) error
 		return err
 	}
 
-	if _, err := mux.WriteHtmlEscaped(w, o.Value); err != nil {
+	if err := render.Attr(w, o.Value); err != nil {
 		return err
 	}
 
@@ -51,7 +51,7 @@ func (o SelectOption[T]) WriteHtml(w io.Writer, isSelected func(v T) bool) error
 	}
 
 	if o.Label != "" {
-		if _, err := mux.WriteHtmlEscaped(w, o.Label); err != nil {
+		if err := render.Text(w, o.Label); err != nil {
 			return err
 		}
 	}
@@ -74,7 +74,7 @@ func (o SelectOptionGroup[T]) WriteHtml(w io.Writer, isSelected func(v T) bool) 
 		return err
 	}
 
-	if _, err := mux.WriteHtmlEscaped(w, o.Label); err != nil {
+	if err := render.Attr(w, o.Label); err != nil {
 		return err
 	}
 

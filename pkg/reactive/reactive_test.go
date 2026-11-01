@@ -15,13 +15,26 @@ import (
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 
-	"github.com/sergei-svistunov/go-ssr/pkg/mux"
+	"github.com/sergei-svistunov/go-ssr/internal/wsorigin"
 	"github.com/sergei-svistunov/go-ssr/pkg/reactive"
 )
 
 // ----------------------------------------------------------------------------
 // Helpers
 // ----------------------------------------------------------------------------
+
+// serve upgrades every request with Accept and runs fn on the connection,
+// which is closed when fn returns.
+func serve(fn func(ctx context.Context, conn *reactive.Conn)) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := reactive.Accept(w, r)
+		if err != nil {
+			return
+		}
+		defer conn.CloseNow()
+		fn(conn.Ctx(), conn)
+	})
+}
 
 // wsConnect starts a test WS server using the given handler and returns a
 // client WS connection.
@@ -181,7 +194,7 @@ func TestErrMsg_UnknownRoute(t *testing.T) {
 func TestConn_EnqueueAndReceivePatch(t *testing.T) {
 	received := make(chan reactive.PatchMsg, 1)
 
-	h := reactive.NewHandler(func(ctx context.Context, r *http.Request, conn *reactive.Conn) {
+	h := serve(func(ctx context.Context, conn *reactive.Conn) {
 		// Send init frame first (required before StartSendLoop per spec).
 		initMsg := reactive.NewInitMsg("3f7a", map[string]string{"3f7a.count": "0"})
 		if err := conn.SendJSON(initMsg); err != nil {
@@ -222,7 +235,7 @@ func TestConn_EnqueueAndReceivePatch(t *testing.T) {
 func TestConn_CoalesceLastWriteWins(t *testing.T) {
 	patches := make(chan string, 100)
 
-	h := reactive.NewHandler(func(ctx context.Context, r *http.Request, conn *reactive.Conn) {
+	h := serve(func(ctx context.Context, conn *reactive.Conn) {
 		initMsg := reactive.NewInitMsg("3f7a", map[string]string{"3f7a.n": "0"})
 		conn.SendJSON(initMsg)
 		conn.StartSendLoop()
@@ -282,7 +295,7 @@ func TestConn_CoalesceLastWriteWins(t *testing.T) {
 func TestConn_PostCancellationEnqueueIsNoop(t *testing.T) {
 	done := make(chan struct{})
 
-	h := reactive.NewHandler(func(ctx context.Context, r *http.Request, conn *reactive.Conn) {
+	h := serve(func(ctx context.Context, conn *reactive.Conn) {
 		initMsg := reactive.NewInitMsg("3f7a", map[string]string{})
 		conn.SendJSON(initMsg)
 		conn.StartSendLoop()
@@ -379,7 +392,7 @@ func TestConn_ConcurrentEnqueue(t *testing.T) {
 	const numVars = 5
 	const numUpdates = 20
 
-	h := reactive.NewHandler(func(ctx context.Context, r *http.Request, conn *reactive.Conn) {
+	h := serve(func(ctx context.Context, conn *reactive.Conn) {
 		const rk = "3f7a"
 		initMap := map[string]string{}
 		for i := 0; i < numVars; i++ {
@@ -454,12 +467,12 @@ func TestSlowClient_ClosesWith1008(t *testing.T) {
 	// short write deadline by calling sendWithTimeout indirectly: we use a
 	// separate handler that drives the underlying websocket.Conn directly.
 
-	// Use the exported NewHandler and production reactive.Conn machinery, but
+	// Use Accept and the production reactive.Conn machinery, but
 	// control timing via a channel that blocks the write path.
 	blockWrite := make(chan struct{})   // closed by the test to unblock the server
 	serverClosed := make(chan struct{}) // closed when the server handler exits
 
-	h := reactive.NewHandler(func(ctx context.Context, r *http.Request, conn *reactive.Conn) {
+	h := serve(func(ctx context.Context, conn *reactive.Conn) {
 		defer close(serverClosed)
 
 		// Send init frame first — this succeeds because the client reads it.
@@ -957,131 +970,48 @@ func TestSubscribeFailure_Closes1011(t *testing.T) {
 // Handshake origin tests
 // ----------------------------------------------------------------------------
 
-// noopHandler completes the handshake and returns at once; the connection is
-// closed by NewHandler's deferred CloseNow. A body that waits on ctx would
-// park forever: the context of a hijacked request is never cancelled.
-func noopHandler() http.Handler {
-	return reactive.NewHandler(func(ctx context.Context, r *http.Request, conn *reactive.Conn) {})
-}
-
-// behindMux mounts h at /live/__ws on a mux built with opts, the way
-// generated code registers reactive handlers.
-func behindMux(h http.Handler, opts mux.Options) http.Handler {
-	m := mux.New(map[string]mux.Route{}, opts)
-	mux.WithWSHandlers(map[string]http.Handler{"/live/__ws": h})(m)
-	return m
-}
-
-// dialWS serves h and attempts one handshake to path with the given dial
-// options, returning the connection (if any), the response and the error.
-func dialWS(t *testing.T, h http.Handler, path string, dial *websocket.DialOptions) (*websocket.Conn, *http.Response, error) {
-	t.Helper()
-	srv := httptest.NewServer(h)
-	t.Cleanup(srv.Close)
-	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + path
-
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	t.Cleanup(cancel)
-	c, resp, err := websocket.Dial(ctx, wsURL, dial)
-	if c != nil {
-		t.Cleanup(func() { c.CloseNow() })
+// TestAccept_ChecksTheOriginUnlessMarked opens a handshake to Accept with and
+// without the mux's origin mark on the request context.
+func TestAccept_ChecksTheOriginUnlessMarked(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		marked   bool
+		origin   string // "" sends the server's own origin
+		accepted bool
+	}{
+		{"other origin", false, "http://evil.example", false},
+		{"opaque origin", false, "null", false},
+		{"same origin", false, "", true},
+		{"other origin, marked", true, "http://evil.example", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if tc.marked {
+					r = r.WithContext(wsorigin.Mark(r.Context()))
+				}
+				if conn, err := reactive.Accept(w, r); err == nil {
+					conn.CloseNow()
+				}
+			}))
+			t.Cleanup(srv.Close)
+			origin := tc.origin
+			if origin == "" {
+				origin = srv.URL
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			c, resp, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(srv.URL, "http"), &websocket.DialOptions{
+				HTTPHeader: http.Header{"Origin": {origin}},
+			})
+			if c != nil {
+				c.CloseNow()
+			}
+			if tc.accepted && err != nil {
+				t.Fatalf("handshake refused: %v (response %v)", err, resp)
+			}
+			if !tc.accepted && (err == nil || resp == nil || resp.StatusCode != http.StatusForbidden) {
+				t.Fatalf("handshake: %v (response %v), want 403", err, resp)
+			}
+		})
 	}
-	return c, resp, err
-}
-
-func want403(t *testing.T, resp *http.Response, err error) {
-	t.Helper()
-	if err == nil {
-		t.Fatal("expected the handshake to be rejected")
-	}
-	if resp == nil || resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("expected 403, got %v", resp)
-	}
-}
-
-func wantAccepted(t *testing.T, resp *http.Response, err error) {
-	t.Helper()
-	if err != nil {
-		t.Fatalf("expected the handshake to succeed, got %v (resp %v)", err, resp)
-	}
-}
-
-func TestNewHandler_Standalone_RejectsCrossOrigin(t *testing.T) {
-	// Outside the mux the library's same-host rule applies.
-	_, resp, err := dialWS(t, noopHandler(), "", &websocket.DialOptions{
-		HTTPHeader: http.Header{"Origin": {"http://evil.example"}},
-	})
-	want403(t, resp, err)
-}
-
-func TestNewHandler_Standalone_AcceptsSameOrigin(t *testing.T) {
-	srv := httptest.NewServer(noopHandler())
-	t.Cleanup(srv.Close)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	c, resp, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(srv.URL, "http"), &websocket.DialOptions{
-		HTTPHeader: http.Header{"Origin": {srv.URL}},
-	})
-	wantAccepted(t, resp, err)
-	c.CloseNow()
-}
-
-func TestNewHandler_BehindMux_ListedOriginAccepted(t *testing.T) {
-	_, resp, err := dialWS(t, behindMux(noopHandler(), mux.Options{OriginPatterns: []string{"dev.example:*"}}), "/live/__ws", &websocket.DialOptions{
-		HTTPHeader: http.Header{"Origin": {"http://dev.example:3000"}},
-	})
-	wantAccepted(t, resp, err)
-}
-
-func TestNewHandler_BehindMux_UnlistedOriginRejected(t *testing.T) {
-	_, resp, err := dialWS(t, behindMux(noopHandler(), mux.Options{OriginPatterns: []string{"dev.example:*"}}), "/live/__ws", &websocket.DialOptions{
-		HTTPHeader: http.Header{"Origin": {"http://evil.example"}},
-	})
-	want403(t, resp, err)
-}
-
-func TestNewHandler_BehindMux_SameOriginPerBrowserSkipsHostCompare(t *testing.T) {
-	// Behind a proxy that rewrites Host, Origin never equals r.Host; the
-	// browser-set Sec-Fetch-Site: same-origin must still let the page through.
-	_, resp, err := dialWS(t, behindMux(noopHandler(), mux.Options{}), "/live/__ws", &websocket.DialOptions{
-		HTTPHeader: http.Header{
-			"Origin":         {"https://app.example"},
-			"Sec-Fetch-Site": {"same-origin"},
-		},
-	})
-	wantAccepted(t, resp, err)
-}
-
-func TestNewHandler_BehindMux_CrossSitePerBrowserRejected(t *testing.T) {
-	_, resp, err := dialWS(t, behindMux(noopHandler(), mux.Options{}), "/live/__ws", &websocket.DialOptions{
-		HTTPHeader: http.Header{
-			"Origin":         {"https://evil.example"},
-			"Sec-Fetch-Site": {"cross-site"},
-		},
-	})
-	want403(t, resp, err)
-}
-
-func TestNewHandler_BehindMux_DefaultPortOnHostIgnored(t *testing.T) {
-	_, resp, err := dialWS(t, behindMux(noopHandler(), mux.Options{}), "/live/__ws", &websocket.DialOptions{
-		Host:       "app.example:443",
-		HTTPHeader: http.Header{"Origin": {"https://app.example"}},
-	})
-	wantAccepted(t, resp, err)
-}
-
-func TestNewHandler_BehindMux_OpaqueOriginRejected(t *testing.T) {
-	// A sandboxed iframe sends Origin: null; the handshake carries cookies
-	// and has no token behind it, so the mux must refuse it.
-	_, resp, err := dialWS(t, behindMux(noopHandler(), mux.Options{}), "/live/__ws", &websocket.DialOptions{
-		HTTPHeader: http.Header{"Origin": {"null"}},
-	})
-	want403(t, resp, err)
-}
-
-func TestNewHandler_Standalone_OpaqueOriginRejected(t *testing.T) {
-	_, resp, err := dialWS(t, noopHandler(), "", &websocket.DialOptions{
-		HTTPHeader: http.Header{"Origin": {"null"}},
-	})
-	want403(t, resp, err)
 }

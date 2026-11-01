@@ -9,6 +9,8 @@ var _ Node = &Expression{}
 type Expression struct {
 	BaseNode
 	Value Node
+	// Esc is the escaper of the context the value lands in.
+	Esc Esc
 	// Source holds the raw expression text between {{ and }} (trimmed), populated
 	// at parse time. Used by the reactive analysis pass to generate the SHA-256
 	// binding key for composite (multi-variable) expressions so that two distinct
@@ -40,7 +42,7 @@ func (n *Expression) WriteInnerGoCode(buf *gobuf.GoBuf) {
 }
 
 func (n *Expression) writeValue(buf *gobuf.GoBuf) {
-	buf.WriteString("if _, err := mux.WriteHtmlEscaped(w,")
+	buf.WriteString("if err := " + n.Esc.Func() + "(w, ")
 	n.Value.WriteGoCode(buf)
 	buf.WriteStringLn("); err != nil {")
 	buf.WriteStringLn("return err")

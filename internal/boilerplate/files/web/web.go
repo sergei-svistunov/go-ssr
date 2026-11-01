@@ -8,23 +8,27 @@ import (
 	"<PKG_NAME>/<WEB_DIR>/pages"
 )
 
-func New() http.Handler {
-	mux := http.NewServeMux()
-
-	mux.Handle("/", pages.NewSsrHandler(ssrMux.Options{
+// New returns the site's handler. csrfKey signs the CSRF tokens and is
+// required: at least 32 bytes, or NewSsrHandler returns an error. Keep it in
+// your secret store and give every instance that serves the site the same
+// key; tokens survive a restart only if the key does. For development, any
+// random key works: export CSRF_KEY=$(openssl rand -hex 32), or set CSRF_KEY
+// under env in gossr.yaml for go-ssr -watch.
+func New(csrfKey []byte) (http.Handler, error) {
+	ssrHandler, err := pages.NewSsrHandler(ssrMux.Options{
 		// The CSRF cookie is Secure-only. Uncomment for plain-http development
 		// on a host other than localhost, or in Safari (which drops Secure
 		// cookies on http://localhost too); never enable in production.
 		// InsecureCookies: true,
 
-		// CSRFKey signs the CSRF tokens. Left unset, a key is generated at
-		// startup, so every restart invalidates the tokens on pages users
-		// already have open and no two instances accept each other's. Before
-		// running more than one instance, or deploying without draining, set
-		// it to at least 32 bytes from your secret store — and fail startup
-		// if that value is missing, because an empty one silently falls back
-		// to the generated key.
-	}))
+		CSRFKey: csrfKey,
+	})
+	if err != nil {
+		return nil, err
+	}
 
-	return mux
+	mux := http.NewServeMux()
+	mux.Handle("/", ssrHandler)
+
+	return mux, nil
 }

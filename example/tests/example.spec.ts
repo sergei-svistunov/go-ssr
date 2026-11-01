@@ -19,6 +19,24 @@ function parseFirstNumber(text: string): number {
   return m ? parseFloat(m[0]) : NaN;
 }
 
+// Every page runs under the server's Content-Security-Policy; a violation
+// fails the test.
+let cspViolations: string[] = [];
+
+test.beforeEach(async ({ page }) => {
+  cspViolations = [];
+  await page.exposeFunction('reportCSPViolation', (v: string) => cspViolations.push(v));
+  await page.addInitScript(() => {
+    document.addEventListener('securitypolicyviolation', (e) => {
+      (window as any).reportCSPViolation(`${e.violatedDirective} blocked ${e.blockedURI || 'inline'}`);
+    }, true);
+  });
+});
+
+test.afterEach(() => {
+  expect(cspViolations, 'Content-Security-Policy violations').toEqual([]);
+});
+
 // ---------------------------------------------------------------------------
 // 1. Static rendering — /home
 // ---------------------------------------------------------------------------
@@ -86,6 +104,9 @@ test('reactive balance: balance updates live on /home', async ({ page }) => {
       intervals: [500, 500, 500, 500, 500, 500, 1000, 1000, 1000, 1000],
     }
   ).not.toBe(initialBalance);
+
+  // Every site shows its own expression, so the live text keeps its format.
+  expect(await balanceSpan.innerText()).toMatch(/^Balance: \$\d+\.\d{2}$/);
 });
 
 // ---------------------------------------------------------------------------
@@ -115,7 +136,7 @@ test('reactive visitorsOnline: counter updates live on /home', async ({ page }) 
   ).not.toBe(initialValue);
 });
 
-test('reactive attribute: style="color: {{ visitorsBadgeColor }}" updates live', async ({ page }) => {
+test('reactive attribute: class="badge {{ visitorsBadgeClass }}" updates live', async ({ page }) => {
   await page.goto('/home');
 
   const counter = page
@@ -123,19 +144,19 @@ test('reactive attribute: style="color: {{ visitorsBadgeColor }}" updates live',
     .locator('strong');
   await expect(counter).toBeVisible();
 
-  const initialColor = await counter.evaluate((el) => (el as HTMLElement).style.color);
-  expect(initialColor).not.toBe(''); // Server rendered an inline color.
+  const initialClass = await counter.evaluate((el) => el.className);
+  expect(initialClass).toMatch(/^badge visitors-\w+$/); // Server rendered a badge class.
 
-  // The badge color is recomputed on every visitorsOnline tick (4 s).
-  // Across two random buckets the colour will eventually change. Allow up to 30 s.
+  // The badge class is recomputed on every visitorsOnline tick (4 s).
+  // Across two random buckets the class will eventually change. Allow up to 30 s.
   await expect.poll(
-    async () => counter.evaluate((el) => (el as HTMLElement).style.color),
+    async () => counter.evaluate((el) => el.className),
     {
-      message: 'style="color: ..." attribute should change via server-push WS patch',
+      message: 'class="badge ..." attribute should change via server-push WS patch',
       timeout: 30_000,
       intervals: Array(30).fill(1000),
     }
-  ).not.toBe(initialColor);
+  ).not.toBe(initialClass);
 });
 
 // ---------------------------------------------------------------------------
@@ -212,6 +233,22 @@ test('ssr:bind validation: >50 char name shows error and greeting is unchanged',
   expect(greetingText).not.toContain('A'.repeat(10));
 });
 
+test('live text value with markup shows as text', async ({ page }) => {
+  await page.goto('/home');
+
+  const input = page.locator('input[type="text"][placeholder="Your name"]');
+  await input.fill('<b>x</b>');
+  await input.press('Tab');
+
+  const greeting = page.locator('p', { hasText: 'Hi,' });
+  await expect.poll(
+    async () => (await greeting.innerText()).trim(),
+    { timeout: 8_000, intervals: [300, 300, 500, 500, 1000, 1000, 1000] }
+  ).toBe('Hi, <b>x</b>!');
+  await expect(greeting.locator('b')).toHaveCount(0);
+  await expect(input).toHaveValue('<b>x</b>');
+});
+
 // ---------------------------------------------------------------------------
 // 6a. Multiplexed nested page — /users/johndoe123/info — presence checks
 //     These structural assertions pass regardless of BUG-2.
@@ -232,8 +269,9 @@ test('multiplexed ws: /users/johndoe123/info — all three reactive elements pre
   const lastSeenPara = page.locator('p.text-muted.small', { hasText: 'Last seen:' });
   await expect(lastSeenPara).toBeVisible();
 
-  // (d) data-ssr-bind attributes are present for all three reactive vars
-  await expect(page.locator('[data-ssr-bind="8a5edab2.balance"]').first()).toBeAttached();
+  // (d) data-ssr-bind attributes are present for all three reactive vars; each
+  // balance expression is its own site of the root route
+  await expect(balanceSpan.locator('[data-ssr-bind^="8a5edab2."]')).toHaveCount(3);
   await expect(page.locator('[data-ssr-bind="954dac29.userCount"]').first()).toBeAttached();
   await expect(page.locator('[data-ssr-bind="2b2f214e.lastSeen"]').first()).toBeAttached();
 });
@@ -276,6 +314,26 @@ test('multiplexed ws: balance updates live on /users/johndoe123/info', async ({ 
       intervals: [500, 500, 500, 500, 1000, 1000, 1000, 1000, 1000],
     }
   ).not.toBe(initialBalance);
+});
+
+// ---------------------------------------------------------------------------
+// 6c. Page call on /users/johndoe123/info — the button runs refreshLastSeen
+//     over the live connection and shows its typed result.
+// ---------------------------------------------------------------------------
+
+test('page call: refresh last seen returns the new value', async ({ page }) => {
+  const frames: string[] = [];
+  page.on('websocket', ws => ws.on('framesent', f => frames.push(String(f.payload))));
+
+  await page.goto('/users/johndoe123/info');
+  const result = page.locator('#refresh-last-seen-result');
+  await expect(result).toHaveText('');
+
+  await page.locator('#refresh-last-seen').click();
+  await expect(result).toHaveText('Refreshed: just now');
+
+  const call = frames.map(f => JSON.parse(f)).find(f => f.t === 'call');
+  expect(call).toMatchObject({ routeKey: '2b2f214e', name: 'refreshLastSeen', args: {} });
 });
 
 // ---------------------------------------------------------------------------

@@ -29,14 +29,14 @@
         </div>
 
         <div class="form-floating mb-3">
-            <ssr:select name="multSelect" gotype="uint8" multiple="multiple" id="mult-select" style="height: 200px"
+            <ssr:select name="multSelect" gotype="uint8" multiple="multiple" id="mult-select"
                         class="form-select {{ form.IsValidated() ? input.HasError() ? 'is-invalid' : 'is-valid' : '' }}"/>
             <label for="mult-select">Works with selects with multiple</label>
             <div class="invalid-feedback" ssr:if="form.MultSelect.HasError()">{{ form.MultSelect.GetError() }}</div>
         </div>
 
         <div class="form-floating mb-3">
-            <ssr:textarea name="description" required style="height: 100px" placeholder="Description" id="description"
+            <ssr:textarea name="description" required placeholder="Description" id="description"
                           class="form-control {{ form.IsValidated() ? textarea.HasError() ? 'is-invalid' : 'is-valid' : '' }}"/>
             <label for="description">Description</label>
             <div class="invalid-feedback" ssr:if="form.Description.HasError()">{{ form.Description.GetError() }}</div>

@@ -169,6 +169,7 @@ func (x *exprLex) Lex(yylval *yySymType) int {
 
 			yylval.string = x.text[:exprPos]
 			x.text = x.text[exprPos:]
+			x.curLine += strings.Count(yylval.string, "\n")
 
 			if YyLexDebug {
 				fmt.Println("TEXT ", yylval.string)

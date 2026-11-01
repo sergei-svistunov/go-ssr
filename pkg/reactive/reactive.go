@@ -6,7 +6,10 @@
 // pending patches, and encodes wire-protocol frames.
 //
 // Wire protocol: all messages are WebSocket text frames containing a single
-// UTF-8 JSON object. Values are pre-rendered HTML strings.
+// UTF-8 JSON object. Values are markup the server rendered with the context
+// escapers. Besides the frames of live values (init, patch, write, ack,
+// err), a page runs its calls with call frames, each answered by a result or
+// fail frame with its id.
 package reactive
 
 import (
@@ -15,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"strconv"
 	"sync"
@@ -22,7 +26,7 @@ import (
 
 	"github.com/coder/websocket"
 
-	"github.com/sergei-svistunov/go-ssr/pkg/mux"
+	"github.com/sergei-svistunov/go-ssr/internal/wsorigin"
 )
 
 // slowClientTimeout is the maximum time the send goroutine will wait for
@@ -81,6 +85,44 @@ type ErrMsg struct {
 	Var      string `json:"var"`
 	Msg      string `json:"msg"`
 	Code     string `json:"code"`
+}
+
+// CallMsg is the client→server frame that runs one of a page's calls. ID
+// counts up per page, across reconnects, and comes back in the frame that
+// answers the call. Args is the call's argument as JSON.
+type CallMsg struct {
+	T        string          `json:"t"`
+	ID       uint32          `json:"id"`
+	RouteKey string          `json:"routeKey"`
+	Name     string          `json:"name"`
+	Args     json.RawMessage `json:"args"`
+}
+
+// ResultMsg is the server→client frame that answers a call that returned.
+// Value is the call's result as JSON.
+type ResultMsg struct {
+	T     string          `json:"t"`
+	ID    uint32          `json:"id"`
+	Value json.RawMessage `json:"value"`
+}
+
+// FailMsg is the server→client frame that answers a call that failed, with
+// an HTTP status and a message the page may show.
+type FailMsg struct {
+	T      string `json:"t"`
+	ID     uint32 `json:"id"`
+	Status int    `json:"status"`
+	Msg    string `json:"msg"`
+}
+
+// NewResult constructs a ResultMsg answering call id; value is already JSON.
+func NewResult(id uint32, value json.RawMessage) ResultMsg {
+	return ResultMsg{T: "result", ID: id, Value: value}
+}
+
+// NewFail constructs a FailMsg answering call id.
+func NewFail(id uint32, status int, msg string) FailMsg {
+	return FailMsg{T: "fail", ID: id, Status: status, Msg: msg}
 }
 
 // NewInitMsg constructs an InitMsg with type discriminator set.
@@ -159,8 +201,7 @@ func NewConn(ctx context.Context, cancel context.CancelFunc, ws *websocket.Conn)
 }
 
 // SendJSON sends a single JSON-encoded value as a WebSocket text frame.
-// It is safe to call from any goroutine but is not concurrent-safe with itself;
-// callers must serialise writes (the send goroutine does this by design).
+// It is safe for concurrent use.
 func (c *Conn) SendJSON(v any) error {
 	data, err := json.Marshal(v)
 	if err != nil {
@@ -287,157 +328,160 @@ func (c *Conn) sendWithTimeout(v any) error {
 	return err
 }
 
-// Ctx returns the connection's context. Generated code uses this to check
-// whether the connection is still alive before acquiring per-variable mutexes.
+// Ctx returns the connection's context. The mux passes it to the live hooks
+// of the connection; generated Set methods use it to skip work once the
+// connection is gone.
 func (c *Conn) Ctx() context.Context {
 	return c.ctx
 }
 
 // CloseWithError sends a WS close frame with the given status code and reason,
-// then cancels the connection context. Used by the generated WS handler to
-// close with code 1011 (internal error) when a Subscribe goroutine returns an
-// error.
+// then cancels the connection context.
 func (c *Conn) CloseWithError(code websocket.StatusCode, reason string) {
 	c.ws.Close(code, reason)
 	c.cancel()
 }
 
-// ReceiveWriteMsg reads the next WriteMsg from the WebSocket. It blocks until
-// a message is received or the connection is closed.
-func (c *Conn) ReceiveWriteMsg(msg *WriteMsg) error {
-	_, data, err := c.ws.Read(c.ctx)
-	if err != nil {
-		return err
-	}
-	return json.Unmarshal(data, msg)
+// CloseNow closes the connection without a close frame and cancels the
+// connection context.
+func (c *Conn) CloseNow() {
+	c.ws.CloseNow()
+	c.cancel()
 }
 
-// HandleWrites runs the read loop for client→server write frames. For each
-// received WriteMsg the dispatch function is called. HandleWrites returns when
-// ctx is cancelled or the connection is closed.
+// clientFrame holds the fields of every frame a page sends.
+type clientFrame struct {
+	T        string          `json:"t"`
+	ID       uint32          `json:"id"`
+	RouteKey string          `json:"routeKey"`
+	Var      string          `json:"var"`
+	Value    json.RawMessage `json:"value"`
+	Name     string          `json:"name"`
+	Args     json.RawMessage `json:"args"`
+}
+
+// ReadFrames runs the read loop for client→server frames until ctx is
+// cancelled or the connection is closed. Each write frame goes to onWrite and
+// each call frame with an id of at least 1 to onCall, on the reading
+// goroutine, so neither may block for long. A nil handler ignores its
+// frames; frames of any other type are ignored, and the first of them is
+// logged by its type alone. A frame that is not valid JSON ends the loop
+// with the decoding error.
 //
-// dispatch receives the parsed WriteMsg. Unknown routeKey handling
-// (sending err{code:"unknown_route"}) must be performed inside dispatch.
+// Unknown routeKey handling (sending err{code:"unknown_route"}) must be
+// performed inside onWrite.
 //
 // The function returns nil on clean shutdown and the read error otherwise.
-func (c *Conn) HandleWrites(ctx context.Context, dispatch func(WriteMsg)) error {
+func (c *Conn) ReadFrames(ctx context.Context, onWrite func(WriteMsg), onCall func(CallMsg)) error {
+	unknownLogged := false
 	for {
 		if ctx.Err() != nil {
 			return nil
 		}
-		var msg WriteMsg
-		if err := c.ReceiveWriteMsg(&msg); err != nil {
+		_, data, err := c.ws.Read(c.ctx)
+		if err != nil {
 			return err
 		}
-		dispatch(msg)
+		var f clientFrame
+		if err := json.Unmarshal(data, &f); err != nil {
+			return err
+		}
+		switch f.T {
+		case "write":
+			if onWrite != nil {
+				onWrite(WriteMsg{T: f.T, RouteKey: f.RouteKey, Var: f.Var, Value: f.Value})
+			}
+		case "call":
+			if onCall != nil && f.ID >= 1 {
+				onCall(CallMsg{T: f.T, ID: f.ID, RouteKey: f.RouteKey, Name: f.Name, Args: f.Args})
+			}
+		default:
+			if !unknownLogged {
+				unknownLogged = true
+				log.Printf("reactive: ignoring frames of unknown type %q", cut(f.T, 32))
+			}
+		}
 	}
 }
 
-// ----------------------------------------------------------------------------
-// Value helpers (RenderValue, ParseValue)
-// ----------------------------------------------------------------------------
-
-// RenderValue converts a Go scalar value to its pre-rendered HTML string
-// representation. This is the string the client receives in patch messages.
-// Numeric and bool values are formatted directly; strings are used as-is
-// (the template layer handles HTML escaping when rendering in the SSR path).
-func RenderValue(v any) string {
-	if v == nil {
-		return ""
+// cut returns s cut to at most n bytes.
+func cut(s string, n int) string {
+	if len(s) > n {
+		return s[:n]
 	}
-	return fmt.Sprintf("%v", v)
+	return s
 }
+
+// ----------------------------------------------------------------------------
+// Value helpers (ParseValue)
+// ----------------------------------------------------------------------------
 
 // ParseValue parses a raw string value received from the client into the
-// target Go type T. The string is the "value" field of a WriteMsg.
-// Supported types match the scalarTypes set in the generator.
+// target Go type T, as an ssr:bind input's text is read: bool by
+// strconv.ParseBool, integers in base 10 within the size of T, and floats
+// within the size of T, refusing NaN and infinities. Supported types match the
+// scalarTypes set in the generator.
 func ParseValue[T any](s string) (T, error) {
 	var zero T
 	var result any
+	var err error
 
 	switch any(zero).(type) {
 	case string:
 		result = s
 	case bool:
-		b, err := parseBool(s)
-		if err != nil {
-			return zero, fmt.Errorf("cannot parse %q as bool: %w", s, err)
+		var b bool
+		if b, err = strconv.ParseBool(s); err != nil {
+			err = fmt.Errorf("cannot parse %q as bool: %w", s, err)
 		}
 		result = b
 	case int:
-		n, err := parseInt(s)
-		if err != nil {
-			return zero, err
-		}
+		var n int64
+		n, err = parseInt(s, 0)
 		result = int(n)
 	case int8:
-		n, err := parseInt(s)
-		if err != nil {
-			return zero, err
-		}
+		var n int64
+		n, err = parseInt(s, 8)
 		result = int8(n)
 	case int16:
-		n, err := parseInt(s)
-		if err != nil {
-			return zero, err
-		}
+		var n int64
+		n, err = parseInt(s, 16)
 		result = int16(n)
 	case int32:
-		n, err := parseInt(s)
-		if err != nil {
-			return zero, err
-		}
+		var n int64
+		n, err = parseInt(s, 32)
 		result = int32(n)
 	case int64:
-		n, err := parseInt(s)
-		if err != nil {
-			return zero, err
-		}
-		result = n
+		result, err = parseInt(s, 64)
 	case uint:
-		n, err := parseUint(s)
-		if err != nil {
-			return zero, err
-		}
+		var n uint64
+		n, err = parseUint(s, 0)
 		result = uint(n)
 	case uint8:
-		n, err := parseUint(s)
-		if err != nil {
-			return zero, err
-		}
+		var n uint64
+		n, err = parseUint(s, 8)
 		result = uint8(n)
 	case uint16:
-		n, err := parseUint(s)
-		if err != nil {
-			return zero, err
-		}
+		var n uint64
+		n, err = parseUint(s, 16)
 		result = uint16(n)
 	case uint32:
-		n, err := parseUint(s)
-		if err != nil {
-			return zero, err
-		}
+		var n uint64
+		n, err = parseUint(s, 32)
 		result = uint32(n)
 	case uint64:
-		n, err := parseUint(s)
-		if err != nil {
-			return zero, err
-		}
-		result = n
+		result, err = parseUint(s, 64)
 	case float32:
-		f, err := parseFloat(s)
-		if err != nil {
-			return zero, err
-		}
+		var f float64
+		f, err = parseFloat(s, 32)
 		result = float32(f)
 	case float64:
-		f, err := parseFloat(s)
-		if err != nil {
-			return zero, err
-		}
-		result = f
+		result, err = parseFloat(s, 64)
 	default:
 		return zero, fmt.Errorf("ParseValue: unsupported type %T", zero)
+	}
+	if err != nil {
+		return zero, err
 	}
 
 	typed, ok := result.(T)
@@ -448,77 +492,63 @@ func ParseValue[T any](s string) (T, error) {
 }
 
 // ----------------------------------------------------------------------------
-// HTTP handler factory
+// Accept
 // ----------------------------------------------------------------------------
 
-// HandlerFunc is the signature for the server-side WS logic provided by
-// generated code. It is called once per connection after the WS handshake.
-// The *Conn is fully initialised; the function must send the init frame,
-// call StartSendLoop, then call the route's Subscribe method.
-type HandlerFunc func(ctx context.Context, r *http.Request, conn *Conn)
+// StatusReauth closes a connection that has lived its allotted time; the
+// client reconnects at once and the server checks the request again.
+const StatusReauth websocket.StatusCode = 4000
 
-// NewHandler returns an http.Handler that upgrades HTTP requests to WebSocket
-// and calls fn for each connection. Mounted through the mux, as generated
-// code does, the handshake has already passed mux.CrossSite — the rule forms
-// use, with mux.Options.OriginPatterns as the allowlist — so no further
-// origin check is made here; the handshake carries the browser's cookies,
-// and that check is what stops a third-party page from driving write frames
-// as the logged-in user. Mounted anywhere else, the library's own same-host
-// rule applies. Subscribe still decides who the user is.
-func NewHandler(fn HandlerFunc) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		c, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-			InsecureSkipVerify: mux.OriginChecked(r.Context()),
-		})
-		if err != nil {
-			// Accept writes its own HTTP error response on failure.
-			return
-		}
-		defer c.CloseNow()
-
-		ctx, cancel := context.WithCancel(r.Context())
-		defer cancel()
-
-		conn := NewConn(ctx, cancel, c)
-		fn(ctx, r, conn)
-	})
+// Accept upgrades r to a WebSocket connection whose context is derived from
+// r's context and cancelled when the connection is closed through the Conn.
+//
+// Unless the mux has already applied its own cross-site refusal to r, Accept
+// refuses a handshake whose Origin host differs from r.Host.
+func Accept(w http.ResponseWriter, r *http.Request) (*Conn, error) {
+	// The server's read and write deadlines would cut a long-lived
+	// connection short once it is hijacked.
+	rc := http.NewResponseController(w)
+	if err := rc.SetReadDeadline(time.Time{}); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		return nil, err
+	}
+	if err := rc.SetWriteDeadline(time.Time{}); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		return nil, err
+	}
+	ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: wsorigin.Checked(r.Context())})
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithCancel(r.Context())
+	return NewConn(ctx, cancel, ws), nil
 }
 
 // ----------------------------------------------------------------------------
 // Internal parse helpers
 // ----------------------------------------------------------------------------
 
-func parseBool(s string) (bool, error) {
-	switch s {
-	case "true", "1", "on", "yes":
-		return true, nil
-	case "false", "0", "off", "no", "":
-		return false, nil
-	default:
-		return strconv.ParseBool(s)
-	}
-}
-
-func parseInt(s string) (int64, error) {
-	n, err := strconv.ParseInt(s, 10, 64)
+func parseInt(s string, bits int) (int64, error) {
+	n, err := strconv.ParseInt(s, 10, bits)
 	if err != nil {
 		return 0, fmt.Errorf("cannot parse %q as integer: %w", s, err)
 	}
 	return n, nil
 }
 
-func parseUint(s string) (uint64, error) {
-	n, err := strconv.ParseUint(s, 10, 64)
+func parseUint(s string, bits int) (uint64, error) {
+	n, err := strconv.ParseUint(s, 10, bits)
 	if err != nil {
 		return 0, fmt.Errorf("cannot parse %q as unsigned integer: %w", s, err)
 	}
 	return n, nil
 }
 
-func parseFloat(s string) (float64, error) {
-	f, err := strconv.ParseFloat(s, 64)
+func parseFloat(s string, bits int) (float64, error) {
+	f, err := strconv.ParseFloat(s, bits)
 	if err != nil {
 		return 0, fmt.Errorf("cannot parse %q as float: %w", s, err)
+	}
+	if math.IsNaN(f) || math.IsInf(f, 0) {
+		return 0, fmt.Errorf("cannot parse %q as float: not a finite number", s)
 	}
 	return f, nil
 }

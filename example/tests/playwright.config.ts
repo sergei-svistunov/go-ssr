@@ -1,3 +1,4 @@
+import { randomBytes } from 'crypto';
 import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
@@ -13,6 +14,12 @@ export default defineConfig({
   use: {
     baseURL: 'http://localhost:18080',
     trace: 'on-first-retry',
+  },
+  webServer: {
+    command: 'go run .',
+    cwd: '..',
+    url: 'http://localhost:18080',
+    env: { CSRF_KEY: randomBytes(32).toString('hex') },
   },
   projects: [
     {

@@ -1,0 +1,22 @@
+<!doctype html>
+<html>
+<head><title>{{ title }}</title></head>
+<body>
+<ssr:var name="title" type="string"/>
+<ssr:var name="text" type="string" reactive="true" client-writable="true"/>
+<ssr:var name="s" type="string" reactive="true"/>
+<ssr:var name="markup" type="render.SafeHTML" reactive="true"/>
+<ssr:var name="name" type="string" reactive="true"/>
+<ssr:var name="count" type="int" reactive="true" client-writable="true"/>
+<ssr:var name="ratio" type="float64" reactive="true" client-writable="true"/>
+<ssr:var name="on" type="bool" reactive="true" client-writable="true"/>
+<p id="text">{{ text }}</p>
+<p id="raw">{{$ s }}</p>
+<p id="esc">{{ s }}</p>
+<div id="markup">{{$ markup }}</div>
+<p id="count">{{ count }}</p><input ssr:bind="count" type="number"/>
+<p id="ratio">{{ ratio }}</p><input ssr:bind="ratio" type="number"/>
+<p id="on">{{ on }}</p><input ssr:bind="on"/>
+<div id="block"><p ssr:if="name != ''">{{ name }}</p></div>
+</body>
+</html>

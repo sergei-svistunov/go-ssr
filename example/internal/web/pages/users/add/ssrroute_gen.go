@@ -9,7 +9,11 @@ import (
 
 	"github.com/sergei-svistunov/go-ssr/pkg/form"
 	"github.com/sergei-svistunov/go-ssr/pkg/mux"
+	"github.com/sergei-svistunov/go-ssr/pkg/render"
 )
+
+// Keeps the render import in a page without values, so a variable may have a render type.
+var _ = render.Text
 
 type RouteData struct {
 }
@@ -36,79 +40,87 @@ type RouteDataProvider interface {
 
 type ssrRoute struct{ dp RouteDataProvider }
 
-func NewRoute(dp RouteDataProvider) mux.Route { return &ssrRoute{dp: dp} }
-func (rt *ssrRoute) GetDataContext(ctx context.Context, r *mux.Request, w mux.ResponseWriter, child mux.DataContext) (mux.DataContext, error) {
-	dataCtx := &dataContext{
-		RouteDataContext: mux.RouteDataContext{
-			Child:  child,
-			Assets: []string{},
-		},
-	}
-
-	dataCtx.FormAddData.BaseFormValues.SetElements([]form.Element{
-		&dataCtx.FormAddData.Login,
-		&dataCtx.FormAddData.Name,
-		&dataCtx.FormAddData.Age,
-		&dataCtx.FormAddData.Select,
-		&dataCtx.FormAddData.MultSelect,
-		&dataCtx.FormAddData.Description,
-		&dataCtx.FormAddData.Image,
-		&dataCtx.FormAddData.Images,
-		&dataCtx.FormAddData.Confirm,
-		&dataCtx.FormAddData.Radio,
-	})
-
-	if err := rt.dp.InitAdd(ctx, r, w, &dataCtx.FormAddData); err != nil {
-		return nil, err
-	}
-
-	if r.Method == http.MethodPost {
-		formId, err := form.Parse(r)
-		if err != nil {
-			return nil, err
-		}
-		switch formId {
-		case "add":
-			if !form.IsMultipart(r) {
-				return nil, mux.NewHttpError(http.StatusBadRequest, "Content-Type is not multipart/form-data")
-			}
-			dataCtx.FormAddData.Login.Process(r, "login", true, true)
-			dataCtx.FormAddData.Name.Process(r, "name", true, true)
-			dataCtx.FormAddData.Age.Process(r, "age", true, true)
-			dataCtx.FormAddData.Select.Process(r, "select", true, false)
-			dataCtx.FormAddData.MultSelect.Process(r, "multSelect", true, false)
-			dataCtx.FormAddData.Description.Process(r, "description", true, true)
-			dataCtx.FormAddData.Image.Process(r, "image", true, true)
-			dataCtx.FormAddData.Images.Process(r, "images", true, true)
-			dataCtx.FormAddData.Confirm.Process(r, "confirm", true, false)
-			dataCtx.FormAddData.Radio.Process(r, "radio", true, false)
-			if err := rt.dp.ProcessAdd(ctx, r, w, &dataCtx.FormAddData); err != nil {
-				return nil, err
-			}
-			dataCtx.FormAddData.BaseFormValues.MarkValidated()
-		}
-	}
-	if err := form.SetCSRFToken(r, w, &dataCtx.FormAddData.BaseFormValues); err != nil {
-		return nil, err
-	}
-	if err := rt.dp.Data(ctx, r, w, &dataCtx.RouteData); err != nil {
-		return nil, err
-	}
-
-	return dataCtx, nil
+func NewRoute(dp RouteDataProvider) mux.Route {
+	mux.CheckGuard(dp, "/users/add")
+	return &ssrRoute{dp: dp}
 }
 
-func (rt *ssrRoute) GetDefaultRoute(ctx context.Context, r *mux.Request) (string, error) {
-	return "", nil
+func (rt *ssrRoute) Layout() bool { return false }
+
+func (rt *ssrRoute) NewState() mux.RouteState {
+	s := &ssrState{dp: rt.dp}
+	s.SetAssets([]string{})
+	return s
 }
 
-type dataContext struct {
-	mux.RouteDataContext
+type ssrState struct {
+	mux.Frame
+	dp          RouteDataProvider
 	RouteData   RouteData
 	FormAddData FormAddValues
 }
 
-func (c *dataContext) Write(w io.Writer) error {
+func (c *ssrState) Guard(ctx context.Context, r *mux.Request) error {
+	if g, ok := c.dp.(mux.Guarded); ok {
+		return g.Guard(ctx, r)
+	}
+	return nil
+}
+
+func (c *ssrState) InitForms(ctx context.Context, r *mux.Request, w mux.ResponseWriter) error {
+	c.FormAddData.BaseFormValues.SetElements([]form.Element{
+		&c.FormAddData.Login,
+		&c.FormAddData.Name,
+		&c.FormAddData.Age,
+		&c.FormAddData.Select,
+		&c.FormAddData.MultSelect,
+		&c.FormAddData.Description,
+		&c.FormAddData.Image,
+		&c.FormAddData.Images,
+		&c.FormAddData.Confirm,
+		&c.FormAddData.Radio,
+	})
+	if err := c.dp.InitAdd(ctx, r, w, &c.FormAddData); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *ssrState) SubmitForm(ctx context.Context, r *mux.Request, w mux.ResponseWriter, id string) (bool, error) {
+	switch id {
+	case "add":
+		if !form.IsMultipart(r) {
+			return true, mux.NewHttpError(http.StatusBadRequest, "Content-Type is not multipart/form-data")
+		}
+		c.FormAddData.Login.Process(r, "login", true, true)
+		c.FormAddData.Name.Process(r, "name", true, true)
+		c.FormAddData.Age.Process(r, "age", true, true)
+		c.FormAddData.Select.Process(r, "select", true, false)
+		c.FormAddData.MultSelect.Process(r, "multSelect", true, false)
+		c.FormAddData.Description.Process(r, "description", true, true)
+		c.FormAddData.Image.Process(r, "image", true, true)
+		c.FormAddData.Images.Process(r, "images", true, true)
+		c.FormAddData.Confirm.Process(r, "confirm", true, false)
+		c.FormAddData.Radio.Process(r, "radio", true, false)
+		c.FormAddData.BaseFormValues.MarkValidated()
+		if c.FormAddData.BaseFormValues.HasError() {
+			return true, nil
+		}
+		return true, c.dp.ProcessAdd(ctx, r, w, &c.FormAddData)
+	}
+	return false, nil
+}
+
+func (c *ssrState) Data(ctx context.Context, r *mux.Request, w mux.ResponseWriter) error {
+	if err := form.SetCSRFToken(r, w, &c.FormAddData.BaseFormValues); err != nil {
+		return err
+	}
+	return c.dp.Data(ctx, r, w, &c.RouteData)
+}
+
+func (c *ssrState) DefaultRoute(ctx context.Context, r *mux.Request) (string, error) { return "", nil }
+
+func (c *ssrState) Write(w io.Writer) error {
 	if _, err := w.Write(_betovsehn2s182ab6pmc9s7mfflfrkpbc6lhjii6rquri82fab20); err != nil {
 		return err
 	}
@@ -139,7 +151,7 @@ func (c *dataContext) Write(w io.Writer) error {
 				if input.HasError() {
 					v = input.GetFormValue()
 				}
-				if _, err := mux.WriteHtmlEscaped(w, v); err != nil {
+				if err := render.Attr(w, v); err != nil {
 					return err
 				}
 				if _, err := w.Write(_h8phvnf70cnj79ou3cn2avc02pn393g0vioni57khfdlf8e6603g); err != nil {
@@ -150,7 +162,7 @@ func (c *dataContext) Write(w io.Writer) error {
 				return err
 			}
 //line index.html:4
-			if _, err := mux.WriteHtmlEscaped(w, mux.TernaryIf(form.IsValidated(), mux.TernaryIf(input.HasError(), "is-invalid", "is-valid"), "")); err != nil {
+			if err := render.Attr(w, mux.TernaryIf(form.IsValidated(), mux.TernaryIf(input.HasError(), "is-invalid", "is-valid"), "")); err != nil {
 				return err
 			}
 			if _, err := w.Write(_lcmdet48ia9q0oam521uudg1jkg3li09sdb2shbhi1v9i6kec5og); err != nil {
@@ -166,7 +178,7 @@ func (c *dataContext) Write(w io.Writer) error {
 				return err
 			}
 //line index.html:6
-			if _, err := mux.WriteHtmlEscaped(w, form.Login.GetError()); err != nil {
+			if err := render.Text(w, form.Login.GetError()); err != nil {
 				return err
 			}
 			if _, err := w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
@@ -191,7 +203,7 @@ func (c *dataContext) Write(w io.Writer) error {
 				if input.HasError() {
 					v = input.GetFormValue()
 				}
-				if _, err := mux.WriteHtmlEscaped(w, v); err != nil {
+				if err := render.Attr(w, v); err != nil {
 					return err
 				}
 				if _, err := w.Write(_h8phvnf70cnj79ou3cn2avc02pn393g0vioni57khfdlf8e6603g); err != nil {
@@ -202,7 +214,7 @@ func (c *dataContext) Write(w io.Writer) error {
 				return err
 			}
 //line index.html:10
-			if _, err := mux.WriteHtmlEscaped(w, mux.TernaryIf(form.IsValidated(), mux.TernaryIf(input.HasError(), "is-invalid", "is-valid"), "")); err != nil {
+			if err := render.Attr(w, mux.TernaryIf(form.IsValidated(), mux.TernaryIf(input.HasError(), "is-invalid", "is-valid"), "")); err != nil {
 				return err
 			}
 			if _, err := w.Write(_lcmdet48ia9q0oam521uudg1jkg3li09sdb2shbhi1v9i6kec5og); err != nil {
@@ -218,7 +230,7 @@ func (c *dataContext) Write(w io.Writer) error {
 				return err
 			}
 //line index.html:12
-			if _, err := mux.WriteHtmlEscaped(w, form.Name.GetError()); err != nil {
+			if err := render.Text(w, form.Name.GetError()); err != nil {
 				return err
 			}
 			if _, err := w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
@@ -243,7 +255,7 @@ func (c *dataContext) Write(w io.Writer) error {
 				if input.HasError() {
 					v = input.GetFormValue()
 				}
-				if _, err := mux.WriteHtmlEscaped(w, v); err != nil {
+				if err := render.Attr(w, v); err != nil {
 					return err
 				}
 				if _, err := w.Write(_h8phvnf70cnj79ou3cn2avc02pn393g0vioni57khfdlf8e6603g); err != nil {
@@ -254,7 +266,7 @@ func (c *dataContext) Write(w io.Writer) error {
 				return err
 			}
 //line index.html:16
-			if _, err := mux.WriteHtmlEscaped(w, mux.TernaryIf(form.IsValidated(), mux.TernaryIf(input.HasError(), "is-invalid", "is-valid"), "")); err != nil {
+			if err := render.Attr(w, mux.TernaryIf(form.IsValidated(), mux.TernaryIf(input.HasError(), "is-invalid", "is-valid"), "")); err != nil {
 				return err
 			}
 			if _, err := w.Write(_lcmdet48ia9q0oam521uudg1jkg3li09sdb2shbhi1v9i6kec5og); err != nil {
@@ -270,7 +282,7 @@ func (c *dataContext) Write(w io.Writer) error {
 				return err
 			}
 //line index.html:18
-			if _, err := mux.WriteHtmlEscaped(w, form.Age.GetError()); err != nil {
+			if err := render.Text(w, form.Age.GetError()); err != nil {
 				return err
 			}
 			if _, err := w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
@@ -288,7 +300,7 @@ func (c *dataContext) Write(w io.Writer) error {
 				return err
 			}
 //line index.html:22
-			if _, err := mux.WriteHtmlEscaped(w, mux.TernaryIf(form.IsValidated(), mux.TernaryIf(input.HasError(), "is-invalid", "is-valid"), "")); err != nil {
+			if err := render.Attr(w, mux.TernaryIf(form.IsValidated(), mux.TernaryIf(input.HasError(), "is-invalid", "is-valid"), "")); err != nil {
 				return err
 			}
 			if _, err := w.Write(_lcmdet48ia9q0oam521uudg1jkg3li09sdb2shbhi1v9i6kec5og); err != nil {
@@ -313,7 +325,7 @@ func (c *dataContext) Write(w io.Writer) error {
 				return err
 			}
 //line index.html:24
-			if _, err := mux.WriteHtmlEscaped(w, form.Select.GetError()); err != nil {
+			if err := render.Text(w, form.Select.GetError()); err != nil {
 				return err
 			}
 			if _, err := w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
@@ -327,11 +339,11 @@ func (c *dataContext) Write(w io.Writer) error {
 //line index.html:28
 			input := form.MultSelect
 			_ = input
-			if _, err := w.Write(_rv8pkanhu2gsqqdl4g602r40fch56tpt6a9op2u9trrcfu61rqa0); err != nil {
+			if _, err := w.Write(_3e21rhv3igokvue9n4apvcu9vikuvpsd06lrn67t74rj86suadb0); err != nil {
 				return err
 			}
 //line index.html:28
-			if _, err := mux.WriteHtmlEscaped(w, mux.TernaryIf(form.IsValidated(), mux.TernaryIf(input.HasError(), "is-invalid", "is-valid"), "")); err != nil {
+			if err := render.Attr(w, mux.TernaryIf(form.IsValidated(), mux.TernaryIf(input.HasError(), "is-invalid", "is-valid"), "")); err != nil {
 				return err
 			}
 			if _, err := w.Write(_lcmdet48ia9q0oam521uudg1jkg3li09sdb2shbhi1v9i6kec5og); err != nil {
@@ -356,7 +368,7 @@ func (c *dataContext) Write(w io.Writer) error {
 				return err
 			}
 //line index.html:30
-			if _, err := mux.WriteHtmlEscaped(w, form.MultSelect.GetError()); err != nil {
+			if err := render.Text(w, form.MultSelect.GetError()); err != nil {
 				return err
 			}
 			if _, err := w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
@@ -370,17 +382,17 @@ func (c *dataContext) Write(w io.Writer) error {
 //line index.html:34
 			textarea := form.Description
 			_ = textarea
-			if _, err := w.Write(_tt4j3936cif9dr9k9ipgpj9o1i93uupl7f17g9gf0s1glc7l7i2g); err != nil {
+			if _, err := w.Write(_g361tp9vc85gp786a7df16tadielsblotnj7nr9iu53v4s6kd6a0); err != nil {
 				return err
 			}
 //line index.html:34
-			if _, err := mux.WriteHtmlEscaped(w, mux.TernaryIf(form.IsValidated(), mux.TernaryIf(textarea.HasError(), "is-invalid", "is-valid"), "")); err != nil {
+			if err := render.Attr(w, mux.TernaryIf(form.IsValidated(), mux.TernaryIf(textarea.HasError(), "is-invalid", "is-valid"), "")); err != nil {
 				return err
 			}
 			if _, err := w.Write(_lcmdet48ia9q0oam521uudg1jkg3li09sdb2shbhi1v9i6kec5og); err != nil {
 				return err
 			}
-			if _, err := mux.WriteHtmlEscaped(w, textarea.GetValue()); err != nil {
+			if err := render.Text(w, textarea.GetValue()); err != nil {
 				return err
 			}
 			if _, err := w.Write(_m1nmnfcnoneh7kdc3n37g3svivj3o839hkcemk3ifs0v9q2to6p0); err != nil {
@@ -396,7 +408,7 @@ func (c *dataContext) Write(w io.Writer) error {
 				return err
 			}
 //line index.html:36
-			if _, err := mux.WriteHtmlEscaped(w, form.Description.GetError()); err != nil {
+			if err := render.Text(w, form.Description.GetError()); err != nil {
 				return err
 			}
 			if _, err := w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
@@ -414,7 +426,7 @@ func (c *dataContext) Write(w io.Writer) error {
 				return err
 			}
 //line index.html:40
-			if _, err := mux.WriteHtmlEscaped(w, mux.TernaryIf(form.IsValidated(), mux.TernaryIf(input.HasError(), "is-invalid", "is-valid"), "")); err != nil {
+			if err := render.Attr(w, mux.TernaryIf(form.IsValidated(), mux.TernaryIf(input.HasError(), "is-invalid", "is-valid"), "")); err != nil {
 				return err
 			}
 			if _, err := w.Write(_lcmdet48ia9q0oam521uudg1jkg3li09sdb2shbhi1v9i6kec5og); err != nil {
@@ -430,7 +442,7 @@ func (c *dataContext) Write(w io.Writer) error {
 				return err
 			}
 //line index.html:42
-			if _, err := mux.WriteHtmlEscaped(w, form.Image.GetError()); err != nil {
+			if err := render.Text(w, form.Image.GetError()); err != nil {
 				return err
 			}
 			if _, err := w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
@@ -448,7 +460,7 @@ func (c *dataContext) Write(w io.Writer) error {
 				return err
 			}
 //line index.html:46
-			if _, err := mux.WriteHtmlEscaped(w, mux.TernaryIf(form.IsValidated(), mux.TernaryIf(input.HasError(), "is-invalid", "is-valid"), "")); err != nil {
+			if err := render.Attr(w, mux.TernaryIf(form.IsValidated(), mux.TernaryIf(input.HasError(), "is-invalid", "is-valid"), "")); err != nil {
 				return err
 			}
 			if _, err := w.Write(_lcmdet48ia9q0oam521uudg1jkg3li09sdb2shbhi1v9i6kec5og); err != nil {
@@ -464,7 +476,7 @@ func (c *dataContext) Write(w io.Writer) error {
 				return err
 			}
 //line index.html:48
-			if _, err := mux.WriteHtmlEscaped(w, form.Images.GetError()); err != nil {
+			if err := render.Text(w, form.Images.GetError()); err != nil {
 				return err
 			}
 			if _, err := w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
@@ -490,7 +502,7 @@ func (c *dataContext) Write(w io.Writer) error {
 				return err
 			}
 //line index.html:52
-			if _, err := mux.WriteHtmlEscaped(w, mux.TernaryIf(input.HasError(), "invalid", "valid")); err != nil {
+			if err := render.Attr(w, mux.TernaryIf(input.HasError(), "invalid", "valid")); err != nil {
 				return err
 			}
 			if _, err := w.Write(_lcmdet48ia9q0oam521uudg1jkg3li09sdb2shbhi1v9i6kec5og); err != nil {
@@ -506,7 +518,7 @@ func (c *dataContext) Write(w io.Writer) error {
 				return err
 			}
 //line index.html:54
-			if _, err := mux.WriteHtmlEscaped(w, form.Confirm.GetError()); err != nil {
+			if err := render.Text(w, form.Confirm.GetError()); err != nil {
 				return err
 			}
 			if _, err := w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
@@ -532,7 +544,7 @@ func (c *dataContext) Write(w io.Writer) error {
 				return err
 			}
 //line index.html:58
-			if _, err := mux.WriteHtmlEscaped(w, mux.TernaryIf(input.HasError(), "invalid", "valid")); err != nil {
+			if err := render.Attr(w, mux.TernaryIf(input.HasError(), "invalid", "valid")); err != nil {
 				return err
 			}
 			if _, err := w.Write(_lcmdet48ia9q0oam521uudg1jkg3li09sdb2shbhi1v9i6kec5og); err != nil {
@@ -548,7 +560,7 @@ func (c *dataContext) Write(w io.Writer) error {
 				return err
 			}
 //line index.html:60
-			if _, err := mux.WriteHtmlEscaped(w, form.Confirm.GetError()); err != nil {
+			if err := render.Text(w, form.Confirm.GetError()); err != nil {
 				return err
 			}
 			if _, err := w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
@@ -602,7 +614,7 @@ func (c *dataContext) Write(w io.Writer) error {
 				return err
 			}
 //line index.html:71
-			if _, err := mux.WriteHtmlEscaped(w, form.GetError()); err != nil {
+			if err := render.Text(w, form.GetError()); err != nil {
 				return err
 			}
 			if _, err := w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
@@ -635,6 +647,12 @@ var (
 	_31165iiibr3fojs06nsk5nht9u58o607j4tjaegg38oggf5g82r0 = []byte{
 		0x3c, 0x6c, 0x61, 0x62, 0x65, 0x6c, 0x20, 0x66, 0x6f, 0x72, 0x3d, 0x22, 0x72, 0x61, 0x64, 0x69, 0x6f, 0x32, 0x22, 0x3e, 0x52, 0x61, 0x64, 0x69,
 		0x6f, 0x20, 0x32, 0x3c, 0x2f, 0x6c, 0x61, 0x62, 0x65, 0x6c, 0x3e, 0x3c, 0x2f, 0x64, 0x69, 0x76, 0x3e,
+	}
+	_3e21rhv3igokvue9n4apvcu9vikuvpsd06lrn67t74rj86suadb0 = []byte{
+		0x3c, 0x73, 0x65, 0x6c, 0x65, 0x63, 0x74, 0x20, 0x6e, 0x61, 0x6d, 0x65, 0x3d, 0x22, 0x6d, 0x75, 0x6c, 0x74, 0x53, 0x65, 0x6c, 0x65, 0x63, 0x74,
+		0x22, 0x20, 0x6d, 0x75, 0x6c, 0x74, 0x69, 0x70, 0x6c, 0x65, 0x3d, 0x22, 0x6d, 0x75, 0x6c, 0x74, 0x69, 0x70, 0x6c, 0x65, 0x22, 0x20, 0x69, 0x64,
+		0x3d, 0x22, 0x6d, 0x75, 0x6c, 0x74, 0x2d, 0x73, 0x65, 0x6c, 0x65, 0x63, 0x74, 0x22, 0x20, 0x63, 0x6c, 0x61, 0x73, 0x73, 0x3d, 0x22, 0x66, 0x6f,
+		0x72, 0x6d, 0x2d, 0x73, 0x65, 0x6c, 0x65, 0x63, 0x74, 0x20,
 	}
 	_5el6cp4g7tobg8jktqenmabu47acr1t73u4trjnh568blhj8d0fg = []byte{
 		0x3c, 0x6c, 0x61, 0x62, 0x65, 0x6c, 0x20, 0x66, 0x6f, 0x72, 0x3d, 0x22, 0x61, 0x67, 0x65, 0x22, 0x3e, 0x49, 0x6d, 0x61, 0x67, 0x65, 0x3c, 0x2f,
@@ -709,6 +727,13 @@ var (
 	_edia00bs3fjjvlmrcof0s4cac73r2sm5mmn99kaue2hbjbk1s0m0 = []byte{
 		0x3c, 0x6c, 0x61, 0x62, 0x65, 0x6c, 0x20, 0x66, 0x6f, 0x72, 0x3d, 0x22, 0x61, 0x67, 0x65, 0x22, 0x3e, 0x49, 0x6d, 0x61, 0x67, 0x65, 0x73, 0x3c,
 		0x2f, 0x6c, 0x61, 0x62, 0x65, 0x6c, 0x3e,
+	}
+	_g361tp9vc85gp786a7df16tadielsblotnj7nr9iu53v4s6kd6a0 = []byte{
+		0x3c, 0x74, 0x65, 0x78, 0x74, 0x61, 0x72, 0x65, 0x61, 0x20, 0x6e, 0x61, 0x6d, 0x65, 0x3d, 0x22, 0x64, 0x65, 0x73, 0x63, 0x72, 0x69, 0x70, 0x74,
+		0x69, 0x6f, 0x6e, 0x22, 0x20, 0x72, 0x65, 0x71, 0x75, 0x69, 0x72, 0x65, 0x64, 0x20, 0x70, 0x6c, 0x61, 0x63, 0x65, 0x68, 0x6f, 0x6c, 0x64, 0x65,
+		0x72, 0x3d, 0x22, 0x44, 0x65, 0x73, 0x63, 0x72, 0x69, 0x70, 0x74, 0x69, 0x6f, 0x6e, 0x22, 0x20, 0x69, 0x64, 0x3d, 0x22, 0x64, 0x65, 0x73, 0x63,
+		0x72, 0x69, 0x70, 0x74, 0x69, 0x6f, 0x6e, 0x22, 0x20, 0x63, 0x6c, 0x61, 0x73, 0x73, 0x3d, 0x22, 0x66, 0x6f, 0x72, 0x6d, 0x2d, 0x63, 0x6f, 0x6e,
+		0x74, 0x72, 0x6f, 0x6c, 0x20,
 	}
 	_h0ami8bp64alvblfuo2gocrpmmn60r4cnj4fo70r2loilm8btpbg = []byte{
 		0x3c, 0x6c, 0x61, 0x62, 0x65, 0x6c, 0x20, 0x66, 0x6f, 0x72, 0x3d, 0x22, 0x6c, 0x6f, 0x67, 0x69, 0x6e, 0x22, 0x3e, 0x4c, 0x6f, 0x67, 0x69, 0x6e,
@@ -789,13 +814,6 @@ var (
 		0x3c, 0x64, 0x69, 0x76, 0x20, 0x63, 0x6c, 0x61, 0x73, 0x73, 0x3d, 0x22, 0x69, 0x6e, 0x76, 0x61, 0x6c, 0x69, 0x64, 0x2d, 0x66, 0x65, 0x65, 0x64,
 		0x62, 0x61, 0x63, 0x6b, 0x22, 0x3e,
 	}
-	_rv8pkanhu2gsqqdl4g602r40fch56tpt6a9op2u9trrcfu61rqa0 = []byte{
-		0x3c, 0x73, 0x65, 0x6c, 0x65, 0x63, 0x74, 0x20, 0x6e, 0x61, 0x6d, 0x65, 0x3d, 0x22, 0x6d, 0x75, 0x6c, 0x74, 0x53, 0x65, 0x6c, 0x65, 0x63, 0x74,
-		0x22, 0x20, 0x6d, 0x75, 0x6c, 0x74, 0x69, 0x70, 0x6c, 0x65, 0x3d, 0x22, 0x6d, 0x75, 0x6c, 0x74, 0x69, 0x70, 0x6c, 0x65, 0x22, 0x20, 0x69, 0x64,
-		0x3d, 0x22, 0x6d, 0x75, 0x6c, 0x74, 0x2d, 0x73, 0x65, 0x6c, 0x65, 0x63, 0x74, 0x22, 0x20, 0x73, 0x74, 0x79, 0x6c, 0x65, 0x3d, 0x22, 0x68, 0x65,
-		0x69, 0x67, 0x68, 0x74, 0x3a, 0x20, 0x32, 0x30, 0x30, 0x70, 0x78, 0x22, 0x20, 0x63, 0x6c, 0x61, 0x73, 0x73, 0x3d, 0x22, 0x66, 0x6f, 0x72, 0x6d,
-		0x2d, 0x73, 0x65, 0x6c, 0x65, 0x63, 0x74, 0x20,
-	}
 	_stppfgvg33vft1e048korlth37vqqamkktkgh2vtlo709lqnfsdg = []byte{
 		0x3c, 0x6c, 0x61, 0x62, 0x65, 0x6c, 0x20, 0x66, 0x6f, 0x72, 0x3d, 0x22, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x72, 0x6d, 0x32, 0x22, 0x3e, 0x49, 0x20,
 		0x63, 0x6f, 0x6e, 0x66, 0x69, 0x72, 0x6d, 0x20, 0x32, 0x2e, 0x2e, 0x2e, 0x3c, 0x2f, 0x6c, 0x61, 0x62, 0x65, 0x6c, 0x3e,
@@ -810,14 +828,6 @@ var (
 		0x22, 0x3e, 0x3c, 0x69, 0x6e, 0x70, 0x75, 0x74, 0x20, 0x74, 0x79, 0x70, 0x65, 0x3d, 0x22, 0x68, 0x69, 0x64, 0x64, 0x65, 0x6e, 0x22, 0x20, 0x6e,
 		0x61, 0x6d, 0x65, 0x3d, 0x22, 0x5f, 0x63, 0x73, 0x72, 0x66, 0x5f, 0x74, 0x6f, 0x6b, 0x65, 0x6e, 0x5f, 0x22, 0x20, 0x76, 0x61, 0x6c, 0x75, 0x65,
 		0x3d, 0x22, 0x61, 0x64, 0x64, 0x3a,
-	}
-	_tt4j3936cif9dr9k9ipgpj9o1i93uupl7f17g9gf0s1glc7l7i2g = []byte{
-		0x3c, 0x74, 0x65, 0x78, 0x74, 0x61, 0x72, 0x65, 0x61, 0x20, 0x6e, 0x61, 0x6d, 0x65, 0x3d, 0x22, 0x64, 0x65, 0x73, 0x63, 0x72, 0x69, 0x70, 0x74,
-		0x69, 0x6f, 0x6e, 0x22, 0x20, 0x72, 0x65, 0x71, 0x75, 0x69, 0x72, 0x65, 0x64, 0x20, 0x73, 0x74, 0x79, 0x6c, 0x65, 0x3d, 0x22, 0x68, 0x65, 0x69,
-		0x67, 0x68, 0x74, 0x3a, 0x20, 0x31, 0x30, 0x30, 0x70, 0x78, 0x22, 0x20, 0x70, 0x6c, 0x61, 0x63, 0x65, 0x68, 0x6f, 0x6c, 0x64, 0x65, 0x72, 0x3d,
-		0x22, 0x44, 0x65, 0x73, 0x63, 0x72, 0x69, 0x70, 0x74, 0x69, 0x6f, 0x6e, 0x22, 0x20, 0x69, 0x64, 0x3d, 0x22, 0x64, 0x65, 0x73, 0x63, 0x72, 0x69,
-		0x70, 0x74, 0x69, 0x6f, 0x6e, 0x22, 0x20, 0x63, 0x6c, 0x61, 0x73, 0x73, 0x3d, 0x22, 0x66, 0x6f, 0x72, 0x6d, 0x2d, 0x63, 0x6f, 0x6e, 0x74, 0x72,
-		0x6f, 0x6c, 0x20,
 	}
 	_tunrh30tbchtgi089ujdl7pqfc7j0p6st1qlu0us49njoah531u0 = []byte{
 		0x20, 0x72, 0x65, 0x71, 0x75, 0x69, 0x72, 0x65, 0x64, 0x20, 0x69, 0x64, 0x3d, 0x22, 0x6e, 0x61, 0x6d, 0x65, 0x22, 0x20, 0x70, 0x6c, 0x61, 0x63,

@@ -15,29 +15,36 @@ import (
 // consuming the generator programmatically can jump straight to the line that
 // needs fixing.
 //
-// Diagnostic implements error, so validation code can return one directly.
+// Diagnostic implements error, so validation code can return one directly. A
+// coded diagnostic may carry Fix, a one-line recipe for the change that
+// resolves it.
 type Diagnostic struct {
 	Route   string `json:"route,omitempty"`
 	File    string `json:"file,omitempty"`
 	Line    int    `json:"line,omitempty"`
-	Col     int    `json:"col,omitempty"`
 	Code    string `json:"code,omitempty"`
 	Message string `json:"message"`
+	Fix     string `json:"fix,omitempty"`
 }
 
+// Error formats d as "file:line: message (CODE)", followed by a line
+// "\tfix: …" when d has a fix.
 func (d *Diagnostic) Error() string {
 	var b strings.Builder
 	if d.File != "" {
 		b.WriteString(d.File)
 		if d.Line > 0 {
 			fmt.Fprintf(&b, ":%d", d.Line)
-			if d.Col > 0 {
-				fmt.Fprintf(&b, ":%d", d.Col)
-			}
 		}
 		b.WriteString(": ")
 	}
 	b.WriteString(d.Message)
+	if d.Code != "" {
+		fmt.Fprintf(&b, " (%s)", d.Code)
+	}
+	if d.Fix != "" {
+		fmt.Fprintf(&b, "\n\tfix: %s", d.Fix)
+	}
 	return b.String()
 }
 
@@ -98,6 +105,16 @@ func (g *Generator) diagnostic(routePath, indexPath string, err error) Diagnosti
 		return out
 	}
 
+	var coded *template.CodedError
+	if errors.As(err, &coded) {
+		d.File = g.relPath(coded.File)
+		d.Line = coded.Line
+		d.Code = coded.Code
+		d.Message = coded.Message
+		d.Fix = coded.Fix
+		return d
+	}
+
 	var syntaxErr *template.SyntaxError
 	if errors.As(err, &syntaxErr) {
 		d.File = g.relPath(syntaxErr.Filename)
@@ -110,7 +127,6 @@ func (g *Generator) diagnostic(routePath, indexPath string, err error) Diagnosti
 	if errors.As(err, &bindErr) {
 		d.File = g.relPath(bindErr.File)
 		d.Line = bindErr.Line
-		d.Col = 1
 		d.Code = "E06"
 		d.Message = bindErr.Message()
 		return d

@@ -1,5 +1,5 @@
 // Package mcp serves GoSSR's documentation and project tools over the Model
-// Context Protocol, so an agent can learn the framework and drive the generator
+// Context Protocol, so an agent can learn go-ssr and drive the generator
 // through one connection.
 package mcp
 
@@ -61,7 +61,7 @@ const instructions = `GoSSR generates Go HTTP handlers from HTML templates in a 
 
 It has its own template language (ssr: tags and {{ }} expressions), its own form lifecycle, and a
 reactive WebSocket layer. Read the documentation before writing templates or data providers rather
-than assuming conventions from other frameworks: start with gossr_docs topic=overview, and use
+than assuming conventions from other libraries: start with gossr_docs topic=overview, and use
 gossr_search_docs to look up a specific tag, attribute or error message.
 
 Typical loop when changing an app: gossr_routes to see what exists, edit index.html and

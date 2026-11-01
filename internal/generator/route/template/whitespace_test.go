@@ -109,15 +109,15 @@ func TestWhitespace_PreservedInTextarea(t *testing.T) {
 }
 
 func TestWhitespace_PreservedInScript(t *testing.T) {
-	tpl := parseTemplate(t, `<script>
-    const x = 1;
-    if (x > 0) {}
+	tpl := parseTemplate(t, `<script type="application/json">
+    {"const x": 1,
+     "if (x > 0)": {}}
 </script>`)
 
 	texts := collectTexts(tpl.nodes)
 	found := false
 	for _, text := range texts {
-		if strings.Contains(text, "const x = 1;") && strings.Contains(text, "\n") {
+		if strings.Contains(text, `{"const x": 1,`) && strings.Contains(text, "\n") {
 			found = true
 			break
 		}
@@ -127,12 +127,12 @@ func TestWhitespace_PreservedInScript(t *testing.T) {
 	}
 }
 
-func TestWhitespace_PreservedInStyle(t *testing.T) {
-	tpl := parseTemplate(t, `<style>
+func TestWhitespace_PreservedInNoscript(t *testing.T) {
+	tpl := parseTemplate(t, `<noscript>
     .cls {
         color: red;
     }
-</style>`)
+</noscript>`)
 
 	texts := collectTexts(tpl.nodes)
 	found := false
@@ -143,7 +143,7 @@ func TestWhitespace_PreservedInStyle(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Errorf("whitespace inside <style> should be preserved, got texts: %v", texts)
+		t.Errorf("whitespace inside <noscript> should be preserved, got texts: %v", texts)
 	}
 }
 
@@ -261,27 +261,6 @@ func TestWhitespace_DoctypeNotAffected(t *testing.T) {
 	}
 	if !foundDoctype {
 		t.Error("DOCTYPE should be preserved as HtmlRaw node")
-	}
-}
-
-func TestWhitespace_ScriptWithExpression(t *testing.T) {
-	tpl := parseTemplate(t, `<script>
-    console.log("{{title}}")
-</script>`)
-
-	texts := collectTexts(tpl.nodes)
-	foundConsole := false
-	for _, text := range texts {
-		if strings.Contains(text, "console.log") {
-			foundConsole = true
-			if !strings.Contains(text, "\n") {
-				t.Error("script whitespace should be preserved even with expressions")
-			}
-			break
-		}
-	}
-	if !foundConsole {
-		t.Errorf("expected script content preserved, got texts: %v", texts)
 	}
 }
 

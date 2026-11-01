@@ -1,6 +1,7 @@
 package generator_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -212,13 +213,82 @@ func TestGenerate_ReactiveDiagnosticsCarryCodes(t *testing.T) {
 }
 
 func TestDiagnostic_ErrorFormat(t *testing.T) {
-	d := &generator.Diagnostic{File: "internal/web/pages/users/index.html", Line: 14, Col: 1, Message: "boom"}
-	if got, want := d.Error(), "internal/web/pages/users/index.html:14:1: boom"; got != want {
+	d := &generator.Diagnostic{File: "internal/web/pages/users/index.html", Line: 14, Message: "boom"}
+	if got, want := d.Error(), "internal/web/pages/users/index.html:14: boom"; got != want {
+		t.Errorf("Error() = %q, want %q", got, want)
+	}
+
+	coded := &generator.Diagnostic{File: "pages/index.html", Line: 3, Code: "E09", Message: "boom", Fix: "do this"}
+	if got, want := coded.Error(), "pages/index.html:3: boom (E09)\n\tfix: do this"; got != want {
 		t.Errorf("Error() = %q, want %q", got, want)
 	}
 
 	noPos := &generator.Diagnostic{Message: "boom"}
 	if got := noPos.Error(); got != "boom" {
 		t.Errorf("Error() = %q, want %q", got, "boom")
+	}
+}
+
+// Every refusal of an unsafe context reaches the caller as a diagnostic with its
+// code, its line and its fix, and every broken route is reported in one run.
+func TestForbiddenContexts(t *testing.T) {
+	cases := []struct {
+		template string
+		code     string
+		line     int
+		fix      string
+	}{
+		{"<div>\n<script>{{ x }}</script>\n</div>", "E08", 2, "pass the value through a data-* attribute and read it in the page's TypeScript"},
+		{"<div>\n<a onclick=\"go()\">x</a>\n</div>", "E09", 2, "remove the attribute and add the listener in the page's TypeScript"},
+		{"<div>\n\n<p style=\"color:red\">x</p>\n</div>", "E10", 3, "move the style into a stylesheet and switch classes instead"},
+		{"<div>\n<a class={{ x }}>x</a>\n</div>", "E11", 2, `quote the value: class="{{ … }}"`},
+		{"<div>\n<noscript>\n{{ x }}</noscript>\n</div>", "E12", 3, "move the value out of <noscript>; its text is shown undecoded"},
+		{"<div>\n<a title=\"{{$ x }}\">x</a>\n</div>", "E13", 2, "use {{ }}, which escapes the value"},
+		{"<div>\n<title>a\n\n{{$ x }}</title>\n</div>", "E13", 4, "use {{ }}, which escapes the value"},
+		{"<div>\n<a href=\"javascript:alert(1)\">x</a>\n</div>", "E14", 2, "link to a page, or handle the click in the page's TypeScript"},
+		{"<div>\n\n<iframe src=\"data:text/html,{{ x }}\"></iframe>\n</div>", "E14", 3, "link to a page, or handle the click in the page's TypeScript"},
+		{"<div>\n<a href=\"{{ base }}/x\">x</a>\n</div>", "E15", 2, "start the attribute with a fixed scheme or path, or put the whole URL in one value"},
+		{"<div>\n<script>\nalert(1)\n</script>\n</div>", "E16", 2, "move it into an asset next to the template; the Content-Security-Policy blocks inline code"},
+		{"<div>\n\n<style></style>\n</div>", "E16", 3, "move it into an asset next to the template; the Content-Security-Policy blocks inline code"},
+		{"<div>\n<a {{ x }}=\"1\">x</a>\n</div>", "E17", 2, "write the name literally"},
+		{"<div>\n<script src=\"{{ x }}\"></script>\n</div>", "E18", 2, "write the attribute literally, or remove it"},
+		{"<div>\n<iframe srcdoc=\"<p>hi</p>\"></iframe>\n</div>", "E18", 2, "write the attribute literally, or remove it"},
+	}
+
+	webDir := filepath.Join(t.TempDir(), "web")
+	writeTemplate(t, webDir, ".", `<html><body><ssr:content default="r0"/></body></html>`)
+	for i, c := range cases {
+		writeTemplate(t, webDir, fmt.Sprintf("r%d", i), c.template)
+	}
+
+	g := makeGen(t, webDir)
+	err := g.Analyze()
+	if err == nil {
+		err = g.Generate()
+	}
+	diags := generator.DiagnosticsOf(err)
+	if len(diags) != len(cases) {
+		t.Fatalf("got %d diagnostics, want %d: %v", len(diags), len(cases), err)
+	}
+	byRoute := map[string]generator.Diagnostic{}
+	for _, d := range diags {
+		byRoute[d.Route] = d
+	}
+	for i, c := range cases {
+		route := fmt.Sprintf("/r%d", i)
+		d, ok := byRoute[route]
+		if !ok {
+			t.Errorf("%s: no diagnostic", route)
+			continue
+		}
+		if d.Code != c.code || d.Line != c.line || d.Fix != c.fix {
+			t.Errorf("%s: %s %d %q, want %s %d %q", route, d.Code, d.Line, d.Fix, c.code, c.line, c.fix)
+		}
+		if want := fmt.Sprintf("pages/r%d/index.html", i); !strings.HasSuffix(filepath.ToSlash(d.File), want) {
+			t.Errorf("%s: file %q, want %s", route, d.File, want)
+		}
+		if want := fmt.Sprintf(":%d: %s (%s)\n\tfix: %s", c.line, d.Message, c.code, c.fix); !strings.HasSuffix(d.Error(), want) {
+			t.Errorf("%s: Error() = %q, want it to end with %q", route, d.Error(), want)
+		}
 	}
 }

@@ -17,41 +17,89 @@ import (
 
 // --- test helpers ---
 
-type testDataContext struct {
-	body string
+// hookRoute runs the given funcs as its Guard, Data and DefaultRoute (nil
+// does nothing), owns every form, and writes body followed by its child.
+type hookRoute struct {
+	body  string
+	guard func(*Request) error
+	data  func(*Request, ResponseWriter) error
+	def   func(*Request) (string, error)
 }
 
-func (d *testDataContext) Write(w io.Writer) error {
-	_, err := w.Write([]byte(d.body))
-	return err
+func (h hookRoute) NewState() RouteState { return &hookState{route: h} }
+
+// Layout is true: a hookRoute writes its child.
+func (hookRoute) Layout() bool { return true }
+
+type hookState struct {
+	Frame
+	route hookRoute
 }
 
-func (d *testDataContext) WriteAssets(w io.Writer, written map[string]struct{}) error {
-	return nil
+func (s *hookState) Guard(_ context.Context, r *Request) error {
+	if s.route.guard == nil {
+		return nil
+	}
+	return s.route.guard(r)
 }
 
+func (s *hookState) InitForms(context.Context, *Request, ResponseWriter) error { return nil }
+
+func (s *hookState) SubmitForm(context.Context, *Request, ResponseWriter, string) (bool, error) {
+	return true, nil
+}
+
+func (s *hookState) Data(_ context.Context, r *Request, w ResponseWriter) error {
+	if s.route.data == nil {
+		return nil
+	}
+	return s.route.data(r, w)
+}
+
+func (s *hookState) DefaultRoute(_ context.Context, r *Request) (string, error) {
+	if s.route.def == nil {
+		return "", nil
+	}
+	return s.route.def(r)
+}
+
+func (s *hookState) Write(w io.Writer) error {
+	if _, err := io.WriteString(w, s.route.body); err != nil {
+		return err
+	}
+	return s.WriteChild(w)
+}
+
+// testRoute renders body, fails its Data with err, and names
+// defaultSubRoute as its default child.
 type testRoute struct {
 	body            string
 	defaultSubRoute string
 	err             error
 }
 
-func (r testRoute) GetDataContext(_ context.Context, req *Request, _ ResponseWriter, child DataContext) (DataContext, error) {
-	if r.err != nil {
-		return nil, r.err
-	}
-	if child != nil {
-		return child, nil
-	}
-	return &testDataContext{body: r.body}, nil
+func (testRoute) Layout() bool { return true }
+
+func (r testRoute) NewState() RouteState {
+	return hookRoute{
+		body: r.body,
+		data: func(*Request, ResponseWriter) error { return r.err },
+		def:  func(*Request) (string, error) { return r.defaultSubRoute, nil },
+	}.NewState()
 }
 
-func (r testRoute) GetDefaultRoute(_ context.Context, _ *Request) (string, error) {
-	return r.defaultSubRoute, nil
-}
+// testKey is the CSRFKey newMux supplies when opts has none.
+var testKey = []byte("test-key-test-key-test-key-test1")
 
 func newMux(routes map[string]Route, opts Options) *Mux {
-	return New(routes, opts)
+	if opts.CSRFKey == nil {
+		opts.CSRFKey = testKey
+	}
+	m, err := New(routes, opts)
+	if err != nil {
+		panic(err)
+	}
+	return m
 }
 
 func doGet(m *Mux, path string) *httptest.ResponseRecorder {
@@ -94,9 +142,12 @@ func TestMux_NotFound(t *testing.T) {
 }
 
 func TestMux_DynamicParam(t *testing.T) {
-	paramRoute := &paramCapturingRoute{body: "user page"}
+	var capturedParam string
 	m := newMux(map[string]Route{
-		"/users/_userId_": paramRoute,
+		"/users/_userId_": hookRoute{body: "user page", data: func(r *Request, _ ResponseWriter) error {
+			capturedParam = r.URLParam("userId")
+			return nil
+		}},
 	}, Options{})
 
 	w := doGet(m, "/users/john42")
@@ -104,23 +155,9 @@ func TestMux_DynamicParam(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
-	if paramRoute.capturedParam != "john42" {
-		t.Fatalf("expected param 'john42', got %q", paramRoute.capturedParam)
+	if capturedParam != "john42" {
+		t.Fatalf("expected param 'john42', got %q", capturedParam)
 	}
-}
-
-type paramCapturingRoute struct {
-	body          string
-	capturedParam string
-}
-
-func (r *paramCapturingRoute) GetDataContext(_ context.Context, req *Request, _ ResponseWriter, child DataContext) (DataContext, error) {
-	r.capturedParam = req.URLParam("userId")
-	return &testDataContext{body: r.body}, nil
-}
-
-func (r *paramCapturingRoute) GetDefaultRoute(_ context.Context, _ *Request) (string, error) {
-	return "", nil
 }
 
 func TestMux_DefaultSubRoute_Redirect(t *testing.T) {
@@ -234,9 +271,13 @@ func TestMux_RootPath(t *testing.T) {
 }
 
 func TestMux_MultipleDynamicSegments(t *testing.T) {
-	route := &multiParamRoute{body: "post page"}
+	var capturedUserId, capturedPostId string
 	m := newMux(map[string]Route{
-		"/users/_userId_/posts/_postId_": route,
+		"/users/_userId_/posts/_postId_": hookRoute{body: "post page", data: func(r *Request, _ ResponseWriter) error {
+			capturedUserId = r.URLParam("userId")
+			capturedPostId = r.URLParam("postId")
+			return nil
+		}},
 	}, Options{})
 
 	w := doGet(m, "/users/alice/posts/99")
@@ -244,28 +285,12 @@ func TestMux_MultipleDynamicSegments(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
-	if route.capturedUserId != "alice" {
-		t.Fatalf("expected userId 'alice', got %q", route.capturedUserId)
+	if capturedUserId != "alice" {
+		t.Fatalf("expected userId 'alice', got %q", capturedUserId)
 	}
-	if route.capturedPostId != "99" {
-		t.Fatalf("expected postId '99', got %q", route.capturedPostId)
+	if capturedPostId != "99" {
+		t.Fatalf("expected postId '99', got %q", capturedPostId)
 	}
-}
-
-type multiParamRoute struct {
-	body           string
-	capturedUserId string
-	capturedPostId string
-}
-
-func (r *multiParamRoute) GetDataContext(_ context.Context, req *Request, _ ResponseWriter, child DataContext) (DataContext, error) {
-	r.capturedUserId = req.URLParam("userId")
-	r.capturedPostId = req.URLParam("postId")
-	return &testDataContext{body: r.body}, nil
-}
-
-func (r *multiParamRoute) GetDefaultRoute(_ context.Context, _ *Request) (string, error) {
-	return "", nil
 }
 
 func TestMux_StaticRouteOverDynamic(t *testing.T) {
@@ -306,9 +331,11 @@ func TestMux_GenericError_Returns500(t *testing.T) {
 }
 
 func TestMux_ResponseWriter_HeadersFromRoute(t *testing.T) {
-	route := &headerSettingRoute{body: "with headers"}
 	m := newMux(map[string]Route{
-		"/page": route,
+		"/page": hookRoute{body: "with headers", data: func(_ *Request, w ResponseWriter) error {
+			w.Header().Set("X-Custom", "test-value")
+			return nil
+		}},
 	}, Options{})
 
 	w := doGet(m, "/page")
@@ -321,32 +348,19 @@ func TestMux_ResponseWriter_HeadersFromRoute(t *testing.T) {
 	}
 }
 
-type headerSettingRoute struct {
-	body string
-}
-
-func (r *headerSettingRoute) GetDataContext(_ context.Context, _ *Request, w ResponseWriter, child DataContext) (DataContext, error) {
-	w.Header().Set("X-Custom", "test-value")
-	return &testDataContext{body: r.body}, nil
-}
-
-func (r *headerSettingRoute) GetDefaultRoute(_ context.Context, _ *Request) (string, error) {
-	return "", nil
-}
-
-// captureRoute records the Request it was handed so tests can inspect what the
-// mux attached to it.
+// captureRoute records the Request its Guard was handed so tests can inspect
+// what the mux attached to it.
 type captureRoute struct {
 	got **Request
 }
 
-func (r captureRoute) GetDataContext(_ context.Context, req *Request, _ ResponseWriter, _ DataContext) (DataContext, error) {
-	*r.got = req
-	return &testDataContext{body: "ok"}, nil
-}
+func (captureRoute) Layout() bool { return true }
 
-func (r captureRoute) GetDefaultRoute(_ context.Context, _ *Request) (string, error) {
-	return "", nil
+func (r captureRoute) NewState() RouteState {
+	return hookRoute{body: "ok", guard: func(req *Request) error {
+		*r.got = req
+		return nil
+	}}.NewState()
 }
 
 func TestMux_CookieAndOriginOptionsReachRoute(t *testing.T) {
@@ -370,37 +384,27 @@ func TestMux_CookieAndOriginOptionsReachRoute(t *testing.T) {
 	}
 }
 
-// cacheRoute sets Cache-Control the way a layout's Data hook might, and
-// keeps whatever data context the leaf produced.
-type cacheRoute struct{ value string }
-
-func (r cacheRoute) GetDataContext(_ context.Context, _ *Request, w ResponseWriter, child DataContext) (DataContext, error) {
-	w.Header().Set("Cache-Control", r.value)
-	if child != nil {
-		return child, nil
-	}
-	return &testDataContext{body: "ok"}, nil
+// cacheRoute sets Cache-Control the way a route's Data hook might.
+func cacheRoute(value string) Route {
+	return hookRoute{body: "ok", data: func(_ *Request, w ResponseWriter) error {
+		w.Header().Set("Cache-Control", value)
+		return nil
+	}}
 }
 
-func (r cacheRoute) GetDefaultRoute(_ context.Context, _ *Request) (string, error) { return "", nil }
-
-// noStoreRoute is a leaf that marks the response uncacheable, as a route
-// issuing a CSRF token does.
-type noStoreRoute struct{}
-
-func (noStoreRoute) GetDataContext(_ context.Context, req *Request, _ ResponseWriter, _ DataContext) (DataContext, error) {
-	req.NoStore()
-	return &testDataContext{body: "ok"}, nil
-}
-
-func (noStoreRoute) GetDefaultRoute(_ context.Context, _ *Request) (string, error) { return "", nil }
+// noStoreRoute marks the response uncacheable, as a route issuing a CSRF
+// token does.
+var noStoreRoute = hookRoute{body: "ok", data: func(r *Request, _ ResponseWriter) error {
+	r.NoStore()
+	return nil
+}}
 
 func TestMux_NoStoreSurvivesLaterRoutes(t *testing.T) {
-	// The leaf runs first and marks no-store; the layout runs after it and
+	// The layout runs first and marks no-store; the leaf runs after it and
 	// sets a cacheable policy. The mark must win.
 	m := newMux(map[string]Route{
-		"/":        cacheRoute{value: "public, max-age=300"},
-		"/contact": noStoreRoute{},
+		"/":        noStoreRoute,
+		"/contact": cacheRoute("public, max-age=300"),
 	}, Options{})
 	w := doGet(m, "/contact")
 	if w.Code != http.StatusOK {
@@ -413,7 +417,7 @@ func TestMux_NoStoreSurvivesLaterRoutes(t *testing.T) {
 
 func TestMux_CacheControlLeftAloneWithoutNoStore(t *testing.T) {
 	m := newMux(map[string]Route{
-		"/":        cacheRoute{value: "public, max-age=300"},
+		"/":        cacheRoute("public, max-age=300"),
 		"/contact": testRoute{body: "ok"},
 	}, Options{})
 	w := doGet(m, "/contact")
@@ -424,7 +428,7 @@ func TestMux_CacheControlLeftAloneWithoutNoStore(t *testing.T) {
 
 func doCrossSite(m *Mux, method string) (*httptest.ResponseRecorder, *http.Request) {
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(method, "/", nil)
+	r := formRequest(method, "/", "form", "")
 	r.Header.Set("Sec-Fetch-Site", "cross-site")
 	r.Header.Set("Origin", "https://evil.example")
 	m.ServeHTTP(w, r)
@@ -463,9 +467,11 @@ func TestMux_ListedOriginMayUseUnsafeMethods(t *testing.T) {
 	}
 }
 
+// doCrossSitePath sends a cross-site request with a valid form token, so
+// only the origin check can refuse it.
 func doCrossSitePath(m *Mux, method, path string) *httptest.ResponseRecorder {
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(method, path, nil)
+	r := formRequest(method, path, "form", "")
 	r.Header.Set("Sec-Fetch-Site", "cross-site")
 	r.Header.Set("Origin", "https://evil.example")
 	m.ServeHTTP(w, r)
@@ -493,6 +499,53 @@ func TestMux_AllowCrossSiteExemptsChosenRequests(t *testing.T) {
 	got = nil
 	if w := doCrossSitePath(m, http.MethodPost, "/other"); w.Code != http.StatusForbidden || got != nil {
 		t.Errorf("/other: status %d, route called %v; want 403", w.Code, got != nil)
+	}
+}
+
+func TestMux_AllowCrossSiteKeepsTheTokenCheck(t *testing.T) {
+	log := &[]string{}
+	m := newMux(map[string]Route{
+		"/callback": &fakeRoute{name: "callback", log: log, forms: []string{"form"}},
+		"/other":    &fakeRoute{name: "other", log: log, forms: []string{"form"}},
+	}, Options{
+		AllowCrossSite: func(r *Request) bool { return r.URL.Path == "/callback" },
+	})
+	for _, tc := range []struct {
+		name, path, cookie string
+		status             int
+		body, hooks        string
+	}{
+		{"exempt, no cookie, no token", "/callback", "", http.StatusBadRequest, "Missed CSRF token", "callback.guard"},
+		{"exempt, cookie, no token", "/callback", "planted", http.StatusBadRequest, "Invalid CSRF token", "callback.guard"},
+		{"not exempt", "/other", "", http.StatusForbidden, "Cross-site request", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			*log = nil
+			r := httptest.NewRequest(http.MethodPost, "https://app.example"+tc.path, strings.NewReader("a=b"))
+			r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			r.Header.Set("Sec-Fetch-Site", "cross-site")
+			r.Header.Set("Origin", "https://evil.example")
+			if tc.cookie != "" {
+				r.AddCookie(&http.Cookie{Name: csrfCookieName, Value: tc.cookie})
+			}
+			if w := serve(m, r); w.Code != tc.status || w.Body.String() != tc.body {
+				t.Errorf("status %d, body %q; want %d %q", w.Code, w.Body.String(), tc.status, tc.body)
+			}
+			wantLog(t, log, tc.hooks)
+		})
+	}
+}
+
+func TestMux_ErrorMessageIsPlainText(t *testing.T) {
+	m := newMux(map[string]Route{"/": hookRoute{guard: func(*Request) error {
+		return NewHttpError(http.StatusForbidden, "<b>x</b>")
+	}}}, Options{})
+	w := doGet(m, "/")
+	if got := w.Header().Get("Content-Type"); got != "text/plain; charset=utf-8" {
+		t.Errorf("Content-Type %q, want text/plain; charset=utf-8", got)
+	}
+	if w.Code != http.StatusForbidden || w.Body.String() != "<b>x</b>" {
+		t.Errorf("status %d, body %q; want 403 and the message verbatim", w.Code, w.Body.String())
 	}
 }
 
@@ -535,23 +588,17 @@ func TestMux_CrossSiteRejectionIsLogged(t *testing.T) {
 	}
 }
 
-// redirectingCacheRoute is a layout that makes the response cacheable and
-// then redirects, after the leaf already issued a token.
-type redirectingCacheRoute struct{}
-
-func (redirectingCacheRoute) GetDataContext(_ context.Context, _ *Request, w ResponseWriter, _ DataContext) (DataContext, error) {
+// redirectingCacheRoute is a leaf that makes the response cacheable and
+// then redirects, after the layout already issued a token.
+var redirectingCacheRoute = hookRoute{data: func(_ *Request, w ResponseWriter) error {
 	w.Header().Set("Cache-Control", "public, max-age=60")
-	return nil, Redirect(http.StatusSeeOther, "/login")
-}
-
-func (redirectingCacheRoute) GetDefaultRoute(_ context.Context, _ *Request) (string, error) {
-	return "", nil
-}
+	return Redirect(http.StatusSeeOther, "/login")
+}}
 
 func TestMux_NoStoreSurvivesRedirectFromLaterRoute(t *testing.T) {
 	m := newMux(map[string]Route{
-		"/":        redirectingCacheRoute{},
-		"/contact": noStoreRoute{},
+		"/":        noStoreRoute,
+		"/contact": redirectingCacheRoute,
 	}, Options{})
 	w := doGet(m, "/contact")
 	if w.Code != http.StatusSeeOther {
@@ -559,116 +606,6 @@ func TestMux_NoStoreSurvivesRedirectFromLaterRoute(t *testing.T) {
 	}
 	if got := w.Header().Get("Cache-Control"); got != "no-store" {
 		t.Errorf("Cache-Control = %q on the redirect, want no-store", got)
-	}
-}
-
-// wsProbe stands in for a WebSocket handler: it records what the mux
-// dispatched to it and what NewRequest derives from that request.
-type wsProbe struct {
-	got     **Request
-	checked *bool
-}
-
-func (p wsProbe) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	*p.got = NewRequest(r)
-	*p.checked = OriginChecked(r.Context())
-	w.WriteHeader(http.StatusSwitchingProtocols)
-}
-
-func newWSMux(opts Options, got **Request, checked *bool) *Mux {
-	m := New(map[string]Route{}, opts)
-	WithWSHandlers(map[string]http.Handler{"/live/__ws": wsProbe{got: got, checked: checked}})(m)
-	return m
-}
-
-func doUpgrade(m *Mux, headers map[string]string) *httptest.ResponseRecorder {
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/live/__ws", nil)
-	r.Host = "app.example"
-	r.Header.Set("Upgrade", "websocket")
-	for k, v := range headers {
-		r.Header.Set(k, v)
-	}
-	m.ServeHTTP(w, r)
-	return w
-}
-
-func TestMux_WSDispatchRefusesCrossSite(t *testing.T) {
-	var got *Request
-	var checked bool
-	m := newWSMux(Options{}, &got, &checked)
-	w := doUpgrade(m, map[string]string{"Origin": "https://evil.example"})
-	if w.Code != http.StatusForbidden || got != nil {
-		t.Errorf("status %d, handler called %v; want 403 before dispatch", w.Code, got != nil)
-	}
-}
-
-func TestMux_WSDispatchMarksOriginCheckedAndPassesOptions(t *testing.T) {
-	var got *Request
-	var checked bool
-	m := newWSMux(Options{InsecureCookies: true, OriginPatterns: []string{"dev.example:*"}}, &got, &checked)
-	w := doUpgrade(m, map[string]string{"Origin": "http://dev.example:3000"})
-	if w.Code != http.StatusSwitchingProtocols || got == nil {
-		t.Fatalf("status %d, handler called %v; want the listed origin dispatched", w.Code, got != nil)
-	}
-	if !checked {
-		t.Error("handler should see the request marked as origin-checked")
-	}
-	if !got.InsecureCookies || len(got.OriginPatterns) != 1 {
-		t.Errorf("NewRequest inside the handler: InsecureCookies=%v OriginPatterns=%v; want the mux options", got.InsecureCookies, got.OriginPatterns)
-	}
-}
-
-func TestOriginChecked_FalseOutsideMux(t *testing.T) {
-	if OriginChecked(context.Background()) {
-		t.Error("a bare context must not count as origin-checked")
-	}
-}
-
-func TestMux_WSDispatchRefusesOpaqueOrigin(t *testing.T) {
-	var got *Request
-	var checked bool
-	m := newWSMux(Options{}, &got, &checked)
-	w := doUpgrade(m, map[string]string{"Origin": "null"})
-	if w.Code != http.StatusForbidden || got != nil {
-		t.Errorf("status %d, handler called %v; want 403 for an opaque Origin", w.Code, got != nil)
-	}
-}
-
-func TestMux_WSDispatchHonoursAllowCrossSite(t *testing.T) {
-	var got *Request
-	var checked bool
-	var sawParams map[string]string
-	m := New(map[string]Route{}, Options{
-		AllowCrossSite: func(r *Request) bool {
-			sawParams = r.URLParams
-			return r.URL.Path == "/widget/42/__ws"
-		},
-	})
-	WithWSHandlers(map[string]http.Handler{"/widget/_id_/__ws": wsProbe{got: &got, checked: &checked}})(m)
-
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/widget/42/__ws", nil)
-	r.Host = "app.example"
-	r.Header.Set("Upgrade", "websocket")
-	r.Header.Set("Origin", "https://partner.example")
-	m.ServeHTTP(w, r)
-
-	if w.Code != http.StatusSwitchingProtocols || got == nil {
-		t.Errorf("status %d, handler called %v; want the hook to let the handshake through", w.Code, got != nil)
-	}
-	if sawParams["id"] != "42" {
-		t.Errorf("AllowCrossSite saw URLParams %v, want id=42", sawParams)
-	}
-}
-
-func TestMux_WSDispatchAcceptsUppercaseUpgradeToken(t *testing.T) {
-	var got *Request
-	var checked bool
-	m := newWSMux(Options{}, &got, &checked)
-	w := doUpgrade(m, map[string]string{"Upgrade": "WebSocket", "Origin": "http://app.example"})
-	if w.Code != http.StatusSwitchingProtocols || got == nil {
-		t.Errorf("status %d, handler called %v; Upgrade is a case-insensitive token", w.Code, got != nil)
 	}
 }
 
@@ -681,22 +618,14 @@ func TestMux_CrossSiteLogQuotesThePath(t *testing.T) {
 	}
 }
 
-// noStoreDefaultRoute marks the response and then redirects to its default
-// child, the way an auth-aware section index might.
-type noStoreDefaultRoute struct{}
-
-func (noStoreDefaultRoute) GetDataContext(_ context.Context, _ *Request, _ ResponseWriter, child DataContext) (DataContext, error) {
-	return child, nil
-}
-
-func (noStoreDefaultRoute) GetDefaultRoute(_ context.Context, r *Request) (string, error) {
-	r.NoStore()
-	return "info", nil
-}
-
 func TestMux_NoStoreAppliesToDefaultRouteRedirect(t *testing.T) {
+	// The section index marks the response and then redirects to its default
+	// child, the way an auth-aware one might.
 	m := newMux(map[string]Route{
-		"/users":      noStoreDefaultRoute{},
+		"/users": hookRoute{def: func(r *Request) (string, error) {
+			r.NoStore()
+			return "info", nil
+		}},
 		"/users/info": testRoute{body: "ok"},
 	}, Options{})
 	w := doGet(m, "/users")
@@ -730,19 +659,13 @@ func TestMux_RequestOriginPatternsCannotAliasTheMux(t *testing.T) {
 	}
 }
 
-// contextRoute rebuilds a Request the way a hook spawning work would.
-type contextRoute struct{ rebuilt **Request }
-
-func (c contextRoute) GetDataContext(_ context.Context, r *Request, _ ResponseWriter, _ DataContext) (DataContext, error) {
-	*c.rebuilt = NewRequest(r.Request)
-	return &testDataContext{body: "ok"}, nil
-}
-
-func (c contextRoute) GetDefaultRoute(_ context.Context, _ *Request) (string, error) { return "", nil }
-
 func TestMux_RoutedRequestCarriesOptionsInItsContext(t *testing.T) {
+	// The route rebuilds a Request the way a hook spawning work would.
 	var rebuilt *Request
-	m := newMux(map[string]Route{"/": contextRoute{rebuilt: &rebuilt}}, Options{
+	m := newMux(map[string]Route{"/": hookRoute{data: func(r *Request, _ ResponseWriter) error {
+		rebuilt = NewRequest(r.Request)
+		return nil
+	}}}, Options{
 		InsecureCookies: true,
 		OriginPatterns:  []string{"dev.example"},
 	})
@@ -756,23 +679,15 @@ func TestMux_RoutedRequestCarriesOptionsInItsContext(t *testing.T) {
 	}
 }
 
-// rebuildingNoStoreRoute marks the response through a Request it rebuilt
-// itself, the way generated reactive code rebuilds one.
-type rebuildingNoStoreRoute struct{}
-
-func (rebuildingNoStoreRoute) GetDataContext(_ context.Context, r *Request, _ ResponseWriter, _ DataContext) (DataContext, error) {
-	NewRequest(r.Request).NoStore()
-	return &testDataContext{body: "ok"}, nil
-}
-
-func (rebuildingNoStoreRoute) GetDefaultRoute(_ context.Context, _ *Request) (string, error) {
-	return "", nil
-}
-
 func TestMux_NoStoreSurvivesARebuiltRequest(t *testing.T) {
+	// The leaf marks the response through a Request it rebuilt itself, the
+	// way generated reactive code rebuilds one.
 	m := newMux(map[string]Route{
-		"/":        cacheRoute{value: "public, max-age=300"},
-		"/contact": rebuildingNoStoreRoute{},
+		"/": cacheRoute("public, max-age=300"),
+		"/contact": hookRoute{body: "ok", data: func(r *Request, _ ResponseWriter) error {
+			NewRequest(r.Request).NoStore()
+			return nil
+		}},
 	}, Options{})
 	w := doGet(m, "/contact")
 	if got := w.Header().Get("Cache-Control"); got != "no-store" {
@@ -785,33 +700,18 @@ func TestRequest_NoStoreOutsideMuxIsANoop(t *testing.T) {
 	NewRequest(httptest.NewRequest(http.MethodGet, "/", nil)).NoStore()
 }
 
-// sessionProbeRoute rebuilds the Request and reports the session each one
-// sees, after the hook's answer has changed.
-type sessionProbeRoute struct {
-	rotate          func()
-	direct, rebuilt *string
-}
-
-func (s sessionProbeRoute) GetDataContext(_ context.Context, r *Request, _ ResponseWriter, _ DataContext) (DataContext, error) {
-	_ = r.CSRFSession() // the arrival session is resolved here
-	s.rotate()
-	*s.direct = r.CSRFSession()
-	*s.rebuilt = NewRequest(r.Request).CSRFSession()
-	return &testDataContext{body: "ok"}, nil
-}
-
-func (s sessionProbeRoute) GetDefaultRoute(_ context.Context, _ *Request) (string, error) {
-	return "", nil
-}
-
 func TestMux_ArrivalSessionSurvivesARebuiltRequest(t *testing.T) {
+	// The route rebuilds the Request and reports the session each one sees,
+	// after the hook's answer has changed.
 	session := "anonymous"
 	var direct, rebuilt string
-	m := newMux(map[string]Route{"/": sessionProbeRoute{
-		rotate:  func() { session = "user-1" },
-		direct:  &direct,
-		rebuilt: &rebuilt,
-	}}, Options{CSRFSession: func(*Request) string { return session }})
+	m := newMux(map[string]Route{"/": hookRoute{data: func(r *Request, _ ResponseWriter) error {
+		_ = r.CSRFSession() // the arrival session is resolved here
+		session = "user-1"
+		direct = r.CSRFSession()
+		rebuilt = NewRequest(r.Request).CSRFSession()
+		return nil
+	}}}, Options{CSRFSession: func(*Request) string { return session }})
 	doGet(m, "/")
 
 	if direct != "anonymous" {
@@ -855,32 +755,16 @@ func TestMux_CrossSiteFloodDoesNotFloodTheLog(t *testing.T) {
 	}
 }
 
-// arrivalProbeRoute reports the arrival session, having changed the hook's
-// answer before anything asked for it.
-type arrivalProbeRoute struct {
-	rotate func()
-	seen   *string
-}
-
-func (a arrivalProbeRoute) GetDataContext(_ context.Context, r *Request, _ ResponseWriter, _ DataContext) (DataContext, error) {
-	a.rotate()
-	*a.seen = r.CSRFSession()
-	return &testDataContext{body: "ok"}, nil
-}
-
-func (a arrivalProbeRoute) GetDefaultRoute(_ context.Context, _ *Request) (string, error) {
-	return "", nil
-}
-
 func TestMux_ArrivalSessionIsResolvedBeforeAnyHookRuns(t *testing.T) {
 	// A hook that establishes a session before anything asks for the arrival
-	// value must not become the arrival value.
+	// value must not become the arrival value. Guard is the first hook.
 	session := "anonymous"
 	var seen string
-	m := newMux(map[string]Route{"/": arrivalProbeRoute{
-		rotate: func() { session = "user-1" },
-		seen:   &seen,
-	}}, Options{CSRFSession: func(*Request) string { return session }})
+	m := newMux(map[string]Route{"/": hookRoute{guard: func(r *Request) error {
+		session = "user-1"
+		seen = r.CSRFSession()
+		return nil
+	}}}, Options{CSRFSession: func(*Request) string { return session }})
 	doGet(m, "/")
 	if seen != "anonymous" {
 		t.Errorf("arrival session = %q, want the one the request came in with", seen)

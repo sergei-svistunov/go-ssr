@@ -11,10 +11,10 @@ import (
 	ssrMux "github.com/sergei-svistunov/go-ssr/pkg/mux"
 )
 
-func New(d *model.Model) http.Handler {
-	mux := http.NewServeMux()
-
-	ssrHandler := pages.NewSsrHandler(d, ssrMux.Options{
+// New returns the site's handler. csrfKey signs the CSRF tokens: at least 32
+// bytes, the same on every instance that serves the site.
+func New(d *model.Model, csrfKey []byte) (http.Handler, error) {
+	ssrHandler, err := pages.NewSsrHandler(d, ssrMux.Options{
 		ErrorHandler: handleError,
 		// The CSRF cookie is Secure-only. Uncomment for plain-http
 		// development on a host other than localhost, or in Safari (which
@@ -22,19 +22,18 @@ func New(d *model.Model) http.Handler {
 		// production.
 		// InsecureCookies: true,
 
-		// CSRFKey signs the CSRF tokens. Left unset, a key is generated at
-		// startup, so every restart invalidates the tokens on pages users
-		// already have open and no two instances accept each other's. Before
-		// running more than one instance, or deploying without draining, set
-		// it to at least 32 bytes from your secret store — and fail startup
-		// if that value is missing, because an empty one silently falls back
-		// to the generated key.
+		CSRFKey: csrfKey,
 	})
+	if err != nil {
+		return nil, err
+	}
+
+	mux := http.NewServeMux()
 	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ssrHandler.ServeHTTP(w, r.WithContext(ctxdata.ToContext(r.Context(), &ctxdata.Data{})))
 	}))
 
-	return mux
+	return mux, nil
 }
 
 func handleError(w http.ResponseWriter, r *ssrMux.Request, err error) {

@@ -24,7 +24,7 @@ For each route the generator writes:
 |---|---|---|
 | `ssrroute_gen.go` | every generation | the rendering code, the route's `RouteDataProvider` interface, `RouteData` struct, form value structs, reactive state |
 | `dataprovider.go` | only if absent | a stub `DP` type implementing the interface — this is your file, edit it freely |
-| `__ssr_gen__.ts` | route has reactive variables | the typed `ssr` client for the browser |
+| `__ssr_gen__.ts` | route has reactive variables or page calls | the typed `ssr` client for the browser |
 | `ssrhandler_gen.go` | once, in `pages/` | `NewSsrHandler()`, which wires every route and its data provider |
 | `ssrstaticfiles_gen.go` | once, if assets were built | the embedded static file handler |
 
@@ -33,18 +33,21 @@ providers (`dataprovider.go`). Everything between them is generated.
 
 ## What happens on a request
 
-1. `NewSsrHandler(deps, mux.Options{})` returns an `http.Handler` holding a route tree built from the
-   generated route map.
+1. `NewSsrHandler(deps, mux.Options{CSRFKey: key})` returns an `http.Handler` holding a route tree built from
+   the generated route map, or an error for an option it refuses.
 2. The router matches the URL segment by segment. A directory named `_userId_` matches any single segment and
    records it as the URL parameter `userId`.
-3. The matched route and all of its ancestors form a stack. The router calls `GetDataContext` from the
-   deepest route upward, so each parent receives its already-rendered child. That is how a layout wraps a
-   page without either knowing about the other.
-4. Each route's `Data(ctx, r, w, data *RouteData)` fills in the variables its template declared.
-5. The composed result is written to the response.
+3. The matched route and all of its ancestors form a stack. Every route's `Guard` runs first, root to leaf, so
+   a layout can refuse a request before anything below it runs.
+4. On the routes that render the page — each layout on the path and the last route — each hook runs root to
+   leaf: on a POST, the form's `Init` and `Process` after the mux has checked the CSRF token; then each
+   route's `Data(ctx, r, w, data *RouteData)` fills in the variables its template declared.
+5. The root template renders, writing each child where `<ssr:content/>` stands, and the page is sent with a
+   Content-Security-Policy and other security headers.
 
-A request that arrives as a POST also runs the form lifecycle for that route (see `forms`), and a route with
-reactive variables additionally accepts a WebSocket connection (see `reactive` and `fe-be-contract`).
+A request that arrives as a POST also runs the form lifecycle (see `forms`), and a page whose routes have
+reactive variables or page calls opens one WebSocket to the server (see `reactive`, `page-calls` and
+`fe-be-contract`). `security` lists what the handler enforces on every request.
 
 ## Type safety
 
@@ -60,8 +63,8 @@ blank page at runtime. Expressions are compiled to Go too: `{{ user.Age >= 18 ? 
 Go code operating on real types.
 
 The generated `dataprovider.go` stub contains `var _ RouteDataProvider = &DP{}`, so if a template starts
-requiring a new hook — a new form, a new client-writable variable — the compiler names the method you are
-missing.
+requiring a new hook — a new form, a new client-writable variable, a new page call — the compiler names the
+method you are missing.
 
 ## Where to go next
 
@@ -69,11 +72,13 @@ missing.
 |---|---|
 | `quickstart` | creating and running a new application |
 | `project-structure` | the directory layout and which files are generated |
-| `routing` | dynamic parameters, nested layouts, default child routes |
+| `routing` | dynamic parameters, layouts and gates, guards, default child routes |
 | `template-syntax` | every `ssr:` tag and attribute |
 | `expressions` | the `{{ }}` language: operators, function calls, escaping |
 | `forms` | form declaration, validation, and the Init/Process hooks |
 | `reactive` | live server-pushed updates and two-way input binding |
+| `page-calls` | Go functions the page's TypeScript calls |
+| `security` | guards, CSRF, escaping, the Content-Security-Policy and connection limits |
 | `fe-be-contract` | how the browser and the server actually talk |
 | `runtime-api` | the Go packages your data providers use |
 | `errors` | what a generator error means and how to fix it |

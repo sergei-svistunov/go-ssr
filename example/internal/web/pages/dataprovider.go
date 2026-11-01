@@ -32,7 +32,6 @@ func (p *DP) Data(ctx context.Context, r *mux.Request, w mux.ResponseWriter, dat
 		return "Page test title<>\"" + ctxdata.FromContext(ctx).PageTitle
 	}
 
-	data.User.Image = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTUW0u5Eiiy3oM6wcpeEE6sXCzlh8G-tX1_Iw&s"
 	data.User.Name = "User<>\"Name"
 
 	data.Balance = p.m.Balance()

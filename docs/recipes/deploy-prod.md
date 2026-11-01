@@ -53,56 +53,61 @@ go-ssr -prod && git diff --exit-code
 
 ```go
 func main() {
-    m := model.New(openDB())
+    csrfKey, err := hex.DecodeString(os.Getenv("CSRF_KEY")) // from your secret store
+    if err != nil || len(csrfKey) != 32 {
+        log.Fatal("CSRF_KEY must be 64 hex characters")
+    }
+    handler, err := web.New(model.New(openDB()), csrfKey)
+    if err != nil {
+        log.Fatal(err)
+    }
 
     srv := &http.Server{
         Addr:              ":8080",
-        Handler:           web.New(m),
+        Handler:           http.MaxBytesHandler(handler, 16<<20),
         ReadHeaderTimeout: 5 * time.Second,
     }
     log.Fatal(srv.ListenAndServe())
 }
 ```
 
-Serve production over https: the CSRF cookie is `__Host-`-prefixed and `Secure`, so browsers drop it on
-plain http (terminating TLS at the proxy is fine). Set `mux.Options.CSRFKey` from your secret store when
-more than one instance serves the site, or when tokens should survive a restart: left empty, each process
-signs with a key of its own and rejects the others' tokens with a one-off 400 per affected form. Behind a
-reverse proxy, pass the public host through —
-`proxy_set_header Host $http_host;` in nginx (`$http_host` keeps a non-default port, `$host` drops it) — and
-`proxy_set_header X-Forwarded-Proto $scheme;`, because the cross-site check compares the browser's `Origin`
-against them for both form submissions and WebSocket handshakes. Make sure WebSocket upgrades are forwarded
-too — a reactive page
-connects to `<route>/__ws` on the same origin. That means `proxy_set_header Upgrade $http_upgrade;` and
-`proxy_set_header Connection "upgrade";` plus a `proxy_read_timeout` long enough for an idle connection to
-survive.
-
-## Upgrading an existing deployment
-
-Cross-site state-changing requests and WebSocket handshakes are now refused, which changes two working
-setups with no application change.
+- **The CSRF key** comes from your secret store, and every instance that serves the site gets the same one;
+  `NewSsrHandler` refuses one shorter than 32 bytes. Tokens survive a restart only if the key does, and
+  rotating it costs every open form one 400.
+- **Request bodies** need a cap in front of the handler: a url-encoded form stops at the standard library's
+  10 MB, but a multipart body keeps `mux.MaxMultipartMemory` in memory and spills the rest to temporary files
+  with no total limit. `http.MaxBytesHandler`, as above, or the proxy's body size limit, set to what the
+  largest form needs.
+- **https**: the CSRF cookie is `__Host-`-prefixed and `Secure`, so browsers drop it on plain http
+  (terminating TLS at the proxy is fine).
+- **Behind a reverse proxy**, pass the public host through — `proxy_set_header Host $http_host;` in nginx
+  (`$http_host` keeps a non-default port, `$host` drops it) — and `proxy_set_header X-Forwarded-Proto
+  $scheme;`, because the cross-site check compares the browser's `Origin` against them for both form
+  submissions and live connection handshakes, and the Content-Security-Policy names the WebSocket origin from
+  them. Clients that do not send `Sec-Fetch-Site` (Safari before 16.4, older WebViews) get 403 on form
+  submissions and failed live connections behind a proxy that rewrites `Host` to the upstream.
+- **WebSocket upgrades** must be forwarded too — a page with live values or calls connects to
+  `<page>/__ws` on the same origin. That means `proxy_set_header Upgrade $http_upgrade;` and
+  `proxy_set_header Connection "upgrade";` plus a `proxy_read_timeout` long enough for an idle connection to
+  survive; the server itself closes each connection after 10 minutes and the client reconnects.
 
 A form on one host posting to another — `www.example.com` to `app.example.com`, say — is `same-site`, not
-same-origin, and is refused on every modern browser from the moment you upgrade. List the posting origin in
-`mux.Options.OriginPatterns`, or exempt the route with `mux.Options.AllowCrossSite` if it is a third-party
-callback by design.
-
-Behind a proxy that rewrites `Host` to the upstream — nginx's `proxy_pass` default — clients that do not
-send `Sec-Fetch-Site` (Safari before 16.4, older WebViews) get 403 on form submissions and failed reactive
-sockets. Forward `Host` and `X-Forwarded-Proto` before upgrading, and set `mux.Options.CSRFKey` if more than
-one instance serves the site.
+same-origin, and is refused; list the posting origin in `mux.Options.OriginPatterns`. A third-party callback
+by design posts no CSRF token, so serve it from an `http.Handler` in front of the mux;
+`mux.Options.AllowCrossSite` does not lift the token check. Assets or APIs on other origins need their origins
+in `mux.Options.CSPSources`; see `security`.
 
 ## Caching
 
 Asset URLs are content-hashed and served with `Cache-Control: public, max-age=31536000, immutable`, so a CDN
-can cache them indefinitely. HTML is not cached by the framework, and responses that render a form are always
+can cache them indefinitely. The handler sets no caching headers on HTML, and responses that render a form are always
 sent with `Cache-Control: no-store` (set after every route has run), so an intermediary that honours it never
 shares one user's CSRF token. Do not strip that header upstream.
 
 ## Operational notes
 
-- Each connected client of a reactive page holds a goroutine per reactive route plus a WebSocket. Size the
-  process and any per-connection limits accordingly.
+- Each connected client of a live page holds a goroutine per reactive route plus a WebSocket. Size the
+  process accordingly, and cap connections per session with `mux.Options.MaxLiveConnsPerSession`.
 - A `Subscribe` panic is recovered and closes that connection only; the client reconnects with backoff.
 - After a redeploy, clients still holding a connection reconnect and receive a fresh init frame. Clients whose
   route key no longer exists get an `unknown_route` error frame and recover on reconnect.
@@ -114,6 +119,8 @@ shares one user's CSRF token. Do not strip that header upstream.
 - [ ] `go-ssr -prod` run, generated files committed, `git diff --exit-code` clean
 - [ ] `static_embed/`, `static/` and `node_modules/` ignored
 - [ ] served over https, `mux.Options.InsecureCookies` not set
-- [ ] `mux.Options.CSRFKey` set from the secret store if more than one instance serves the site
-- [ ] proxy forwards the public `Host`, WebSocket upgrades, and tolerates idle connections
+- [ ] `mux.Options.CSRFKey` read from the secret store, the same on every instance
+- [ ] request bodies capped in front of the handler
+- [ ] proxy forwards the public `Host` and `X-Forwarded-Proto`, WebSocket upgrades, and tolerates idle
+  connections
 - [ ] the runtime image contains only the binary

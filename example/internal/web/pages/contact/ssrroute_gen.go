@@ -9,7 +9,11 @@ import (
 
 	"github.com/sergei-svistunov/go-ssr/pkg/form"
 	"github.com/sergei-svistunov/go-ssr/pkg/mux"
+	"github.com/sergei-svistunov/go-ssr/pkg/render"
 )
+
+// Keeps the render import in a page without values, so a variable may have a render type.
+var _ = render.Text
 
 type RouteData struct {
 	Success bool
@@ -31,67 +35,78 @@ type RouteDataProvider interface {
 
 type ssrRoute struct{ dp RouteDataProvider }
 
-func NewRoute(dp RouteDataProvider) mux.Route { return &ssrRoute{dp: dp} }
-func (rt *ssrRoute) GetDataContext(ctx context.Context, r *mux.Request, w mux.ResponseWriter, child mux.DataContext) (mux.DataContext, error) {
-	dataCtx := &dataContext{
-		RouteDataContext: mux.RouteDataContext{
-			Child:  child,
-			Assets: []string{},
-		},
-	}
+func NewRoute(dp RouteDataProvider) mux.Route {
+	mux.CheckGuard(dp, "/contact")
+	return &ssrRoute{dp: dp}
+}
 
-	dataCtx.FormContactData.BaseFormValues.SetElements([]form.Element{
-		&dataCtx.FormContactData.Name,
-		&dataCtx.FormContactData.Email,
-		&dataCtx.FormContactData.Topic,
-		&dataCtx.FormContactData.Message,
+func (rt *ssrRoute) Layout() bool { return false }
+
+func (rt *ssrRoute) NewState() mux.RouteState {
+	s := &ssrState{dp: rt.dp}
+	s.SetAssets([]string{
+		"<link href=\"/static/css/pages/contact.e13519ff518c20dc1334.css\" rel=\"stylesheet\">",
+		"<script defer=\"defer\" src=\"/static/js/pages/contact.e13519ff518c20dc1334.js\"></script>",
 	})
-
-	if err := rt.dp.InitContact(ctx, r, w, &dataCtx.FormContactData); err != nil {
-		return nil, err
-	}
-
-	if r.Method == http.MethodPost {
-		formId, err := form.Parse(r)
-		if err != nil {
-			return nil, err
-		}
-		switch formId {
-		case "contact":
-			if form.IsMultipart(r) {
-				return nil, mux.NewHttpError(http.StatusBadRequest, "Content-Type is not application/x-www-form-urlencoded")
-			}
-			dataCtx.FormContactData.Name.Process(r, "name", false, true)
-			dataCtx.FormContactData.Email.Process(r, "email", false, true)
-			dataCtx.FormContactData.Topic.Process(r, "topic", false, false)
-			dataCtx.FormContactData.Message.Process(r, "message", false, true)
-			if err := rt.dp.ProcessContact(ctx, r, w, &dataCtx.FormContactData); err != nil {
-				return nil, err
-			}
-			dataCtx.FormContactData.BaseFormValues.MarkValidated()
-		}
-	}
-	if err := form.SetCSRFToken(r, w, &dataCtx.FormContactData.BaseFormValues); err != nil {
-		return nil, err
-	}
-	if err := rt.dp.Data(ctx, r, w, &dataCtx.RouteData); err != nil {
-		return nil, err
-	}
-
-	return dataCtx, nil
+	return s
 }
 
-func (rt *ssrRoute) GetDefaultRoute(ctx context.Context, r *mux.Request) (string, error) {
-	return "", nil
-}
-
-type dataContext struct {
-	mux.RouteDataContext
+type ssrState struct {
+	mux.Frame
+	dp              RouteDataProvider
 	RouteData       RouteData
 	FormContactData FormContactValues
 }
 
-func (c *dataContext) Write(w io.Writer) error {
+func (c *ssrState) Guard(ctx context.Context, r *mux.Request) error {
+	if g, ok := c.dp.(mux.Guarded); ok {
+		return g.Guard(ctx, r)
+	}
+	return nil
+}
+
+func (c *ssrState) InitForms(ctx context.Context, r *mux.Request, w mux.ResponseWriter) error {
+	c.FormContactData.BaseFormValues.SetElements([]form.Element{
+		&c.FormContactData.Name,
+		&c.FormContactData.Email,
+		&c.FormContactData.Topic,
+		&c.FormContactData.Message,
+	})
+	if err := c.dp.InitContact(ctx, r, w, &c.FormContactData); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *ssrState) SubmitForm(ctx context.Context, r *mux.Request, w mux.ResponseWriter, id string) (bool, error) {
+	switch id {
+	case "contact":
+		if form.IsMultipart(r) {
+			return true, mux.NewHttpError(http.StatusBadRequest, "Content-Type is not application/x-www-form-urlencoded")
+		}
+		c.FormContactData.Name.Process(r, "name", false, true)
+		c.FormContactData.Email.Process(r, "email", false, true)
+		c.FormContactData.Topic.Process(r, "topic", false, false)
+		c.FormContactData.Message.Process(r, "message", false, true)
+		c.FormContactData.BaseFormValues.MarkValidated()
+		if c.FormContactData.BaseFormValues.HasError() {
+			return true, nil
+		}
+		return true, c.dp.ProcessContact(ctx, r, w, &c.FormContactData)
+	}
+	return false, nil
+}
+
+func (c *ssrState) Data(ctx context.Context, r *mux.Request, w mux.ResponseWriter) error {
+	if err := form.SetCSRFToken(r, w, &c.FormContactData.BaseFormValues); err != nil {
+		return err
+	}
+	return c.dp.Data(ctx, r, w, &c.RouteData)
+}
+
+func (c *ssrState) DefaultRoute(ctx context.Context, r *mux.Request) (string, error) { return "", nil }
+
+func (c *ssrState) Write(w io.Writer) error {
 //line index.html:7
 	success := c.RouteData.Success
 	if _, err := w.Write(_t8dhq2r1fjlf1tdig5n8bbedho8ar8hp9jb11rd445n4q9i01370); err != nil {
@@ -130,7 +145,7 @@ func (c *dataContext) Write(w io.Writer) error {
 				if input.HasError() {
 					v = input.GetFormValue()
 				}
-				if _, err := mux.WriteHtmlEscaped(w, v); err != nil {
+				if err := render.Attr(w, v); err != nil {
 					return err
 				}
 				if _, err := w.Write(_h8phvnf70cnj79ou3cn2avc02pn393g0vioni57khfdlf8e6603g); err != nil {
@@ -141,7 +156,7 @@ func (c *dataContext) Write(w io.Writer) error {
 				return err
 			}
 //line index.html:14
-			if _, err := mux.WriteHtmlEscaped(w, mux.TernaryIf(form.IsValidated(), mux.TernaryIf(input.HasError(), "is-invalid", "is-valid"), "")); err != nil {
+			if err := render.Attr(w, mux.TernaryIf(form.IsValidated(), mux.TernaryIf(input.HasError(), "is-invalid", "is-valid"), "")); err != nil {
 				return err
 			}
 			if _, err := w.Write(_lcmdet48ia9q0oam521uudg1jkg3li09sdb2shbhi1v9i6kec5og); err != nil {
@@ -157,7 +172,7 @@ func (c *dataContext) Write(w io.Writer) error {
 				return err
 			}
 //line index.html:16
-			if _, err := mux.WriteHtmlEscaped(w, form.Name.GetError()); err != nil {
+			if err := render.Text(w, form.Name.GetError()); err != nil {
 				return err
 			}
 			if _, err := w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
@@ -182,7 +197,7 @@ func (c *dataContext) Write(w io.Writer) error {
 				if input.HasError() {
 					v = input.GetFormValue()
 				}
-				if _, err := mux.WriteHtmlEscaped(w, v); err != nil {
+				if err := render.Attr(w, v); err != nil {
 					return err
 				}
 				if _, err := w.Write(_h8phvnf70cnj79ou3cn2avc02pn393g0vioni57khfdlf8e6603g); err != nil {
@@ -193,7 +208,7 @@ func (c *dataContext) Write(w io.Writer) error {
 				return err
 			}
 //line index.html:20
-			if _, err := mux.WriteHtmlEscaped(w, mux.TernaryIf(form.IsValidated(), mux.TernaryIf(input.HasError(), "is-invalid", "is-valid"), "")); err != nil {
+			if err := render.Attr(w, mux.TernaryIf(form.IsValidated(), mux.TernaryIf(input.HasError(), "is-invalid", "is-valid"), "")); err != nil {
 				return err
 			}
 			if _, err := w.Write(_lcmdet48ia9q0oam521uudg1jkg3li09sdb2shbhi1v9i6kec5og); err != nil {
@@ -209,7 +224,7 @@ func (c *dataContext) Write(w io.Writer) error {
 				return err
 			}
 //line index.html:22
-			if _, err := mux.WriteHtmlEscaped(w, form.Email.GetError()); err != nil {
+			if err := render.Text(w, form.Email.GetError()); err != nil {
 				return err
 			}
 			if _, err := w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
@@ -227,7 +242,7 @@ func (c *dataContext) Write(w io.Writer) error {
 				return err
 			}
 //line index.html:26
-			if _, err := mux.WriteHtmlEscaped(w, mux.TernaryIf(form.IsValidated(), mux.TernaryIf(input.HasError(), "is-invalid", "is-valid"), "")); err != nil {
+			if err := render.Attr(w, mux.TernaryIf(form.IsValidated(), mux.TernaryIf(input.HasError(), "is-invalid", "is-valid"), "")); err != nil {
 				return err
 			}
 			if _, err := w.Write(_lcmdet48ia9q0oam521uudg1jkg3li09sdb2shbhi1v9i6kec5og); err != nil {
@@ -252,7 +267,7 @@ func (c *dataContext) Write(w io.Writer) error {
 				return err
 			}
 //line index.html:28
-			if _, err := mux.WriteHtmlEscaped(w, form.Topic.GetError()); err != nil {
+			if err := render.Text(w, form.Topic.GetError()); err != nil {
 				return err
 			}
 			if _, err := w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
@@ -266,17 +281,17 @@ func (c *dataContext) Write(w io.Writer) error {
 //line index.html:32
 			textarea := form.Message
 			_ = textarea
-			if _, err := w.Write(_c9fgl2sujunqciq7a2s66b35b8ib6pkabka6dqedcn2sb8u9fk00); err != nil {
+			if _, err := w.Write(_fcjs1jmvn2ftvn8lv6fs1f1pffaf6bi7lruq6v2c5ordt3e069vg); err != nil {
 				return err
 			}
 //line index.html:32
-			if _, err := mux.WriteHtmlEscaped(w, mux.TernaryIf(form.IsValidated(), mux.TernaryIf(textarea.HasError(), "is-invalid", "is-valid"), "")); err != nil {
+			if err := render.Attr(w, mux.TernaryIf(form.IsValidated(), mux.TernaryIf(textarea.HasError(), "is-invalid", "is-valid"), "")); err != nil {
 				return err
 			}
 			if _, err := w.Write(_lcmdet48ia9q0oam521uudg1jkg3li09sdb2shbhi1v9i6kec5og); err != nil {
 				return err
 			}
-			if _, err := mux.WriteHtmlEscaped(w, textarea.GetValue()); err != nil {
+			if err := render.Text(w, textarea.GetValue()); err != nil {
 				return err
 			}
 			if _, err := w.Write(_m1nmnfcnoneh7kdc3n37g3svivj3o839hkcemk3ifs0v9q2to6p0); err != nil {
@@ -292,7 +307,7 @@ func (c *dataContext) Write(w io.Writer) error {
 				return err
 			}
 //line index.html:34
-			if _, err := mux.WriteHtmlEscaped(w, form.Message.GetError()); err != nil {
+			if err := render.Text(w, form.Message.GetError()); err != nil {
 				return err
 			}
 			if _, err := w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
@@ -308,7 +323,7 @@ func (c *dataContext) Write(w io.Writer) error {
 				return err
 			}
 //line index.html:37
-			if _, err := mux.WriteHtmlEscaped(w, form.GetError()); err != nil {
+			if err := render.Text(w, form.GetError()); err != nil {
 				return err
 			}
 			if _, err := w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
@@ -341,14 +356,6 @@ var (
 	_63vr14drqsiva5f56b6amrrmmor3buvslfse7ml6l1afqb599jb0 = []byte{
 		0x20, 0x76, 0x61, 0x6c, 0x75, 0x65, 0x3d, 0x22,
 	}
-	_c9fgl2sujunqciq7a2s66b35b8ib6pkabka6dqedcn2sb8u9fk00 = []byte{
-		0x3c, 0x74, 0x65, 0x78, 0x74, 0x61, 0x72, 0x65, 0x61, 0x20, 0x6e, 0x61, 0x6d, 0x65, 0x3d, 0x22, 0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x22,
-		0x20, 0x72, 0x65, 0x71, 0x75, 0x69, 0x72, 0x65, 0x64, 0x20, 0x73, 0x74, 0x79, 0x6c, 0x65, 0x3d, 0x22, 0x68, 0x65, 0x69, 0x67, 0x68, 0x74, 0x3a,
-		0x20, 0x31, 0x32, 0x30, 0x70, 0x78, 0x22, 0x20, 0x70, 0x6c, 0x61, 0x63, 0x65, 0x68, 0x6f, 0x6c, 0x64, 0x65, 0x72, 0x3d, 0x22, 0x59, 0x6f, 0x75,
-		0x72, 0x20, 0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x22, 0x20, 0x69, 0x64, 0x3d, 0x22, 0x63, 0x6f, 0x6e, 0x74, 0x61, 0x63, 0x74, 0x2d, 0x6d,
-		0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x22, 0x20, 0x63, 0x6c, 0x61, 0x73, 0x73, 0x3d, 0x22, 0x66, 0x6f, 0x72, 0x6d, 0x2d, 0x63, 0x6f, 0x6e, 0x74,
-		0x72, 0x6f, 0x6c, 0x20,
-	}
 	_d4g6j76ahiv4kn5hnb8q940ntbii1iumkho92335qfguu86v4fkg = []byte{
 		0x3c, 0x2f, 0x64, 0x69, 0x76, 0x3e, 0x3c, 0x64, 0x69, 0x76, 0x20, 0x63, 0x6c, 0x61, 0x73, 0x73, 0x3d, 0x22, 0x66, 0x6f, 0x72, 0x6d, 0x2d, 0x66,
 		0x6c, 0x6f, 0x61, 0x74, 0x69, 0x6e, 0x67, 0x20, 0x6d, 0x62, 0x2d, 0x33, 0x22, 0x3e,
@@ -373,6 +380,13 @@ var (
 		0x20, 0x72, 0x65, 0x71, 0x75, 0x69, 0x72, 0x65, 0x64, 0x20, 0x69, 0x64, 0x3d, 0x22, 0x63, 0x6f, 0x6e, 0x74, 0x61, 0x63, 0x74, 0x2d, 0x65, 0x6d,
 		0x61, 0x69, 0x6c, 0x22, 0x20, 0x70, 0x6c, 0x61, 0x63, 0x65, 0x68, 0x6f, 0x6c, 0x64, 0x65, 0x72, 0x3d, 0x22, 0x45, 0x6d, 0x61, 0x69, 0x6c, 0x22,
 		0x20, 0x63, 0x6c, 0x61, 0x73, 0x73, 0x3d, 0x22, 0x66, 0x6f, 0x72, 0x6d, 0x2d, 0x63, 0x6f, 0x6e, 0x74, 0x72, 0x6f, 0x6c, 0x20,
+	}
+	_fcjs1jmvn2ftvn8lv6fs1f1pffaf6bi7lruq6v2c5ordt3e069vg = []byte{
+		0x3c, 0x74, 0x65, 0x78, 0x74, 0x61, 0x72, 0x65, 0x61, 0x20, 0x6e, 0x61, 0x6d, 0x65, 0x3d, 0x22, 0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x22,
+		0x20, 0x72, 0x65, 0x71, 0x75, 0x69, 0x72, 0x65, 0x64, 0x20, 0x70, 0x6c, 0x61, 0x63, 0x65, 0x68, 0x6f, 0x6c, 0x64, 0x65, 0x72, 0x3d, 0x22, 0x59,
+		0x6f, 0x75, 0x72, 0x20, 0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x22, 0x20, 0x69, 0x64, 0x3d, 0x22, 0x63, 0x6f, 0x6e, 0x74, 0x61, 0x63, 0x74,
+		0x2d, 0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x22, 0x20, 0x63, 0x6c, 0x61, 0x73, 0x73, 0x3d, 0x22, 0x66, 0x6f, 0x72, 0x6d, 0x2d, 0x63, 0x6f,
+		0x6e, 0x74, 0x72, 0x6f, 0x6c, 0x20,
 	}
 	_fvdunknet96r35hgo3033e36rpahlr7p8j3hg01b7ntpsb8tnmhg = []byte{
 		0x3c, 0x6c, 0x61, 0x62, 0x65, 0x6c, 0x20, 0x66, 0x6f, 0x72, 0x3d, 0x22, 0x63, 0x6f, 0x6e, 0x74, 0x61, 0x63, 0x74, 0x2d, 0x65, 0x6d, 0x61, 0x69,

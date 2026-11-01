@@ -31,7 +31,7 @@ func registerTools(s *mcp.Server) {
 		Name:  "gossr_docs",
 		Title: "Read GoSSR documentation",
 		Description: "Return a GoSSR documentation topic. Read this before writing templates, data providers or " +
-			"reactive code — the framework has its own template language and conventions.\n\nTopics:\n" + topicList(),
+			"reactive code — go-ssr has its own template language and conventions.\n\nTopics:\n" + topicList(),
 		InputSchema: docsInputSchema(),
 		Annotations: readOnly,
 	}, handleDocs)
@@ -586,7 +586,7 @@ func handleRoutes(_ context.Context, _ *mcp.CallToolRequest, in routesInput) (*m
 		b.WriteString("No routes found. A route is a directory under pages/ containing an index.html.\n")
 	}
 	if len(inv.WSEndpoints) > 0 {
-		fmt.Fprintf(&b, "WebSocket endpoints (one connection per page, shared by the whole route stack):\n")
+		fmt.Fprintf(&b, "WebSocket endpoints (one connection per page, shared by the page and the layouts around it):\n")
 		for _, leaf := range inv.WSEndpoints {
 			fmt.Fprintf(&b, "  %s/__ws\n", strings.TrimSuffix(leaf, "/"))
 		}
@@ -609,7 +609,7 @@ func handleRoutes(_ context.Context, _ *mcp.CallToolRequest, in routesInput) (*m
 			if r.WSEndpoint != "" {
 				fmt.Fprintf(&b, "  reactive, websocket %s\n", r.WSEndpoint)
 			} else {
-				b.WriteString("  reactive; patches travel over the endpoint of whichever leaf route is being viewed\n")
+				b.WriteString("  reactive; patches travel over the endpoint of each page rendered inside it\n")
 			}
 		}
 		for _, v := range r.Variables {

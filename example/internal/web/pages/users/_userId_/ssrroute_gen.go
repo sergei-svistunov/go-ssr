@@ -7,7 +7,11 @@ import (
 	"io"
 
 	"github.com/sergei-svistunov/go-ssr/pkg/mux"
+	"github.com/sergei-svistunov/go-ssr/pkg/render"
 )
+
+// Keeps the render import in a page without values, so a variable may have a render type.
+var _ = render.Text
 
 type RouteData struct {
 	User         User
@@ -20,107 +24,114 @@ type RouteDataProvider interface {
 
 type ssrRoute struct{ dp RouteDataProvider }
 
-func NewRoute(dp RouteDataProvider) mux.Route { return &ssrRoute{dp: dp} }
-func (rt *ssrRoute) GetDataContext(ctx context.Context, r *mux.Request, w mux.ResponseWriter, child mux.DataContext) (mux.DataContext, error) {
-	dataCtx := &dataContext{
-		RouteDataContext: mux.RouteDataContext{
-			Child:  child,
-			Assets: []string{},
-		},
-	}
-
-	if err := rt.dp.Data(ctx, r, w, &dataCtx.RouteData); err != nil {
-		return nil, err
-	}
-
-	return dataCtx, nil
+func NewRoute(dp RouteDataProvider) mux.Route {
+	mux.CheckGuard(dp, "/users/_userId_")
+	return &ssrRoute{dp: dp}
 }
 
-func (rt *ssrRoute) GetDefaultRoute(ctx context.Context, r *mux.Request) (string, error) {
-	return "info", nil
+func (rt *ssrRoute) Layout() bool { return true }
+
+func (rt *ssrRoute) NewState() mux.RouteState {
+	s := &ssrState{dp: rt.dp}
+	s.SetAssets([]string{})
+	return s
 }
 
-type dataContext struct {
-	mux.RouteDataContext
+type ssrState struct {
+	mux.Frame
+	dp        RouteDataProvider
 	RouteData RouteData
 }
 
-func (c *dataContext) Write(w io.Writer) error {
+func (c *ssrState) Guard(ctx context.Context, r *mux.Request) error {
+	if g, ok := c.dp.(mux.Guarded); ok {
+		return g.Guard(ctx, r)
+	}
+	return nil
+}
+
+func (c *ssrState) InitForms(ctx context.Context, r *mux.Request, w mux.ResponseWriter) error {
+	return nil
+}
+
+func (c *ssrState) SubmitForm(ctx context.Context, r *mux.Request, w mux.ResponseWriter, id string) (bool, error) {
+	return false, nil
+}
+
+func (c *ssrState) Data(ctx context.Context, r *mux.Request, w mux.ResponseWriter) error {
+	return c.dp.Data(ctx, r, w, &c.RouteData)
+}
+
+func (c *ssrState) DefaultRoute(ctx context.Context, r *mux.Request) (string, error) {
+	return "info", nil
+}
+
+func (c *ssrState) Write(w io.Writer) error {
 //line index.html:1
 	user := c.RouteData.User
 //line index.html:2
 	userTabClass := c.RouteData.UserTabClass
-	if _, err := w.Write(_ck8ja5el1vdi7l315a1qlvpla9tk4op90f1ckkj4492plnm4d3hg); err != nil {
+	if _, err := w.Write(_e0s5hccmeajlmk7h1eialbgpvf2r7itv3o25kpktso1g9hpets0g); err != nil {
 		return err
 	}
 //line index.html:7
-	if _, err := mux.WriteHtmlEscaped(w, user.Image); err != nil {
-		return err
-	}
-	if _, err := w.Write(_2d0ca660vp2c47gph10rt485jlqjs05l0q6qod5ust4p52ioksd0); err != nil {
-		return err
-	}
-//line index.html:7
-	if _, err := mux.WriteHtmlEscaped(w, user.Name); err != nil {
+	if err := render.Attr(w, user.Name); err != nil {
 		return err
 	}
 	if _, err := w.Write(_geo0ifialke734091quc90b1jbv1r5in2gar8ho4nacpdc3eo3ug); err != nil {
 		return err
 	}
 //line index.html:11
-	if _, err := mux.WriteHtmlEscaped(w, user.Name); err != nil {
+	if err := render.Text(w, user.Name); err != nil {
 		return err
 	}
 	if _, err := w.Write(_h08bb7nekpr8iq36vmchl8pu8hkcvr4m2k5inti9uap40dtqo6sg); err != nil {
 		return err
 	}
 //line index.html:14
-	if _, err := mux.WriteHtmlEscaped(w, user.Login); err != nil {
+	if err := render.Text(w, user.Login); err != nil {
 		return err
 	}
 	if _, err := w.Write(_cuhsneigqpssd0kis522tcsh6hu08l1ga97uu6mug841mrm04cs0); err != nil {
 		return err
 	}
 //line index.html:15
-	if _, err := mux.WriteHtmlEscaped(w, user.Age); err != nil {
+	if err := render.Text(w, user.Age); err != nil {
 		return err
 	}
 	if _, err := w.Write(_vuja9mr23pjmr6pfsdi6e5dh7448o0gjo9cvrmcfj5gf6rg9i010); err != nil {
 		return err
 	}
 //line index.html:21
-	if _, err := mux.WriteHtmlEscaped(w, userTabClass("/info")); err != nil {
+	if err := render.Attr(w, userTabClass("/info")); err != nil {
 		return err
 	}
 	if _, err := w.Write(_l1jh91kqdcoogat54p183v3rneo1f7psatn1undjsb6u4n4u7mo0); err != nil {
 		return err
 	}
 //line index.html:21
-	if _, err := mux.WriteHtmlEscaped(w, user.Login); err != nil {
+	if err := render.URLPart(w, user.Login); err != nil {
 		return err
 	}
 	if _, err := w.Write(_jt7rv5telg25d7ifbjrapk2rbrp6im7n1b08j836dl5orhcskkjg); err != nil {
 		return err
 	}
 //line index.html:24
-	if _, err := mux.WriteHtmlEscaped(w, userTabClass("/contacts")); err != nil {
+	if err := render.Attr(w, userTabClass("/contacts")); err != nil {
 		return err
 	}
 	if _, err := w.Write(_l1jh91kqdcoogat54p183v3rneo1f7psatn1undjsb6u4n4u7mo0); err != nil {
 		return err
 	}
 //line index.html:24
-	if _, err := mux.WriteHtmlEscaped(w, user.Login); err != nil {
+	if err := render.URLPart(w, user.Login); err != nil {
 		return err
 	}
 	if _, err := w.Write(_4tt86qgl3jk48o439diau8be01de3uqgfemtdaqgnnfbgkjffkog); err != nil {
 		return err
 	}
-	if c.Child != nil {
-		err := c.Child.Write(w)
-		if err != nil {
-			return err
-		}
+	if err := c.WriteChild(w); err != nil {
+		return err
 	}
 	if _, err := w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
 		return err
@@ -129,24 +140,24 @@ func (c *dataContext) Write(w io.Writer) error {
 }
 
 var (
-	_2d0ca660vp2c47gph10rt485jlqjs05l0q6qod5ust4p52ioksd0 = []byte{
-		0x22, 0x20, 0x61, 0x6c, 0x74, 0x3d, 0x22,
-	}
 	_4tt86qgl3jk48o439diau8be01de3uqgfemtdaqgnnfbgkjffkog = []byte{
 		0x2f, 0x63, 0x6f, 0x6e, 0x74, 0x61, 0x63, 0x74, 0x73, 0x22, 0x3e, 0x43, 0x6f, 0x6e, 0x74, 0x61, 0x63, 0x74, 0x73, 0x3c, 0x2f, 0x61, 0x3e, 0x3c,
 		0x2f, 0x6c, 0x69, 0x3e, 0x3c, 0x2f, 0x75, 0x6c, 0x3e, 0x3c, 0x2f, 0x64, 0x69, 0x76, 0x3e, 0x3c, 0x2f, 0x64, 0x69, 0x76, 0x3e, 0x3c, 0x2f, 0x64,
 		0x69, 0x76, 0x3e, 0x3c, 0x2f, 0x64, 0x69, 0x76, 0x3e, 0x3c, 0x64, 0x69, 0x76, 0x20, 0x63, 0x6c, 0x61, 0x73, 0x73, 0x3d, 0x22, 0x6d, 0x74, 0x2d,
 		0x33, 0x22, 0x3e,
 	}
-	_ck8ja5el1vdi7l315a1qlvpla9tk4op90f1ckkj4492plnm4d3hg = []byte{
-		0x3c, 0x64, 0x69, 0x76, 0x20, 0x63, 0x6c, 0x61, 0x73, 0x73, 0x3d, 0x22, 0x63, 0x61, 0x72, 0x64, 0x20, 0x6d, 0x74, 0x2d, 0x33, 0x22, 0x3e, 0x3c,
-		0x64, 0x69, 0x76, 0x20, 0x63, 0x6c, 0x61, 0x73, 0x73, 0x3d, 0x22, 0x72, 0x6f, 0x77, 0x20, 0x67, 0x2d, 0x30, 0x22, 0x3e, 0x3c, 0x64, 0x69, 0x76,
-		0x20, 0x63, 0x6c, 0x61, 0x73, 0x73, 0x3d, 0x22, 0x63, 0x6f, 0x6c, 0x2d, 0x6d, 0x64, 0x2d, 0x34, 0x20, 0x63, 0x6f, 0x6c, 0x2d, 0x78, 0x6c, 0x2d,
-		0x32, 0x22, 0x3e, 0x3c, 0x69, 0x6d, 0x67, 0x20, 0x73, 0x72, 0x63, 0x3d, 0x22,
-	}
 	_cuhsneigqpssd0kis522tcsh6hu08l1ga97uu6mug841mrm04cs0 = []byte{
 		0x3c, 0x2f, 0x73, 0x74, 0x72, 0x6f, 0x6e, 0x67, 0x3e, 0x3c, 0x2f, 0x6c, 0x69, 0x3e, 0x3c, 0x6c, 0x69, 0x3e, 0x41, 0x67, 0x65, 0x3a, 0x20, 0x3c,
 		0x73, 0x74, 0x72, 0x6f, 0x6e, 0x67, 0x3e,
+	}
+	_e0s5hccmeajlmk7h1eialbgpvf2r7itv3o25kpktso1g9hpets0g = []byte{
+		0x3c, 0x64, 0x69, 0x76, 0x20, 0x63, 0x6c, 0x61, 0x73, 0x73, 0x3d, 0x22, 0x63, 0x61, 0x72, 0x64, 0x20, 0x6d, 0x74, 0x2d, 0x33, 0x22, 0x3e, 0x3c,
+		0x64, 0x69, 0x76, 0x20, 0x63, 0x6c, 0x61, 0x73, 0x73, 0x3d, 0x22, 0x72, 0x6f, 0x77, 0x20, 0x67, 0x2d, 0x30, 0x22, 0x3e, 0x3c, 0x64, 0x69, 0x76,
+		0x20, 0x63, 0x6c, 0x61, 0x73, 0x73, 0x3d, 0x22, 0x63, 0x6f, 0x6c, 0x2d, 0x6d, 0x64, 0x2d, 0x34, 0x20, 0x63, 0x6f, 0x6c, 0x2d, 0x78, 0x6c, 0x2d,
+		0x32, 0x22, 0x3e, 0x3c, 0x69, 0x6d, 0x67, 0x20, 0x73, 0x72, 0x63, 0x3d, 0x22, 0x2f, 0x73, 0x74, 0x61, 0x74, 0x69, 0x63, 0x2f, 0x69, 0x6d, 0x61,
+		0x67, 0x65, 0x73, 0x2f, 0x61, 0x76, 0x61, 0x74, 0x61, 0x72, 0x2e, 0x70, 0x6e, 0x67, 0x61, 0x76, 0x61, 0x74, 0x61, 0x72, 0x2e, 0x32, 0x61, 0x32,
+		0x39, 0x31, 0x61, 0x37, 0x37, 0x30, 0x30, 0x62, 0x30, 0x31, 0x33, 0x38, 0x33, 0x61, 0x31, 0x32, 0x35, 0x2e, 0x70, 0x6e, 0x67, 0x22, 0x20, 0x61,
+		0x6c, 0x74, 0x3d, 0x22,
 	}
 	_geo0ifialke734091quc90b1jbv1r5in2gar8ho4nacpdc3eo3ug = []byte{
 		0x22, 0x20, 0x63, 0x6c, 0x61, 0x73, 0x73, 0x3d, 0x22, 0x69, 0x6d, 0x67, 0x2d, 0x66, 0x6c, 0x75, 0x69, 0x64, 0x20, 0x72, 0x6f, 0x75, 0x6e, 0x64,

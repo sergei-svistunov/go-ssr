@@ -1,0 +1,15 @@
+<!doctype html>
+<html>
+<body>
+<ssr:var name="evil" type="string"/>
+<ssr:var name="link" type="string"/>
+<ssr:var name="markup" type="render.SafeHTML"/>
+<p id="text">{{ evil }}</p>
+<p id="attr" class="c {{ evil }}"></p>
+<a id="part" href="/u/{{ evil }}">part</a>
+<a id="abs" href="https://h.example/u/{{ evil }}">abs</a>
+<a id="whole" href="{{ link }}">whole</a>
+<div id="markup">{{$ markup }}</div>
+<ssr:form name="f"><ssr:input name="q" type="text"/><ssr:textarea name="t"/></ssr:form>
+</body>
+</html>

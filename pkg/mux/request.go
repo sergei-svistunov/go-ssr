@@ -19,8 +19,8 @@ type Request struct {
 	OriginPatterns  []string
 
 	// noStore points at the flag the mux reads back, shared by every Request
-	// built from this request's context. nil outside the mux. Generated
-	// WebSocket code hands one Request to two goroutines, so it is atomic.
+	// built from this request's context. nil outside the mux. A live
+	// connection hands one Request to several goroutines, so it is atomic.
 	noStore *atomic.Bool
 
 	csrfKey       []byte
@@ -31,16 +31,12 @@ type Request struct {
 }
 
 // arrivalSession caches Options.CSRFSession's first answer for a request.
-// One Request can reach two goroutines on the WebSocket path, so resolving
-// is once-only rather than a plain flag.
+// One Request can reach several goroutines on a live connection, so
+// resolving is once-only rather than a plain flag.
 type arrivalSession struct {
 	once  sync.Once
 	value string
 }
-
-// CSRFKey is the key Options.CSRFKey configured, for the package that mints
-// and verifies CSRF tokens. It is nil on a Request not built by a mux.
-func (r *Request) CSRFKey() []byte { return r.csrfKey }
 
 // CSRFSession is the session this request arrived with: the first result of
 // Options.CSRFSession, kept for the rest of the request, or "" when nothing
@@ -77,20 +73,19 @@ func (r *Request) NoStore() {
 }
 
 // requestOptions is what the mux attaches to every request's context, so any
-// Request built from it — by the mux, by a WebSocket handler, or by a hook
-// rebuilding one downstream — sees the same settings, and so a handler can
-// tell that the origin was already checked.
+// Request built from it — by the mux or by a hook rebuilding one downstream —
+// sees the same settings.
 type requestOptions struct {
 	insecureCookies bool
 	originPatterns  []string
-	originChecked   bool
 	noStore         *atomic.Bool
 	csrfKey         []byte
 	csrfSessionFn   func(*Request) string
 	csrfSession     *arrivalSession
+	csp             *cspPolicy
 }
 
-// withOptions returns r carrying o for NewRequest and OriginChecked to read.
+// withOptions returns r carrying o for NewRequest to read.
 func withOptions(r *http.Request, o requestOptions) *http.Request {
 	return r.WithContext(context.WithValue(r.Context(), requestOptionsKey{}, o))
 }
@@ -113,28 +108,6 @@ func NewRequest(r *http.Request) *Request {
 	return req
 }
 
-// OriginChecked reports whether the mux already applied CrossSite to the
-// request this context belongs to, as it does before dispatching a WebSocket
-// handshake. A handler mounted anywhere else sees false and must check for
-// itself.
-func OriginChecked(ctx context.Context) bool {
-	o, _ := ctx.Value(requestOptionsKey{}).(requestOptions)
-	return o.originChecked
-}
-
 func (r *Request) URLParam(key string) string {
 	return r.URLParams[key]
-}
-
-// urlParamsKey is the unexported context key used to stash URL params for WS
-// upgrade requests. Using a package-local type prevents collisions with keys
-// from other packages.
-type urlParamsKey struct{}
-
-// URLParamsFromContext retrieves the URL params map stored in ctx by the mux
-// WS dispatch path. Returns nil if the context was not populated (e.g., the
-// handler was not called through the mux).
-func URLParamsFromContext(ctx context.Context) map[string]string {
-	v, _ := ctx.Value(urlParamsKey{}).(map[string]string)
-	return v
 }

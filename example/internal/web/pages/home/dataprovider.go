@@ -8,6 +8,7 @@ import (
 
 	"github.com/sergei-svistunov/go-ssr/example/internal/model"
 	"github.com/sergei-svistunov/go-ssr/pkg/mux"
+	"github.com/sergei-svistunov/go-ssr/pkg/render"
 )
 
 var _ RouteDataProvider = &DP{}
@@ -26,8 +27,9 @@ func (p *DP) DefaultRoute(ctx context.Context, r *mux.Request) (string, error) {
 
 func (p *DP) Data(ctx context.Context, r *mux.Request, w mux.ResponseWriter, data *RouteData) error {
 	data.VisitorsOnline = p.m.VisitorsOnline()
-	data.VisitorsBadgeColor = visitorsBadgeColorFor(data.VisitorsOnline)
+	data.VisitorsBadgeClass = visitorsBadgeClassFor(data.VisitorsOnline)
 	data.DisplayName = ""
+	data.Divider = render.HTMLConst(`<hr class="mt-3">`)
 
 	// Arithmetic / field-accessor showcase values.
 	data.Price = 9.99
@@ -57,21 +59,22 @@ func (p *DP) Subscribe(ctx context.Context, r *mux.Request, state *ReactiveState
 			n := 10 + rand.Intn(491) // 10–500
 			p.m.SetVisitorsOnline(n)
 			state.SetVisitorsOnline(n)
-			state.SetVisitorsBadgeColor(visitorsBadgeColorFor(n))
+			state.SetVisitorsBadgeClass(visitorsBadgeClassFor(n))
 		}
 	}
 }
 
-// visitorsBadgeColorFor maps the visitor count to a CSS colour. Used in the
-// reactive style="color: {{ visitorsBadgeColor }}" binding on the home page.
-func visitorsBadgeColorFor(n int) string {
+// visitorsBadgeClassFor maps the visitor count to one of the badge classes
+// in styles.scss. Used in the reactive class="badge {{ visitorsBadgeClass }}"
+// binding on the home page.
+func visitorsBadgeClassFor(n int) string {
 	switch {
 	case n < 50:
-		return "#dc3545" // red
+		return "visitors-few"
 	case n < 200:
-		return "#fd7e14" // orange
+		return "visitors-some"
 	default:
-		return "#198754" // green
+		return "visitors-many"
 	}
 }
 

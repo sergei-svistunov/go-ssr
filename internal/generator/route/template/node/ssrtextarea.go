@@ -1,6 +1,8 @@
 package node
 
 import (
+	"html"
+
 	"github.com/sergei-svistunov/go-ssr/internal/generator/gobuf"
 )
 
@@ -27,7 +29,7 @@ func (n *SsrTextarea) WriteGoCode(buf *gobuf.GoBuf) {
 	buf.WriteStringLn("textarea := form." + n.FormFieldName)
 	buf.WriteStringLn("_ = textarea")
 	buf.WritePrintString("<textarea")
-	buf.WritePrintString(` name="` + n.Name + `"`)
+	buf.WritePrintString(` name="` + html.EscapeString(n.Name) + `"`)
 
 	for _, a := range n.Attributes {
 		if textareaReservedAttrs[a.Key] {
@@ -44,7 +46,7 @@ func (n *SsrTextarea) WriteGoCode(buf *gobuf.GoBuf) {
 		}
 	}
 	buf.WritePrintString(">")
-	buf.WriteString("if _, err := mux.WriteHtmlEscaped(w, textarea.GetValue()); err != nil {")
+	buf.WriteString("if err := render.Text(w, textarea.GetValue()); err != nil {")
 	buf.WriteStringLn("return err")
 	buf.WriteStringLn("}")
 	buf.WritePrintString("</textarea>")

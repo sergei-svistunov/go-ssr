@@ -4,6 +4,9 @@ const GoSSRAssetsPlugin = require('gossr-assets-webpack-plugin');
 
 module.exports = {
     entry: {},
+    // Development builds default to eval source maps, which the
+    // Content-Security-Policy blocks.
+    devtool: 'source-map',
     output: {
         filename: 'js/[name].[chunkhash].js',
         path: path.resolve(__dirname, 'static'),

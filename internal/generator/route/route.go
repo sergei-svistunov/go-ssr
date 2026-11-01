@@ -31,6 +31,13 @@ func FromDir(dir string, imageResolver func(string) string) (*Route, error) {
 			return nil, &template.SyntaxError{Filename: indexPath, Line: syntaxErr.Line, Message: syntaxErr.Message}
 		}
 
+		var coded *template.CodedError
+		if errors.As(err, &coded) {
+			placed := *coded
+			placed.File = indexPath
+			return nil, &placed
+		}
+
 		var bindErr *template.SsrBindOnPrimitiveError
 		if errors.As(err, &bindErr) {
 			return nil, &template.SsrBindOnPrimitiveError{File: indexPath, Line: bindErr.Line, Element: bindErr.Element}

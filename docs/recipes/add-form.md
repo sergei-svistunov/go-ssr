@@ -60,7 +60,8 @@ type FormContactValues struct {
 
 ## 3. Implement Init — options and defaults
 
-Runs on every request, before parsing, so the form can always render:
+Runs on every request, before the fields are parsed, so the form can always render. On a POST it runs only
+after the mux has checked the CSRF token:
 
 ```go
 func (p *DP) InitContact(ctx context.Context, r *mux.Request, w mux.ResponseWriter, data *FormContactValues) error {
@@ -74,17 +75,15 @@ func (p *DP) InitContact(ctx context.Context, r *mux.Request, w mux.ResponseWrit
 
 ## 4. Implement Process — validate and act
 
-Runs on POST after the fields have been parsed, **including when parsing already found errors**:
+Runs on POST after the fields have been parsed, **only when parsing found no errors**; a missing `required`
+value or a failed conversion re-renders the form with its message and never reaches `Process`:
 
 ```go
 func (p *DP) ProcessContact(ctx context.Context, r *mux.Request, w mux.ResponseWriter, data *FormContactValues) error {
     email := strings.TrimSpace(data.Email.GetValue())
     if !strings.Contains(email, "@") {
         data.Email.SetError("Please enter a valid email address")
-    }
-
-    if data.HasError() {
-        return nil // re-render with messages
+        return nil // re-render with the message
     }
 
     if err := p.m.SaveEnquiry(ctx, data.Name.GetValue(), email, data.Message.GetValue()); err != nil {
@@ -150,6 +149,6 @@ pair and values struct.
 - [ ] every field has a unique `name`, or is a deliberate checkbox/radio group
 - [ ] `gotype` set for anything that is not a string
 - [ ] error display for each field plus the form-level error
-- [ ] `Process` checks `data.HasError()` before acting
+- [ ] `Process` returns `nil` after setting an error of its own, before acting
 - [ ] success path redirects instead of rendering
 - [ ] the hidden CSRF field is left alone
