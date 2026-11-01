@@ -87,7 +87,7 @@ func (b *GoBuf) flushPrintStrings() {
 	//}
 	//b.WriteStringLn(")); err != nil {")
 
-	b.WriteString("if _, err := w.Write(")
+	b.WriteString("if _, err := _w.Write(")
 	b.WriteString(b.getVar([]byte(str)))
 	b.WriteStringLn("); err != nil {")
 

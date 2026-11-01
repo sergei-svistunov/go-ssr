@@ -66,74 +66,76 @@ func (c *ssrState) DefaultRoute(ctx context.Context, r *mux.Request) (string, er
 	return "info", nil
 }
 
-func (c *ssrState) Write(w io.Writer) error {
+func (_c *ssrState) Write(_w io.Writer) error {
 //line index.html:1
-	user := c.RouteData.User
+	user := _c.RouteData.User
+	_ = user
 //line index.html:2
-	userTabClass := c.RouteData.UserTabClass
-	if _, err := w.Write(_e0s5hccmeajlmk7h1eialbgpvf2r7itv3o25kpktso1g9hpets0g); err != nil {
+	userTabClass := _c.RouteData.UserTabClass
+	_ = userTabClass
+	if _, err := _w.Write(_e0s5hccmeajlmk7h1eialbgpvf2r7itv3o25kpktso1g9hpets0g); err != nil {
 		return err
 	}
 //line index.html:7
-	if err := render.Attr(w, user.Name); err != nil {
+	if err := render.Attr(_w, user.Name); err != nil {
 		return err
 	}
-	if _, err := w.Write(_geo0ifialke734091quc90b1jbv1r5in2gar8ho4nacpdc3eo3ug); err != nil {
+	if _, err := _w.Write(_geo0ifialke734091quc90b1jbv1r5in2gar8ho4nacpdc3eo3ug); err != nil {
 		return err
 	}
 //line index.html:11
-	if err := render.Text(w, user.Name); err != nil {
+	if err := render.Text(_w, user.Name); err != nil {
 		return err
 	}
-	if _, err := w.Write(_h08bb7nekpr8iq36vmchl8pu8hkcvr4m2k5inti9uap40dtqo6sg); err != nil {
+	if _, err := _w.Write(_h08bb7nekpr8iq36vmchl8pu8hkcvr4m2k5inti9uap40dtqo6sg); err != nil {
 		return err
 	}
 //line index.html:14
-	if err := render.Text(w, user.Login); err != nil {
+	if err := render.Text(_w, user.Login); err != nil {
 		return err
 	}
-	if _, err := w.Write(_cuhsneigqpssd0kis522tcsh6hu08l1ga97uu6mug841mrm04cs0); err != nil {
+	if _, err := _w.Write(_cuhsneigqpssd0kis522tcsh6hu08l1ga97uu6mug841mrm04cs0); err != nil {
 		return err
 	}
 //line index.html:15
-	if err := render.Text(w, user.Age); err != nil {
+	if err := render.Text(_w, user.Age); err != nil {
 		return err
 	}
-	if _, err := w.Write(_vuja9mr23pjmr6pfsdi6e5dh7448o0gjo9cvrmcfj5gf6rg9i010); err != nil {
-		return err
-	}
-//line index.html:21
-	if err := render.Attr(w, userTabClass("/info")); err != nil {
-		return err
-	}
-	if _, err := w.Write(_l1jh91kqdcoogat54p183v3rneo1f7psatn1undjsb6u4n4u7mo0); err != nil {
+	if _, err := _w.Write(_vuja9mr23pjmr6pfsdi6e5dh7448o0gjo9cvrmcfj5gf6rg9i010); err != nil {
 		return err
 	}
 //line index.html:21
-	if err := render.URLPart(w, user.Login); err != nil {
+	if err := render.Attr(_w, userTabClass("/info")); err != nil {
 		return err
 	}
-	if _, err := w.Write(_jt7rv5telg25d7ifbjrapk2rbrp6im7n1b08j836dl5orhcskkjg); err != nil {
+	if _, err := _w.Write(_l1jh91kqdcoogat54p183v3rneo1f7psatn1undjsb6u4n4u7mo0); err != nil {
+		return err
+	}
+//line index.html:21
+	if err := render.URLPart(_w, user.Login); err != nil {
+		return err
+	}
+	if _, err := _w.Write(_jt7rv5telg25d7ifbjrapk2rbrp6im7n1b08j836dl5orhcskkjg); err != nil {
 		return err
 	}
 //line index.html:24
-	if err := render.Attr(w, userTabClass("/contacts")); err != nil {
+	if err := render.Attr(_w, userTabClass("/contacts")); err != nil {
 		return err
 	}
-	if _, err := w.Write(_l1jh91kqdcoogat54p183v3rneo1f7psatn1undjsb6u4n4u7mo0); err != nil {
+	if _, err := _w.Write(_l1jh91kqdcoogat54p183v3rneo1f7psatn1undjsb6u4n4u7mo0); err != nil {
 		return err
 	}
 //line index.html:24
-	if err := render.URLPart(w, user.Login); err != nil {
+	if err := render.URLPart(_w, user.Login); err != nil {
 		return err
 	}
-	if _, err := w.Write(_4tt86qgl3jk48o439diau8be01de3uqgfemtdaqgnnfbgkjffkog); err != nil {
+	if _, err := _w.Write(_4tt86qgl3jk48o439diau8be01de3uqgfemtdaqgnnfbgkjffkog); err != nil {
 		return err
 	}
-	if err := c.WriteChild(w); err != nil {
+	if err := _c.WriteChild(_w); err != nil {
 		return err
 	}
-	if _, err := w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
+	if _, err := _w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
 		return err
 	}
 	return nil

@@ -61,6 +61,7 @@ import { ssr } from './__ssr_gen__';
 | `ssr.onConnect(cb)` | connection established or re-established |
 | `ssr.onDisconnect(cb)` | `cb(code, reason)` when an established connection drops unexpectedly |
 | `ssr.onConnectError(cb)` | `cb(status)` when the upgrade request is rejected; `status` is always 0, since browsers do not expose it |
+| `ssr.stop()` | close the page's live connection for good, for every route on the page |
 
 Every subscription function returns an unsubscribe function.
 
@@ -134,12 +135,25 @@ ssr.onConnectError(() => location.reload());
   a fresh init frame with every current value, so the page does not need reloading.
 - While the tab is hidden the connection is closed; calls in flight reject with status 0. It reopens when the
   tab is shown again, and a refused upgrade then retries with back-off and rejects the calls waiting at that
-  moment.
-- A refused upgrade — the first one, or one after a drop — is final and fires `onConnectError`. The session
+  moment. A socket that opens resets the count of refusals.
+- A refused upgrade — the first one, one after a drop, or the third in a row after the tab is shown again — is
+  final and fires `onConnectError`; waiting calls reject with status 0 and later calls at once. The session
   may have ended: reload the page there.
-- A 1008 close means a `Subscribe` refused the session, a guard refused a call, or the client was too slow to
-  read; the runtime logs the server's reason and reconnects with back-off, and the new handshake passes the
-  guards again or is refused.
+- A 1008 close means a `Subscribe` refused the session or a guard refused a call; the runtime logs the
+  server's reason and reconnects with back-off, and the new handshake passes the guards again or is refused.
+- `ssr.stop()` ends the page's connection for good. All routes on a page share it, so `stop()` on any route's
+  client stops every route: none reconnects, `set` warns and page calls reject with status 0. It fires no
+  callback. The event that ended a connection reaches every route's `onDisconnect` or `onConnectError` once,
+  even when an earlier handler calls `stop()`, so any route can stop the page from its handler:
+
+```typescript
+ssr.onDisconnect((code) => {
+    if (code === 1008) {
+        ssr.stop();
+        banner.hidden = false;
+    }
+});
+```
 
 ## Packages and configuration
 

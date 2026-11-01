@@ -34,8 +34,9 @@ func (rt *ssrRoute) Layout() bool { return false }
 func (rt *ssrRoute) NewState() mux.RouteState {
 	s := &ssrState{dp: rt.dp}
 	s.SetAssets([]string{
-		"<link href=\"/static/css/pages/users/_userId_/contacts.e5ff5d4bb11130a0f9cd.css\" rel=\"stylesheet\">",
-		"<script defer=\"defer\" src=\"/static/js/pages/users/_userId_/contacts.e5ff5d4bb11130a0f9cd.js\"></script>",
+		"<script defer=\"defer\" src=\"/static/js/runtime.38c807b6136b274ea1a6.js\"></script>",
+		"<link href=\"/static/css/pages/users/_userId_/contacts.84a90daf9e94c688bbc2.css\" rel=\"stylesheet\">",
+		"<script defer=\"defer\" src=\"/static/js/pages/users/_userId_/contacts.84a90daf9e94c688bbc2.js\"></script>",
 	})
 	return s
 }
@@ -67,44 +68,48 @@ func (c *ssrState) Data(ctx context.Context, r *mux.Request, w mux.ResponseWrite
 
 func (c *ssrState) DefaultRoute(ctx context.Context, r *mux.Request) (string, error) { return "", nil }
 
-func (c *ssrState) Write(w io.Writer) error {
+func (_c *ssrState) Write(_w io.Writer) error {
 //line index.html:2
-	emails := c.RouteData.Emails
+	emails := _c.RouteData.Emails
+	_ = emails
 //line index.html:1
-	phones := c.RouteData.Phones
-	if _, err := w.Write(_jvn9rbim0vsbunqtp57fkdco53orrqqht367fspfrmunksm1n890); err != nil {
+	phones := _c.RouteData.Phones
+	_ = phones
+	if _, err := _w.Write(_jvn9rbim0vsbunqtp57fkdco53orrqqht367fspfrmunksm1n890); err != nil {
 		return err
 	}
 //line index.html:7
 	for _, phone := range phones {
-		if _, err := w.Write(_u7gqvvem62261dt1j9p6b7ql4n71iv9vds5b66o9fnqe1vv1uf3g); err != nil {
+		_ = phone
+		if _, err := _w.Write(_u7gqvvem62261dt1j9p6b7ql4n71iv9vds5b66o9fnqe1vv1uf3g); err != nil {
 			return err
 		}
 //line index.html:7
-		if err := render.Text(w, phone); err != nil {
+		if err := render.Text(_w, phone); err != nil {
 			return err
 		}
-		if _, err := w.Write(_2r9972n9hj841mpqco77bjcufn7gtu387u4ppfrdmdeb5tgjm380); err != nil {
+		if _, err := _w.Write(_2r9972n9hj841mpqco77bjcufn7gtu387u4ppfrdmdeb5tgjm380); err != nil {
 			return err
 		}
 	}
-	if _, err := w.Write(_qtsql095u3lcdsk99d34jh6fh4gdu1nkhimlq6nffklglm3859s0); err != nil {
+	if _, err := _w.Write(_qtsql095u3lcdsk99d34jh6fh4gdu1nkhimlq6nffklglm3859s0); err != nil {
 		return err
 	}
 //line index.html:12
 	for _, email := range emails {
-		if _, err := w.Write(_u7gqvvem62261dt1j9p6b7ql4n71iv9vds5b66o9fnqe1vv1uf3g); err != nil {
+		_ = email
+		if _, err := _w.Write(_u7gqvvem62261dt1j9p6b7ql4n71iv9vds5b66o9fnqe1vv1uf3g); err != nil {
 			return err
 		}
 //line index.html:12
-		if err := render.Text(w, email); err != nil {
+		if err := render.Text(_w, email); err != nil {
 			return err
 		}
-		if _, err := w.Write(_2r9972n9hj841mpqco77bjcufn7gtu387u4ppfrdmdeb5tgjm380); err != nil {
+		if _, err := _w.Write(_2r9972n9hj841mpqco77bjcufn7gtu387u4ppfrdmdeb5tgjm380); err != nil {
 			return err
 		}
 	}
-	if _, err := w.Write(_rncqehs0rrovtpco40ldahmg935g3spvmgvfr8754d3q1loqceog); err != nil {
+	if _, err := _w.Write(_rncqehs0rrovtpco40ldahmg935g3spvmgvfr8754d3q1loqceog); err != nil {
 		return err
 	}
 	return nil

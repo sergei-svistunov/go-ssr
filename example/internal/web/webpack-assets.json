@@ -2,39 +2,45 @@
   "outputPath": "static",
   "entrypoints": {
     "pages/contact": [
-      "/static/css/pages/contact.e13519ff518c20dc1334.css",
-      "/static/js/pages/contact.e13519ff518c20dc1334.js"
+      "/static/js/runtime.38c807b6136b274ea1a6.js",
+      "/static/css/pages/contact.5fa20d1e3c516c7bc8e8.css",
+      "/static/js/pages/contact.5fa20d1e3c516c7bc8e8.js"
     ],
     "pages/home": [
-      "/static/css/vendors.5cea4e3d8eccf96590ce.css",
-      "/static/js/vendors.5cea4e3d8eccf96590ce.js",
-      "/static/css/pages/home.eb1fcc08529a6b061a27.css",
-      "/static/js/pages/home.eb1fcc08529a6b061a27.js"
+      "/static/js/runtime.38c807b6136b274ea1a6.js",
+      "/static/css/vendors.4bb742663d7877bf0d74.css",
+      "/static/js/vendors.4bb742663d7877bf0d74.js",
+      "/static/css/pages/home.c006fc9bcbb28342dd54.css",
+      "/static/js/pages/home.c006fc9bcbb28342dd54.js"
     ],
     "pages/users/_userId_/contacts": [
-      "/static/css/pages/users/_userId_/contacts.e5ff5d4bb11130a0f9cd.css",
-      "/static/js/pages/users/_userId_/contacts.e5ff5d4bb11130a0f9cd.js"
+      "/static/js/runtime.38c807b6136b274ea1a6.js",
+      "/static/css/pages/users/_userId_/contacts.84a90daf9e94c688bbc2.css",
+      "/static/js/pages/users/_userId_/contacts.84a90daf9e94c688bbc2.js"
     ],
     "pages/users/_userId_/info": [
-      "/static/css/vendors.5cea4e3d8eccf96590ce.css",
-      "/static/js/vendors.5cea4e3d8eccf96590ce.js",
-      "/static/js/pages/users/_userId_/info.bde034fd4fcd6689abfd.js"
+      "/static/js/runtime.38c807b6136b274ea1a6.js",
+      "/static/css/vendors.4bb742663d7877bf0d74.css",
+      "/static/js/vendors.4bb742663d7877bf0d74.js",
+      "/static/js/pages/users/_userId_/info.9c90414547c7e3fc1fd4.js"
     ],
     "pages/users": [
-      "/static/css/vendors.5cea4e3d8eccf96590ce.css",
-      "/static/js/vendors.5cea4e3d8eccf96590ce.js",
+      "/static/js/runtime.38c807b6136b274ea1a6.js",
+      "/static/css/vendors.4bb742663d7877bf0d74.css",
+      "/static/js/vendors.4bb742663d7877bf0d74.js",
       "/static/js/bootstrap.ee5455b5f18a25638194.js",
       "/static/js/luxon.d838df54b702121e6f64.js",
-      "/static/css/pages/users.459fb8fcdedfbf5756f9.css",
-      "/static/js/pages/users.459fb8fcdedfbf5756f9.js"
+      "/static/css/pages/users.6b63b72eb78d83175589.css",
+      "/static/js/pages/users.6b63b72eb78d83175589.js"
     ],
     "main": [
-      "/static/css/vendors.5cea4e3d8eccf96590ce.css",
-      "/static/js/vendors.5cea4e3d8eccf96590ce.js",
+      "/static/js/runtime.38c807b6136b274ea1a6.js",
+      "/static/css/vendors.4bb742663d7877bf0d74.css",
+      "/static/js/vendors.4bb742663d7877bf0d74.js",
       "/static/js/bootstrap.ee5455b5f18a25638194.js",
       "/static/css/vendors-node_modules_bootstrap-icons_font_bootstrap-icons_min_css.ca9792bc48666a9f0106.css",
-      "/static/css/main.c4c3657cf42c8a92e67c.css",
-      "/static/js/main.c4c3657cf42c8a92e67c.js"
+      "/static/css/main.1de5ab890a7c60051f07.css",
+      "/static/js/main.1de5ab890a7c60051f07.js"
     ]
   },
   "images": {

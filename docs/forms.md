@@ -28,6 +28,35 @@ the same escaping and refusals as on any element (`template-syntax`).
 See `template-syntax` for the full attribute list on `<ssr:form>`, `<ssr:input>`, `<ssr:select>` and
 `<ssr:textarea>`.
 
+## Showing a form conditionally
+
+`ssr:if`, `ssr:else-if` and `ssr:else` work on `<ssr:form>` as on any element:
+
+```html
+<ssr:form name="reply" ssr:if="!thread.Closed">
+    <ssr:textarea name="text" required/>
+    <button type="submit">Reply</button>
+</ssr:form>
+<p ssr:else>This thread is closed.</p>
+```
+
+The form and its hidden CSRF field render only when the branch is taken. The condition decides what the page
+shows and nothing else: the form's hooks are generated and run by its name, as for any form, so `Init<Name>`
+runs on every request and a POST of the form is parsed and handed to `Process<Name>` whether the condition
+holds or not. `ssr:if` hides the form; it does not protect it. A check that must stop the form belongs in a
+`Guard` or in `Process<Name>`.
+
+A form cannot sit in a block that a live variable renders again — an `ssr:if` chain or an `ssr:for` that reads
+one, or an element with an attribute that does — since a live update renders the block from the route's data
+alone; the generator refuses it. Inside a form, a live value is live as long as its site does not read the
+form; see `reactive`. Any `ssr:` attribute on `<ssr:form>` other than one of `ssr:if`, `ssr:else-if` and
+`ssr:else` is refused too.
+
+A form's name and its fields' names become Go names — `FormContactValues`, `InitContact`, the field `Name` — so
+each is a letter followed by letters, digits and `_`, and no two forms of a template, nor two fields of a form,
+may differ only in the case of their first letter. A field may not be named `baseFormValues`, nor after a
+method of `form.BaseFormValues`, such as `getError` or `hasError`, which the field would hide from the template.
+
 ## What gets generated
 
 For `name="contact"` with the fields above, `ssrroute_gen.go` contains:
@@ -49,8 +78,11 @@ InitContact(ctx context.Context, r *mux.Request, w mux.ResponseWriter, data *For
 ProcessContact(ctx context.Context, r *mux.Request, w mux.ResponseWriter, data *FormContactValues) error
 ```
 
-Field names are exported forms of the `name` attribute, so `first_name` becomes `FirstName`. The Go type of
-each field follows the element and its attributes:
+The `dataprovider.go` the generator writes for a new route has both; its `Process<Name>` refuses every
+submission with 403 until you write it.
+
+Field names are the `name` attribute with its first letter upper-cased, so `firstName` becomes `FirstName`
+and `first_name` becomes `First_name`. The Go type of each field follows the element and its attributes:
 
 | Declaration | Field type |
 |---|---|
@@ -81,8 +113,8 @@ Additionally on POST, for the submitted form only:
 6. `Process<Name>` runs **only when step 5 found no errors**. With errors, the page re-renders with the
    submitted values and messages, and `Process` is not called.
 
-A POST whose form no route of the page renders is a 400 `This form is not on this page.` Finally `Data` runs
-and the page renders.
+A POST whose form no route of the page declares is a 400 `This form is not on this page.`; a form hidden by
+`ssr:if` is still on the page; see *Showing a form conditionally*. Finally `Data` runs and the page renders.
 
 Only the submitted form's fields are parsed, so several forms can live on one route without interfering.
 

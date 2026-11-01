@@ -1,0 +1,8 @@
+<!doctype html>
+<html>
+<body>
+<ssr:var name="show" type="bool"/>
+<ssr:form name="note" ssr:if="show" class="note"><ssr:input name="text" type="text"/></ssr:form>
+<p ssr:else id="none">No form.</p>
+</body>
+</html>

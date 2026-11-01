@@ -7,7 +7,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -15,7 +17,9 @@ import (
 	"github.com/coder/websocket/wsjson"
 
 	"example.com/app/web/pages"
+	"example.com/app/web/pages/pair"
 	"github.com/sergei-svistunov/go-ssr/pkg/mux"
+	"github.com/sergei-svistunov/go-ssr/pkg/reactive"
 )
 
 var (
@@ -213,4 +217,24 @@ func TestScalarWritesTakeText(t *testing.T) {
 			t.Errorf("%s = %s: patch %+v, want %s = %q", tc.v, tc.value, f, p.key[tc.v], tc.want)
 		}
 	}
+}
+
+// TestSetsOfOneSiteDoNotRace sets the two variables of one site from two
+// goroutines; the binary is built with -race.
+func TestSetsOfOneSiteDoNotRace(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	state := pair.NewReactiveState(reactive.NewConn(ctx, cancel, nil), &pair.RouteData{})
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		for i := range 2000 {
+			state.SetLeft(strconv.Itoa(i))
+		}
+	})
+	wg.Go(func() {
+		for i := range 2000 {
+			state.SetRight(strconv.Itoa(i))
+		}
+	})
+	wg.Wait()
 }

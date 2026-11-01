@@ -91,12 +91,15 @@ browser ────────────────────────
 
 A page opens the connection when a route that renders it — a layout on its path or the page itself — has live
 values or page calls. Its address is the page's path with `/__ws` appended (`/__ws` for `/`), plus the page's
-query string. All routes on the page share this one connection, told apart by route key.
+query string. All routes on the page share this one connection, told apart by route key; the page's webpack
+entries share one runtime for that (`static-assets`). `ssr.stop()` on any route's client closes it for good,
+for every route.
 
 Server pushes carry **markup the server rendered and escaped**, one string per binding, and the runtime puts it
-into the matching `data-ssr-bind` element; a form control gets the decoded text as its value instead. That is
-the whole DOM-update model: no vdom, no client templates. Page calls carry JSON arguments and results. See
-`reactive` for what becomes a binding, `page-calls` for calls and `typescript-api` for the client surface.
+into the matching `data-ssr-bind` element unless the element already holds that markup; a form control gets
+the decoded text as its value instead. That is the whole DOM-update model: no vdom, no client templates. Page
+calls carry JSON arguments and results. See `reactive` for what becomes a binding, `page-calls` for calls and
+`typescript-api` for the client surface.
 
 ## 4. Static assets
 
@@ -160,13 +163,15 @@ frame that answers it. The server ignores a call with id 0. The client ignores a
 send on that socket.
 
 The server ignores frames of an unknown type, and logs the first by its type. A frame that is not JSON ends
-the connection without a close frame, and one larger than 32 KiB closes it with 1009.
+the connection without a close frame, and one larger than 32 KiB closes it with 1009. A client that takes more
+than 10 seconds to accept a frame is disconnected: the frame it stalled is cut off, so no close frame follows,
+and the client sees 1006.
 
 | Close code | Sent when | Client |
 |---|---|---|
 | 1000 | normal close; also the client's own close when the tab is hidden | final; reopens only when a hidden tab is shown |
 | 1001 | the other side is going away | final; fires `onDisconnect` |
-| 1008 | a `Subscribe` returned a 401 or 403 `*HttpError` or a redirect, a `Guard` refused a call (after its `fail` frame), or the client was too slow to read | logs the reason, reconnects with back-off |
+| 1008 | a `Subscribe` returned a 401 or 403 `*HttpError` or a redirect, or a `Guard` refused a call (after its `fail` frame) | logs the reason, reconnects with back-off |
 | 1011 | a `Subscribe` failed or a hook panicked | reconnects with back-off |
 | 4000 | the connection has lived 10 minutes | reconnects at once if it was open at least 30 s, else with back-off |
 
@@ -175,4 +180,4 @@ code, reconnects with back-off. A refused upgrade carries an HTTP status instead
 for a cross-site handshake, 404 for a page without live values or calls, 429 beyond
 `mux.Options.MaxLiveConnsPerSession`, and a guard's or `Data`'s refusal (a redirect becomes 401). The client
 treats the first refused upgrade, and one after a drop, as final; after the tab is shown again it retries with
-back-off.
+back-off, and the third refused upgrade in a row is final.

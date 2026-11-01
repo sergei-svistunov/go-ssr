@@ -147,7 +147,24 @@ The server renders a live value with the same escapers as the first render and s
 binding: a `{{ }}` value arrives escaped, a `{{$ }}` value as it is. The runtime puts that string into the
 `data-ssr-bind` element with `innerHTML`, or, for a form control, its decoded text as the control's value. A
 live value cannot sit in the text of `<title>` or `<textarea>`, whose text a live update cannot change; the
-generator refuses it and names the first live variable.
+generator refuses it and names the first live variable. Nor can an `<ssr:form>` sit in a live block, whose
+re-render has neither the form's values nor its token; the generator refuses it at the form's line. For the
+same reason a live block cannot hold `<ssr:content/>` or `<ssr:assets/>`.
+
+Inside an `<ssr:form>` a live site is live as anywhere else, as long as it does not read the form: a site that
+reads `form`, `input` or `textarea`, or a block that holds a form field, is refused at its line, and so is a
+form or field attribute that reads a live variable. Keep the live value and the form's values in separate
+sites:
+
+```html
+<ssr:form name="order">
+    <p>{{ itemsLeft }} left</p>                         <!-- live -->
+    <p ssr:if="form.Qty.HasError()">{{ form.Qty.GetError() }}</p>  <!-- reads the form, not live -->
+</ssr:form>
+```
+
+Keep native `<input>`, `<select>` and `<textarea>` elements out of live blocks too, inside a form or not: a live
+update replaces the block's markup, so it recreates them empty and drops what the user typed.
 
 Each site has a binding key. A site that renders exactly one variable, `{{ count }}`, keeps the variable's name
 as its key, which is what `ssr.get('count')`, `ssr.on('count', …)` and the `ssr:bind` echo use. Any other site
@@ -163,6 +180,18 @@ because a table would otherwise foster-parent the wrapper out and duplicate rows
 Loops re-render in full on every change. There is no keyed list diffing, so a large table that updates
 frequently pays for the whole body each time.
 
+A block whose markup changes is replaced with the elements inside it. The runtime wires the `ssr:bind` elements
+of the new markup after each render, so they keep sending and receiving values, but what the user had typed
+into the replaced element is gone: keep a control the user types into outside a block that changes while they
+type. Focus inside the block moves, without scrolling, to the element at the same place in the new markup (the
+same child-element index at every level down from the block); when nothing that can take focus is there, focus
+is not moved back into the block.
+
+A value equal to the markup a block already holds leaves the block alone: the markup the runtime last applied
+to it or, before any, the markup the page was served with. The init frame after every connect and reconnect,
+and a patch that repeats a value, therefore keep the block's elements, their focus and their DOM state, such
+as an open `<details>`.
+
 ## One connection per page
 
 A page whose rendered routes — every layout on its path and the page itself — have live values or page calls
@@ -176,7 +205,10 @@ are namespaced per route, so a parent and a child can both have a variable named
 values never reach a page below it: the gate does not render that page.
 
 In the browser, all routes on a page share one WebSocket through a multiplexing singleton in `gossr-runtime`,
-so a nested page opens one connection, not several. A page with calls and no live values opens one too.
+so a nested page opens one connection, not several. A page with calls and no live values opens one too. The
+singleton is one per copy of `gossr-runtime`, so the page's webpack entries must share one runtime: the
+scaffolded `webpack.config.js` sets `optimization.runtimeChunk: 'single'`. Without it each entry runs its own
+copy, opens its own connection, and the runtime logs a warning.
 
 ## What the handshake checks
 
@@ -215,9 +247,13 @@ that accepts WebSockets must check the origin and the session itself.
   final.
 - **While the tab is hidden** the client closes the connection, and reopens it when the tab is shown again;
   a page opened in a hidden tab connects when first shown. If that reopening handshake is refused, the client
-  retries with back-off and rejects the page calls waiting at that moment.
-- **A refused handshake** — the first one, or one after a drop — is final: the client fires `onConnectError`
-  and does not retry. The session may have ended; reload the page there.
+  retries with back-off and rejects the page calls waiting at that moment, until a socket opens or the third
+  handshake in a row is refused.
+- **A refused handshake** — the first one, one after a drop, or the third in a row after the tab is shown
+  again — is final: the client fires `onConnectError` and does not retry. The session may have ended; reload the page there.
+- **`ssr.stop()`**, called on any route's client, closes the page's connection for good: no route reconnects,
+  and page calls reject with status 0. The event that ended a connection reaches every route's
+  `onDisconnect` or `onConnectError` once, even when an earlier handler calls `stop()`.
 
 On every new connection the server runs `Guard` and `Data` again and sends a fresh init frame with the current
 rendered value of every binding, so the page converges on the current state without a reload. Anything cached
@@ -226,8 +262,8 @@ in a `Subscribe` local variable is rebuilt from scratch — treat `Subscribe` as
 ## Cost and caveats
 
 - Every connected client holds a goroutine per reactive route plus a WebSocket. Patches are coalesced per
-  binding, and a client that takes more than 10 seconds to accept a frame is disconnected with 1008 rather
-  than allowed to back up the sender. Cap connections per session with `mux.Options.MaxLiveConnsPerSession`.
+  binding, and a client that takes more than 10 seconds to accept a frame is disconnected rather than allowed
+  to back up the sender; it sees the connection drop (1006), since the frame it stalled is cut off. Cap connections per session with `mux.Options.MaxLiveConnsPerSession`.
 - A frame from the browser larger than 32 KiB, or one that is not JSON, ends the connection.
 - Patch payloads are rendered HTML strings, so a binding wrapping a large subtree sends that subtree on every
   change. Keep reactive sites small.

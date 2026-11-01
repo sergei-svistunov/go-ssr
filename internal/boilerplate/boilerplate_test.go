@@ -138,3 +138,15 @@ func read(t *testing.T, path string) string {
 	}
 	return string(b)
 }
+
+// Every entry of a page runs on one webpack runtime, so the client runtime the
+// page's routes import runs once and opens one live connection.
+func TestInit_WebpackHasOneRuntimePerPage(t *testing.T) {
+	dir := t.TempDir()
+	if err := boilerplate.Init(boilerplate.Options{Dir: dir, PkgName: "example.com/app", WebDir: "web"}); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	if got := read(t, filepath.Join(dir, "web", "webpack.config.js")); !strings.Contains(got, "runtimeChunk: 'single',") {
+		t.Errorf("webpack.config.js does not set runtimeChunk: 'single':\n%s", got)
+	}
+}

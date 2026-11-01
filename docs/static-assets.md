@@ -32,8 +32,11 @@ the files per entry point and the image mapping.
 
 That expands to the `<link rel="stylesheet">` and `<script defer>` tags for the current route's chunk, with
 content-hashed URLs. Ancestor routes contribute their own chunks to the same page, and each file is emitted
-once no matter how many routes reference it. Put `<ssr:assets/>` in the root layout's `<head>`; a nested route
-does not need its own.
+once no matter how many routes reference it. Every entry lists the webpack runtime chunk first
+(`optimization.runtimeChunk: 'single'` in the scaffolded config), so the page loads it once, before the
+entries, and the entries share their modules. Put `<ssr:assets/>` in the root layout's `<head>`; a nested route
+does not need its own. If a nested layout has one too, it writes only the files no earlier `<ssr:assets/>` on the
+page wrote, so every file is still emitted once per page.
 
 ## Images
 
@@ -78,13 +81,19 @@ verbatim for formats that are already compressed such as PNG, JPEG, WOFF2 and MP
 - `X-Content-Type-Options: nosniff` and `Cross-Origin-Resource-Policy: same-origin`,
 - `405` with an `Allow` header for anything other than GET and HEAD.
 
-Staging is cached through an `.etags.json` manifest keyed by the source file's MD5 as well as its mtime, so
-unchanged files are not re-compressed. Content hashing rather than mtime alone matters because `git checkout`,
-`rsync -a`, `tar -p` and Docker `COPY` all preserve mtimes.
+Staging is cached through an `.etags.json` manifest that records the SHA-256 of each source file, so unchanged
+files are not re-compressed. The manifest holds no file times: the same sources give the same manifest on every
+build, and a file whose bytes changed is re-staged even when `git checkout`, `rsync -a`, `tar -p` or Docker
+`COPY` kept its old mtime. Content types come from a fixed table of the file types webpack emits (JS, CSS,
+source maps, JSON, SVG, PNG, JPEG, GIF, WebP, ICO, WOFF, WOFF2, TTF, text, HTML, WebAssembly), not from the
+host's MIME database; any other file is served as `application/octet-stream`.
 
 ## Reserved paths and collisions
 
-`pages/static_embed/` is build output, not a route. Add it to `.gitignore`:
+`pages/static_embed/` is build output, not a route. Committing it is supported: the manifest and the staged
+files hold no times or host-specific values, so the same sources give the same files on every build and every
+host that runs the same go-ssr and Go versions. To keep it out of the repository instead, add it to
+`.gitignore`:
 
 ```gitignore
 **/pages/static_embed/

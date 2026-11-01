@@ -125,7 +125,9 @@ A fixed start is not always a fixed host: a value right after a literal `//`, `/
 
 The Content-Security-Policy runs only scripts and styles loaded from the site, so inline code never runs. A
 `<script type="application/json">` or `type="application/ld+json"` body may hold literal data, but no value.
-A `<script …/>` does not end the element: the text after it, up to `</script>`, is its body.
+A `<script …/>` does not end the element: the text after it, up to `</script>`, is its body. Only a non-blank
+inline `<script>` body is refused, so white space between the tags passes; a `<style>` element is refused even
+when it is empty.
 
 Fix: `move it into an asset next to the template; the Content-Security-Policy blocks inline code`
 
@@ -193,6 +195,22 @@ Fix: `give Guard the signature Guard(ctx context.Context, r *mux.Request) error`
 | `<tag> sets data-ssr-route, which the generator writes on elements with ssr:bind; remove it` | the attribute is reserved: the generator writes the route key into it on every `ssr:bind` element. Remove it from the template |
 | `unknown GoSSR tag <ssr:…>` | a misspelled tag. The set is `var`, `content`, `assets`, `form`, `input`, `select`, `textarea`, `call` |
 | `unknown GoSSR attribute "ssr:…"` | a misspelled attribute. The set is `if`, `else-if`, `else`, `for`, `bind` |
+| `unknown GoSSR attribute "ssr:…" on <ssr:…>` | a GoSSR tag that does not take the attribute. Only `<ssr:form>` takes any: `ssr:if`, `ssr:else-if` or `ssr:else`. Remove the attribute, or move it to an element around the tag |
+| `<ssr:form> has both ssr:… and ssr:…` | a form is one branch of one chain. Keep one of `ssr:if`, `ssr:else-if` and `ssr:else` |
+| `<ssr:form name="x"> is in a block that the live variable y renders again, …` | an `ssr:if` chain or `ssr:for` that reads a reactive variable, or an element with an attribute that does, holds the form, and a live update renders the block from the route's data alone. The message names the first live variable. Move the form out of the block, or drop `reactive="true"` |
+| `<ssr:content/> is in a block that the live variable y renders again, …` / `<ssr:assets/> is in a block …` | a live update renders the block from the route's data alone, which holds neither the child page nor the page's assets. Move the tag out of the block, or drop `reactive="true"` |
+| `"form" reads the form in a site that the live variable y renders again, …` / `<ssr:input name="x"> reads the form …` | inside an `<ssr:form>`, a live site — a value, or a block, that reads a reactive variable — reads `form`, `input` or `textarea`, or holds a form field, and a live update has no form values. Read the form outside the site, or drop `reactive="true"` |
+| `<ssr:form name="x"> reads the live variable y in an attribute, …` | an attribute of a form or a form field reads a reactive variable, and a live update cannot render a form or its fields. Read the variable on an element inside the form, or drop `reactive="true"` |
+| `<ssr:var> name "x" …` / `the ssr:for item "x" …` / `the ssr:for index "x" …` `…; pick another name` | the name starts with `_`, is a Go keyword, `in`, a name Go predeclares, or one of `form`, `input`, `textarea`, `mux` and `render`, which the generated code has where the template's names are in scope; or it is not a letter followed by letters, digits and `_`. Pick another name. See `template-syntax` |
+| `<ssr:var name="x"> becomes the field X of RouteData, as <ssr:var name="X"> on line n does; …` | two variables differ only in the case of their first letter, or one is declared twice. Pick another name |
+| `ssr:for names both its index and its item "x"; …` | give the index and the item two names |
+| `"x" starts with _, which the generated code keeps for its own names; the template cannot read it` | an expression reads a name that starts with `_`. Rename the value |
+| `"x" is a Go keyword; it cannot name a value` / `… a field or method` | an expression uses a Go keyword, such as `type` or `func`, as a name. Rename the value or the field |
+| `<ssr:form> name "x" is not a name; …` / `<ssr:input> name "x" is not a name; …` | a form's or a field's name becomes a Go name: a letter followed by letters, digits and `_`. Rename it |
+| `<ssr:form name="x"> has the generated names of <ssr:form name="X"> on line n, …` | two forms differ only in the case of their first letter, or one name is used twice. Pick another name |
+| `<ssr:input name="x"> becomes the field X of the form's values, as the element named "X" does; …` / `… becomes the field BaseFormValues, …` | two fields of a form differ only in the case of their first letter, or a field is named `baseFormValues`, which every form's values embed. Pick another name |
+| `<ssr:input name="getError"> becomes the field GetError, which hides the method GetError of every form's values; …` | a field is named after a method of `form.BaseFormValues` — `SetElements`, `MarkValidated`, `IsValidated`, `GetCSRFToken`, `SetError`, `GetError` or `HasError`, whatever the case of its first letter — so `form.GetError()` in the template would name the field. Pick another name |
+| `<tag> has both ssr:… and ssr:…; put one on an element inside the other, …` | an element takes one of `ssr:if`, `ssr:else-if`, `ssr:else` and `ssr:for`. Put the condition on an outer element and the loop on an inner one to repeat only when it holds, or the loop outside and the condition inside to test each item |
 | `ssr:else must directly follow an element with ssr:if or ssr:else-if` | the previous sibling is not part of a conditional chain. Only whitespace may sit between the branches; a comment or another element breaks the chain |
 | `invalid ssr:for expression "…"` | the syntax is `item in collection` or `index, item in collection` |
 | `<ssr:input> must be inside an <ssr:form>` | form fields only exist inside a form |
@@ -216,7 +234,9 @@ Fix: `give Guard the signature Guard(ctx context.Context, r *mux.Request) error`
 ## Compile errors that mean a template changed
 
 The generated `dataprovider.go` stub asserts `var _ RouteDataProvider = &DP{}`, so adding a feature to a
-template surfaces as a missing-method build error rather than a silent runtime hole.
+template surfaces as a missing-method build error rather than a silent runtime hole. A stub written for a new
+route has every method its template needs at the time; its `Process<Form>` and `Call<Name>` refuse with 403
+until they are written.
 
 | Missing method | Triggered by |
 |---|---|

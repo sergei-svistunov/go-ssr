@@ -14,7 +14,7 @@ type SsrContent struct {
 func (n *SsrContent) CollectVarRefs(_ map[string]bool) []string { return []string{} }
 
 func (n *SsrContent) WriteGoCode(buf *gobuf.GoBuf) {
-	buf.WriteStringLn("if err := c.WriteChild(w); err != nil {")
+	buf.WriteStringLn("if err := _c.WriteChild(_w); err != nil {")
 	buf.WriteStringLn("	return err")
 	buf.WriteStringLn("}")
 }

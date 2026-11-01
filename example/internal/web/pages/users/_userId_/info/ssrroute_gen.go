@@ -40,12 +40,13 @@ type RouteDataProvider interface {
 const routeKey = "2b2f214e"
 
 // writeBlock_lastSeen renders binding site "2b2f214e.lastSeen" into w.
-func writeBlock_lastSeen(data *RouteData, w io.Writer) error {
+func writeBlock_lastSeen(_data *RouteData, _w io.Writer) error {
 //line index.html:2
-	lastSeen := data.LastSeen
-	_ = w // w io.Writer is used by WriteInnerGoCode; this silences the linter when the block body emits no direct writes
+	lastSeen := _data.LastSeen
+	_ = lastSeen
+	_ = _w
 //line index.html:16
-	if err := render.Text(w, lastSeen); err != nil {
+	if err := render.Text(_w, lastSeen); err != nil {
 		return err
 	}
 	return nil
@@ -61,10 +62,10 @@ func renderBlock_lastSeen(data *RouteData) string {
 // ReactiveState holds the current live values for all reactive variables
 // in this route. Call Set<VarName> to push an update to the connected client.
 type ReactiveState struct {
-	conn       *reactive.Conn
-	route      string     // owning route's 8-hex path hash (for patch frames)
-	data       *RouteData // current route data; Set* methods update this in-place
-	muLastSeen sync.Mutex
+	conn  *reactive.Conn
+	route string     // owning route's 8-hex path hash (for patch frames)
+	data  *RouteData // current route data; Set* methods update this in-place
+	mu    sync.Mutex // held across a Set's assignment, its renders and its enqueues
 }
 
 func NewReactiveState(conn *reactive.Conn, data *RouteData) *ReactiveState {
@@ -72,14 +73,14 @@ func NewReactiveState(conn *reactive.Conn, data *RouteData) *ReactiveState {
 }
 
 // SetLastSeen pushes a new value for the lastSeen binding.
-// It is non-blocking and safe to call from any goroutine.
+// It does not wait for the client and is safe to call from any goroutine.
 func (s *ReactiveState) SetLastSeen(v string) {
 	if s.conn.Ctx().Err() != nil {
 		return
 	}
-	s.muLastSeen.Lock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.data.LastSeen = v
-	s.muLastSeen.Unlock()
 	s.conn.Enqueue(s.route, "2b2f214e.lastSeen", renderBlock_lastSeen(s.data))
 }
 
@@ -113,9 +114,10 @@ func (rt *ssrRoute) Layout() bool { return false }
 func (rt *ssrRoute) NewState() mux.RouteState {
 	s := &ssrState{dp: rt.dp}
 	s.SetAssets([]string{
-		"<link href=\"/static/css/vendors.5cea4e3d8eccf96590ce.css\" rel=\"stylesheet\">",
-		"<script defer=\"defer\" src=\"/static/js/vendors.5cea4e3d8eccf96590ce.js\"></script>",
-		"<script defer=\"defer\" src=\"/static/js/pages/users/_userId_/info.bde034fd4fcd6689abfd.js\"></script>",
+		"<script defer=\"defer\" src=\"/static/js/runtime.38c807b6136b274ea1a6.js\"></script>",
+		"<link href=\"/static/css/vendors.4bb742663d7877bf0d74.css\" rel=\"stylesheet\">",
+		"<script defer=\"defer\" src=\"/static/js/vendors.4bb742663d7877bf0d74.js\"></script>",
+		"<script defer=\"defer\" src=\"/static/js/pages/users/_userId_/info.9c90414547c7e3fc1fd4.js\"></script>",
 	})
 	return s
 }
@@ -182,53 +184,55 @@ func (c *ssrState) Data(ctx context.Context, r *mux.Request, w mux.ResponseWrite
 
 func (c *ssrState) DefaultRoute(ctx context.Context, r *mux.Request) (string, error) { return "", nil }
 
-func (c *ssrState) Write(w io.Writer) error {
+func (_c *ssrState) Write(_w io.Writer) error {
 //line index.html:2
-	lastSeen := c.RouteData.LastSeen
+	lastSeen := _c.RouteData.LastSeen
+	_ = lastSeen
 //line index.html:1
-	user := c.RouteData.User
-	if _, err := w.Write(_a9ttvkip3aga8apcvpseunur3345djdi51n2pk10bfdfjgnsal1g); err != nil {
+	user := _c.RouteData.User
+	_ = user
+	if _, err := _w.Write(_a9ttvkip3aga8apcvpseunur3345djdi51n2pk10bfdfjgnsal1g); err != nil {
 		return err
 	}
 //line index.html:6
 	if user.Age <= 18 {
-		if _, err := w.Write(_vpdk5heaer24etml7ge9711a0mvj4ahrr8p51418dielc0v9la4g); err != nil {
+		if _, err := _w.Write(_vpdk5heaer24etml7ge9711a0mvj4ahrr8p51418dielc0v9la4g); err != nil {
 			return err
 		}
 //line index.html:7
 	} else if user.Age <= 30 {
-		if _, err := w.Write(_g7sv295h764ok5m5537ahc6f232nq98bloviqv836491mb9h19p0); err != nil {
+		if _, err := _w.Write(_g7sv295h764ok5m5537ahc6f232nq98bloviqv836491mb9h19p0); err != nil {
 			return err
 		}
 //line index.html:9
 	} else if user.Age <= 60 {
-		if _, err := w.Write(_op9ioepv8l07155uf33djfn67q21vmlv19susgefh9vnirjmd78g); err != nil {
+		if _, err := _w.Write(_op9ioepv8l07155uf33djfn67q21vmlv19susgefh9vnirjmd78g); err != nil {
 			return err
 		}
 //line index.html:11
 	} else {
-		if _, err := w.Write(_l31gs7l9bqjbb89garbu034qb1qhulh2obnf5g8mvdeobdousrhg); err != nil {
+		if _, err := _w.Write(_l31gs7l9bqjbb89garbu034qb1qhulh2obnf5g8mvdeobdousrhg); err != nil {
 			return err
 		}
 	}
-	if _, err := w.Write(_8qi5l5uhb5ugug20bbddeab52h78dc7dfhk5g3dt0pecd4fgsnh0); err != nil {
+	if _, err := _w.Write(_8qi5l5uhb5ugug20bbddeab52h78dc7dfhk5g3dt0pecd4fgsnh0); err != nil {
 		return err
 	}
 //line index.html:14
-	if err := render.Text(w, user.Info); err != nil {
+	if err := render.Text(_w, user.Info); err != nil {
 		return err
 	}
-	if _, err := w.Write(_apb214iuk992aku56e7ajgclpcfqiblr1h901fb6t0h9edsrh50g); err != nil {
+	if _, err := _w.Write(_apb214iuk992aku56e7ajgclpcfqiblr1h901fb6t0h9edsrh50g); err != nil {
 		return err
 	}
 //line index.html:16
-	if _, err := w.Write(_lh228iu5knv235bekmfgfm7koq6hd703f1lb5p1kqn8d77b1uli0); err != nil {
+	if _, err := _w.Write(_lh228iu5knv235bekmfgfm7koq6hd703f1lb5p1kqn8d77b1uli0); err != nil {
 		return err
 	}
-	if err := render.Text(w, lastSeen); err != nil {
+	if err := render.Text(_w, lastSeen); err != nil {
 		return err
 	}
-	if _, err := w.Write(_deju38804kip0kif2oip7ci7mfl3d170fcf1tvv6in2hr8u8bddg); err != nil {
+	if _, err := _w.Write(_deju38804kip0kif2oip7ci7mfl3d170fcf1tvv6in2hr8u8bddg); err != nil {
 		return err
 	}
 	return nil

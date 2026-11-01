@@ -276,6 +276,8 @@ func TestCallFailures(t *testing.T) {
 			return nil, errors.New("db password is hunter2")
 		case "deadline":
 			return nil, fmt.Errorf("query: %w", context.DeadlineExceeded)
+		case "canceled":
+			return nil, fmt.Errorf("query: %w", context.Canceled)
 		case "redirect":
 			return nil, Redirect(http.StatusFound, "/done")
 		case "panic":
@@ -302,6 +304,7 @@ func TestCallFailures(t *testing.T) {
 		{"rk000002", "status", `null`, "500 Something went wrong.", "200: Not an error."},
 		{"rk000002", "leak", `null`, "500 Something went wrong.", "hunter2"},
 		{"rk000002", "deadline", `null`, "504 The call took too long.", ""},
+		{"rk000002", "canceled", `null`, "500 Something went wrong.", "context canceled"},
 		{"rk000002", "redirect", `null`, "500 Something went wrong.", "location.assign"},
 		{"rk000002", "unencodable", `null`, "500 Something went wrong.", "unsupported type"},
 		{"rk000002", "echo", `{"off":true}`, "400 The call has the wrong arguments.", ""},
@@ -585,6 +588,33 @@ func TestClosedConnectionFreesItsPlace(t *testing.T) {
 	wantRefused(t, srv, "/__ws", nil, http.StatusTooManyRequests)
 	if got := logged.String(); got != "" {
 		t.Errorf("logged %q, want nothing from the late call", got)
+	}
+}
+
+// TestCallOfAClosedConnectionLogsNothing closes a connection while its call
+// waits on its context: the call's cancellation is not logged.
+func TestCallOfAClosedConnectionLogsNothing(t *testing.T) {
+	returned := make(chan struct{})
+	srv, _, ran, _ := callSite(t, func(ctx context.Context, _ *Request, _ string, _ json.RawMessage) (any, error) {
+		defer close(returned)
+		<-ctx.Done()
+		return nil, fmt.Errorf("query: %w", ctx.Err())
+	})
+	logged := captureLiveLog(t)
+	c := openCalls(t, srv, "/admin/tool")
+	sendCall(t, c, 1, "rk000002", "watch", `null`)
+	eventually(t, "the call running", func() bool { return strings.Contains(ran.String(), "tool.call:watch") })
+	if err := c.Close(websocket.StatusNormalClosure, ""); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-returned:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the call did not see its connection end")
+	}
+	time.Sleep(100 * time.Millisecond)
+	if got := logged.String(); got != "" {
+		t.Errorf("logged %q, want nothing", got)
 	}
 }
 

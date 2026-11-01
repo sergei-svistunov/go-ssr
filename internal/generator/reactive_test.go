@@ -1347,7 +1347,7 @@ func TestRenderBlockHelper_SingleVar(t *testing.T) {
 	}
 	start := strings.Index(content, "func writeBlock_count(")
 	end := strings.Index(content, "func renderBlock_count(")
-	if start < 0 || end < start || !strings.Contains(content[start:end], "render.Text(w, count)") {
+	if start < 0 || end < start || !strings.Contains(content[start:end], "render.Text(_w, count)") {
 		t.Errorf("expected writeBlock_count to render count with render.Text\n%s", content)
 	}
 }

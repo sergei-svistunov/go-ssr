@@ -62,6 +62,9 @@ module.exports = {
         }),
     ],
     optimization: {
+        // One webpack runtime per page, so modules shared by the page's entries
+        // run once: the live connection is one per page.
+        runtimeChunk: 'single',
         splitChunks: {
             chunks: 'all',
             hidePathInfo: true,

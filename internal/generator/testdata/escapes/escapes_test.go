@@ -29,7 +29,7 @@ func TestPageEscapes(t *testing.T) {
 		`<a id="whole" href="about:invalid#gossr-unsafe-url">`,
 		`<div id="markup"><b>ok</b></div>`,
 		`<input name="q" type="text" value="&#34;&gt;&lt;img src=x onerror=alert(1)&gt;">`,
-		`<textarea name="t">&lt;/textarea&gt;&lt;img src=x onerror=alert(1)&gt;</textarea>`,
+		"<textarea name=\"t\">\n&lt;/textarea&gt;&lt;img src=x onerror=alert(1)&gt;</textarea>",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("the page lacks %s:\n%s", want, body)

@@ -119,7 +119,8 @@ A call that fails rejects with a `CallError` whose `status` and `message` come f
 | the connection was lost before the answer came | 0 | `The connection was lost.` |
 
 The message of an `*HttpError` reaches the page, so write it for people and keep internals out of it; every
-500 is logged on the server and shows only `Something went wrong.`. A call cannot redirect the browser: return
+500 is logged on the server and shows only `Something went wrong.`, except a call that returns its context's
+cancellation after the connection ended, which no one waits for. A call cannot redirect the browser: return
 data from the call and navigate with `location.assign` in the page's TypeScript. A returned
 `mux.Redirect` is a 500, logged with that advice.
 

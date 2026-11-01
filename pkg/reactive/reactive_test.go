@@ -615,6 +615,55 @@ func TestSlowClient_ClosesWith1008(t *testing.T) {
 	}
 }
 
+// TestSendJSONClosesASlowClient floods the server with write frames whose err
+// echoes the client never reads: the echo the server cannot write in time
+// closes the connection.
+func TestSendJSONClosesASlowClient(t *testing.T) {
+	const timeout = 200 * time.Millisecond
+	defer reactive.SetSlowClientTimeout(timeout)()
+
+	sendErr := make(chan error, 1)
+	done := make(chan struct{})
+	h := serve(func(ctx context.Context, conn *reactive.Conn) {
+		defer close(done)
+		if err := conn.SendJSON(reactive.NewInitMsg("3f7a", nil)); err != nil {
+			return
+		}
+		conn.StartSendLoop()
+		_ = conn.ReadFrames(ctx, func(msg reactive.WriteMsg) {
+			if err := conn.SendJSON(reactive.NewErrMsg(msg.RouteKey, msg.Var, "unknown variable", "validation_failed")); err != nil {
+				select {
+				case sendErr <- err:
+				default:
+				}
+			}
+		}, nil)
+	})
+	c, cancel := wsConnect(t, h)
+	defer cancel()
+	var init reactive.InitMsg
+	recvJSON(t, context.Background(), c, &init)
+
+	frame, _ := json.Marshal(map[string]any{"t": "write", "routeKey": "3f7a", "var": strings.Repeat("v", 30<<10), "value": 1})
+	go func() {
+		for c.Write(context.Background(), websocket.MessageText, frame) == nil {
+		}
+	}()
+	select {
+	case <-done:
+	case <-time.After(timeout + 5*time.Second):
+		t.Fatal("the connection of a client that does not read is still open")
+	}
+	select {
+	case err := <-sendErr:
+		if !strings.Contains(err.Error(), "slow client") {
+			t.Errorf("SendJSON failed with %v, want a slow client", err)
+		}
+	default:
+		t.Error("no echo failed")
+	}
+}
+
 // isCloseError unwraps err to find a websocket.CloseError.
 func isCloseError(err error, out *websocket.CloseError) bool {
 	var ce websocket.CloseError

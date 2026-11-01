@@ -5,7 +5,8 @@ Everything else passes through unchanged. For the expression language itself see
 
 ## Tags
 
-Every GoSSR tag is written `<ssr:name .../>`. An unknown `ssr:` tag is a generator error.
+Every GoSSR tag is written `<ssr:name .../>`. An unknown `ssr:` tag is a generator error, and so is an `ssr:`
+attribute that a tag does not take: only `<ssr:form>` takes any, `ssr:if`, `ssr:else-if` or `ssr:else`.
 
 ### `<ssr:var>` — declare a value the template uses
 
@@ -16,7 +17,7 @@ Every GoSSR tag is written `<ssr:name .../>`. An unknown `ssr:` tag is a generat
 
 | Attribute | Required | Meaning |
 |---|---|---|
-| `name` | yes | the identifier used in expressions; becomes an exported field on `RouteData` |
+| `name` | yes | the identifier used in expressions; becomes an exported field on `RouteData`. See [Names](#names) |
 | `type` | yes | any Go type visible in the route's package: `string`, `int`, `[]User`, `map[string]int`, `*Profile`, `time.Time`, `func() string` |
 | `reactive` | no | `"true"` makes the value live: changes are re-rendered and pushed over the WebSocket |
 | `client-writable` | no | `"true"` lets the browser write the value back; requires a `Validate<Name>` hook, and a type that holds no `render` type and no generic type |
@@ -61,10 +62,14 @@ duplicated. See `static-assets`.
 
 | Attribute | Required | Meaning |
 |---|---|---|
-| `name` | yes | identifies the form; drives the generated `Init<Name>` / `Process<Name>` hooks and value struct |
+| `name` | yes | identifies the form; drives the generated `Init<Name>` / `Process<Name>` hooks and value struct, so it is a letter followed by letters, digits and `_`, and no two forms of a template share it, whatever the case of its first letter |
 | `enctype` | no | `application/x-www-form-urlencoded` (default) or `multipart/form-data`; becomes multipart automatically when the form contains a file input |
 
-Any other attribute is passed through to the rendered `<form>`. Forms cannot be nested. See `forms`.
+`ssr:if`, `ssr:else-if` and `ssr:else` work on `<ssr:form>` as on any element: the form, with its hidden CSRF
+field, renders only when its branch is taken. A form takes one of them; any other `ssr:` attribute, such as
+`ssr:for`, is a generator error. Any other attribute is passed through to the rendered `<form>`. Forms cannot
+be nested, nor sit in a block that a live variable renders again. Inside a form, a live site may not read the
+form: see `reactive`. See `forms`.
 
 ### `<ssr:input>`, `<ssr:select>`, `<ssr:textarea>` — form fields
 
@@ -78,7 +83,7 @@ Any other attribute is passed through to the rendered `<form>`. Forms cannot be 
 
 | Attribute | Applies to | Meaning |
 |---|---|---|
-| `name` | all | field name; becomes an exported field on the form's values struct |
+| `name` | all | field name; becomes an exported field on the form's values struct, so it is a letter followed by letters, digits and `_`, not `baseFormValues` nor a method of `form.BaseFormValues` such as `getError`, and no two fields of a form share it, whatever the case of its first letter |
 | `type` | input | the HTML input type: `text`, `number`, `checkbox`, `radio`, `file`, … |
 | `gotype` | input, select | Go type of the parsed value; defaults to `string` |
 | `required` | all | field must be present; a missing value produces a validation error |
@@ -87,8 +92,8 @@ Any other attribute is passed through to the rendered `<form>`. Forms cannot be 
 `gotype` accepts `string`, `bool`, and the sized numeric types (`int`, `int8`…`int64`, `uint`, `uint8`…`uint64`,
 `float32`, `float64`). Any other value is an error. Elements of the same `name` are merged into one field:
 `checkbox` inputs become a multi-value field, `radio` inputs a single one; other duplicate names are an error.
-Unrecognised attributes are passed through to the rendered element. These tags must appear inside an
-`<ssr:form>`.
+Unrecognised attributes are passed through to the rendered element; an `ssr:` attribute is a generator error.
+These tags must appear inside an `<ssr:form>`.
 
 ### `<ssr:call/>` — a function the page calls over its live connection
 
@@ -127,8 +132,18 @@ These attach GoSSR behaviour to any HTML element. An unknown `ssr:` attribute is
 ```
 
 `ssr:else-if` and `ssr:else` must directly follow an element carrying `ssr:if` or `ssr:else-if`; only
-whitespace may sit between them. When no branch matches and there is no `ssr:else`, nothing is rendered. If a
-condition reads a reactive variable, the whole chain becomes a live block — see `reactive`.
+whitespace may sit between them. When no branch matches and there is no `ssr:else`, nothing is rendered. A
+branch may be an `<ssr:form>`. If a condition reads a reactive variable, the whole chain becomes a live block
+— see `reactive`.
+
+An element takes one of `ssr:if`, `ssr:else-if`, `ssr:else` and `ssr:for`; two of them on one element are a
+generator error. To repeat an element only when a condition holds, or to test each item, put one attribute on
+an element inside the other:
+
+```html
+<ul ssr:if="showUsers"><li ssr:for="user in users">{{ user.Name }}</li></ul>
+<div ssr:for="user in users"><p ssr:if="user.Active">{{ user.Name }}</p></div>
+```
 
 ### `ssr:for` — loops
 
@@ -143,7 +158,27 @@ what repeats. The loop variable exists only inside the element and is not itself
 The generated code is a two-variable `for … := range` over the collection, so slices, arrays, maps and
 strings all work. For a map the first variable is the key; for a string it is the byte index and the second is
 a rune. A plain integer count or a channel cannot be iterated, because a two-variable range over them is not
-valid Go.
+valid Go. The body need not read the item or the index, and the index may be `_`; the item and the index need
+two different names.
+
+### Names
+
+The names a template declares — an `<ssr:var>` name, an `ssr:for` item and index — become Go names in the
+generated code, and the generated code names its own values there with a leading `_`. So a declared name is a
+letter followed by letters, digits and `_`, and the generator refuses, at its line, one that is:
+
+| Name | Why |
+|---|---|
+| any name that starts with `_`, `_` included (an `ssr:for` index may be `_`) | the generated code's own names start with `_` |
+| a Go keyword: `type`, `func`, `range`, `select`, … | it cannot name a value in Go |
+| `in`, in any case | `ssr:for` puts it before its collection |
+| a name Go predeclares: `len`, `string`, `error`, `nil`, `true`, `any`, `max`, … | the generated code uses Go's own names |
+| `form`, `input`, `textarea` | they name the form and its fields inside `<ssr:form>` |
+| `mux`, `render` | the generated code calls these packages |
+
+Two `<ssr:var>` names that differ only in the case of their first letter become the same `RouteData` field, and
+are refused too. An expression cannot read a name that starts with `_`, and a Go keyword cannot name a value or
+a field in one. Every other name is the template's: `w`, `c`, `data`, `err` and `ctx` are as good as any.
 
 ### `ssr:bind` — two-way binding on a native input
 

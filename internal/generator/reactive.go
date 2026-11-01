@@ -276,6 +276,10 @@ func checkNeedsStringsNode(n node.Node, reactiveMap map[string]bool) bool {
 		if checkNeedsStrings(v.Children, reactiveMap) {
 			return true
 		}
+	case *node.SsrForm:
+		if checkNeedsStrings(v.Children, reactiveMap) {
+			return true
+		}
 	}
 	return false
 }
@@ -387,7 +391,7 @@ func (g *Generator) genReactiveStateCode(buf *gobuf.GoBuf, rPath string, r *rout
 
 		localKey := localKeyOf(nsKey)
 		buf.WriteStringLn("// writeBlock_" + localKey + " renders binding site \"" + nsKey + "\" into w.")
-		buf.WriteStringLn("func writeBlock_" + localKey + "(data *RouteData, w io.Writer) error {")
+		buf.WriteStringLn("func writeBlock_" + localKey + "(_data *RouteData, _w io.Writer) error {")
 
 		// Emit variable aliases for only those template variables that are
 		// actually referenced inside this block. CollectVarRefs with the full
@@ -399,11 +403,10 @@ func (g *Generator) genReactiveStateCode(buf *gobuf.GoBuf, rPath string, r *rout
 		for _, name := range referencedNames {
 			v := varsByName[name]
 			buf.WriteStringLn(v.FilePos())
-			buf.WriteString(v.Name)
-			buf.WriteString(":=data.")
-			buf.WriteStringLn(getExportedName(v.Name))
+			buf.WriteStringLn(v.Name + ":=_data." + getExportedName(v.Name))
+			buf.WriteStringLn("_ = " + v.Name)
 		}
-		buf.WriteStringLn("_ = w // w io.Writer is used by WriteInnerGoCode; this silences the linter when the block body emits no direct writes")
+		buf.WriteStringLn("_ = _w")
 
 		// Emit the block/expression body without wrappers.
 		switch v := n.(type) {
@@ -441,9 +444,7 @@ func (g *Generator) genReactiveStateCode(buf *gobuf.GoBuf, rPath string, r *rout
 	buf.WriteStringLn("conn  *reactive.Conn")
 	buf.WriteStringLn("route string // owning route's 8-hex path hash (for patch frames)")
 	buf.WriteStringLn("data  *RouteData // current route data; Set* methods update this in-place")
-	for _, v := range rv {
-		buf.WriteStringLn("mu" + getExportedName(v.Name) + " sync.Mutex")
-	}
+	buf.WriteStringLn("mu    sync.Mutex // held across a Set's assignment, its renders and its enqueues")
 	buf.WriteStringLn("}")
 	buf.WriteString("\n")
 
@@ -464,13 +465,15 @@ func (g *Generator) genReactiveStateCode(buf *gobuf.GoBuf, rPath string, r *rout
 		affectedNsKeys := varToKeys[v.Name] // sorted list of namespaced keys that depend on this var
 
 		buf.WriteStringLn("// Set" + exportedName + " pushes a new value for the " + v.Name + " binding.")
-		buf.WriteStringLn("// It is non-blocking and safe to call from any goroutine.")
+		buf.WriteStringLn("// It does not wait for the client and is safe to call from any goroutine.")
 		buf.WriteStringLn("func (s *ReactiveState) Set" + exportedName + "(v " + v.Type + ") {")
 		buf.WriteStringLn("if s.conn.Ctx().Err() != nil { return }")
-		buf.WriteStringLn("s.mu" + exportedName + ".Lock()")
+		// Enqueue never blocks, so the lock also keeps each key's patches
+		// in the order of the Sets.
+		buf.WriteStringLn("s.mu.Lock()")
+		buf.WriteStringLn("defer s.mu.Unlock()")
 		buf.WriteString("s.data.")
 		buf.WriteStringLn(exportedName + " = v")
-		buf.WriteStringLn("s.mu" + exportedName + ".Unlock()")
 
 		// Enqueue a patch for each binding key that depends on this variable.
 		for _, nsKey := range affectedNsKeys {

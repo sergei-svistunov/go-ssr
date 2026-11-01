@@ -129,7 +129,8 @@ render the page — before it upgrades. Then:
 - `mux.Options.MaxLiveConnsPerSession` caps the connections open at once for one `CSRFSession` value; a
   handshake beyond it is refused with 429 `Too many live connections.` A request without a session is not
   counted, and 0 means no limit;
-- a client that takes more than 10 seconds to accept a frame is closed with 1008 `slow client`;
+- a client that takes more than 10 seconds to accept a frame, of any type, is disconnected. The frame it stalled
+  is cut off, so the server's 1008 `slow client` cannot follow it, and the client sees the connection drop (1006);
 - a frame larger than 32 KiB, or one that is not JSON, ends the connection;
 - a page runs at most 4 calls at once, each for at most 30 seconds (`page-calls`).
 

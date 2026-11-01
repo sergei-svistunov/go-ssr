@@ -79,6 +79,10 @@ func (n *Loop) writeInner(buf *gobuf.GoBuf) {
 	buf.WriteString(":=range ")
 	n.Array.WriteGoCode(buf)
 	buf.WriteStringLn("{")
+	buf.WriteStringLn("_ = " + n.Variable)
+	if n.Index != "" && n.Index != "_" {
+		buf.WriteStringLn("_ = " + n.Index)
+	}
 	for _, child := range n.Children {
 		child.WriteGoCode(buf)
 	}

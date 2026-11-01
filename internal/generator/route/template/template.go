@@ -13,6 +13,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"slices"
 	"sort"
@@ -24,6 +25,7 @@ import (
 	"github.com/sergei-svistunov/go-ssr/internal/generator/gobuf"
 	"github.com/sergei-svistunov/go-ssr/internal/generator/route/template/htmlutils"
 	"github.com/sergei-svistunov/go-ssr/internal/generator/route/template/node"
+	"github.com/sergei-svistunov/go-ssr/pkg/form"
 )
 
 var reWhitespace = regexp.MustCompile(`\s+`)
@@ -172,6 +174,9 @@ func Parse(filename string, imageResolver func(string) string) (*Template, error
 				if err := checkLiveRCDATA(filename, rcdata, variables); err != nil {
 					return nil, err
 				}
+				if err := checkLiveBlocks(rootNode.Children, variables); err != nil {
+					return nil, err
+				}
 				return &Template{
 					nodes:        rootNode.Children,
 					variables:    variables,
@@ -236,15 +241,25 @@ func Parse(filename string, imageResolver func(string) string) (*Template, error
 
 			if bytes.HasPrefix(tagName, []byte("ssr:")) {
 				ssrTag := string(tagName[4:])
+				if !ssrTags[ssrTag] {
+					return nil, syntaxErrf(filename, curLine, "unknown GoSSR tag <%s>; the tags are ssr:var, ssr:content, ssr:assets, ssr:form, ssr:input, ssr:select, ssr:textarea and ssr:call", tagName)
+				}
+				cond, err := ssrTagCondition(filename, curLine, ssrTag, attrs)
+				if err != nil {
+					return nil, err
+				}
 				rendered := ssrTag == "form" || ssrTag == "input" || ssrTag == "select" || ssrTag == "textarea"
 				attrsMap := map[string]string{}
 				attributes := make([]node.HtmlAttribute, 0, len(attrs))
 				for _, a := range attrs {
 					attrsMap[a.key] = a.value
+					if strings.HasPrefix(a.key, "ssr:") {
+						continue
+					}
 					var nodes []node.Node
 					var err error
 					switch {
-					case rendered && !strings.HasPrefix(a.key, "ssr:"):
+					case rendered:
 						nodes, err = attrValues(filename, curLine, ssrTag, a.key, a.value, a.quoted)
 					case len(a.value) > 0:
 						nodes, err = parseText(a.value, filename, curLine, false)
@@ -266,6 +281,13 @@ func Parse(filename string, imageResolver func(string) string) (*Template, error
 					}
 					if attrsMap["type"] == "" {
 						return nil, syntaxErrf(filename, curLine, "<ssr:var name=%q> is missing the required type attribute", attrsMap["name"])
+					}
+					if err := checkDeclared(filename, curLine, "<ssr:var> name", attrsMap["name"]); err != nil {
+						return nil, err
+					}
+					field := ExportedName(attrsMap["name"])
+					if i := slices.IndexFunc(variables, func(v Variable) bool { return ExportedName(v.Name) == field }); i >= 0 {
+						return nil, syntaxErrf(filename, curLine, "<ssr:var name=%q> becomes the field %s of RouteData, as <ssr:var name=%q> on line %d does; pick another name", attrsMap["name"], field, variables[i].Name, variables[i].Line)
 					}
 					variables = append(variables, Variable{
 						File:           filename,
@@ -294,6 +316,13 @@ func Parse(filename string, imageResolver func(string) string) (*Template, error
 						return nil, syntaxErrf(filename, curLine, "<ssr:form> cannot be nested inside another <ssr:form>")
 					}
 
+					if err := checkIdent(filename, curLine, "<ssr:form> name", attrsMap["name"]); err != nil {
+						return nil, err
+					}
+					if i := slices.IndexFunc(forms, func(f *Form) bool { return ExportedName(f.Name) == ExportedName(attrsMap["name"]) }); i >= 0 {
+						return nil, syntaxErrf(filename, curLine, "<ssr:form name=%q> has the generated names of <ssr:form name=%q> on line %d, such as Form%sValues; pick another name", attrsMap["name"], forms[i].Name, forms[i].Node.Line, ExportedName(attrsMap["name"]))
+					}
+
 					if attrsMap["enctype"] != "" && attrsMap["enctype"] != node.FormEncUrlEncoded && attrsMap["enctype"] != node.FormEncTypeMultipart {
 						return nil, syntaxErrf(filename, curLine, "<ssr:form> has an invalid enctype, must be '%s' or '%s'",
 							node.FormEncUrlEncoded, node.FormEncTypeMultipart)
@@ -308,7 +337,13 @@ func Parse(filename string, imageResolver func(string) string) (*Template, error
 					forms = append(forms, &Form{Name: attrsMap["name"], Node: formNode})
 					activeForm = forms[len(forms)-1]
 
-					stack.Top().AddChildren(formNode)
+					if cond != nil {
+						if err := addBranch(stack, filename, curLine, cond.key[len("ssr:"):], cond.value, formNode); err != nil {
+							return nil, err
+						}
+					} else {
+						stack.Top().AddChildren(formNode)
+					}
 					stack.Push(formNode)
 				case "input", "textarea", "select":
 					if activeForm == nil {
@@ -322,6 +357,17 @@ func Parse(filename string, imageResolver func(string) string) (*Template, error
 							Line:    curLine,
 							Element: elemName,
 						}
+					}
+
+					if err := checkIdent(filename, curLine, "<ssr:"+string(tagName[4:])+"> name", attrsMap["name"]); err != nil {
+						return nil, err
+					}
+					if field := ExportedName(attrsMap["name"]); field == "BaseFormValues" {
+						return nil, syntaxErrf(filename, curLine, "<ssr:%s name=%q> becomes the field BaseFormValues, which every form's values embed; pick another name", tagName[4:], attrsMap["name"])
+					} else if _, ok := reflect.TypeFor[*form.BaseFormValues]().MethodByName(field); ok {
+						return nil, syntaxErrf(filename, curLine, "<ssr:%s name=%q> becomes the field %s, which hides the method %s of every form's values; pick another name", tagName[4:], attrsMap["name"], field, field)
+					} else if i := slices.IndexFunc(activeForm.Elements, func(e *FormElement) bool { return e.Name != attrsMap["name"] && ExportedName(e.Name) == field }); i >= 0 {
+						return nil, syntaxErrf(filename, curLine, "<ssr:%s name=%q> becomes the field %s of the form's values, as the element named %q does; pick another name", tagName[4:], attrsMap["name"], field, activeForm.Elements[i].Name)
 					}
 
 					_, isRequired := attrsMap["required"]
@@ -431,8 +477,6 @@ func Parse(filename string, imageResolver func(string) string) (*Template, error
 					}
 
 					stack.Top().AddChildren(n)
-				default:
-					return nil, syntaxErrf(filename, curLine, "unknown GoSSR tag <%s>; the tags are ssr:var, ssr:content, ssr:assets, ssr:form, ssr:input, ssr:select, ssr:textarea and ssr:call", tagName)
 				}
 
 				continue
@@ -445,12 +489,20 @@ func Parse(filename string, imageResolver func(string) string) (*Template, error
 				// The tokenizer reads the text after "<title/>" as the element's, as browsers do.
 				SelfClosed: tokenType == html.SelfClosingTagToken && !rawTags[tag],
 			}
-			hasWrapper := false
+			// wrapper is the element's ssr:if, ssr:else-if, ssr:else or ssr:for.
+			wrapper := ""
 			for _, a := range attrs {
 				key, value := []byte(a.key), []byte(a.value)
 
 				// Process SSR attributes
 				if bytes.HasPrefix(key, []byte("ssr:")) {
+					switch key := string(key[4:]); key {
+					case "for", "if", "else", "else-if":
+						if wrapper != "" {
+							return nil, syntaxErrf(filename, curLine, "<%s> has both %s and %s; put one on an element inside the other, such as <div ssr:if=\"…\"><p ssr:for=\"…\">", tag, wrapper, a.key)
+						}
+						wrapper = a.key
+					}
 					switch key := string(key[4:]); key {
 					case "bind":
 						// Record ssr:bind reference for generator validation (E05, E06).
@@ -470,6 +522,9 @@ func Parse(filename string, imageResolver func(string) string) (*Template, error
 						bindElements = append(bindElements, n)
 						continue
 					case "for":
+						if err := checkLoopNames(filename, curLine, string(value)); err != nil {
+							return nil, err
+						}
 						expr, err := parseText(string(value), filename, curLine, true)
 						if err != nil {
 							return nil, err
@@ -479,59 +534,10 @@ func Parse(filename string, imageResolver func(string) string) (*Template, error
 							return nil, syntaxErrf(filename, curLine, "invalid ssr:for expression %q, expected \"item in collection\" or \"i, item in collection\"", string(value))
 						}
 						loop.Children = []node.Node{n}
-						hasWrapper = true
 						stack.Top().AddChildren(loop)
-					case "if":
-						expr, err := parseText(string(value), filename, curLine, true)
-						if err != nil {
+					case "if", "else", "else-if":
+						if err := addBranch(stack, filename, curLine, key, string(value), n); err != nil {
 							return nil, err
-						}
-						hasWrapper = true
-						stack.Top().AddChildren(&node.SsrCondition{
-							BaseNode: node.BaseNode{File: filename, Line: curLine},
-							Conditions: []node.SsrConditionData{{
-								BaseNode:  node.BaseNode{File: filename, Line: curLine},
-								Condition: expr[0],
-								Body:      n,
-							}}},
-						)
-
-					case "else", "else-if":
-						elseErr := func() *SyntaxError {
-							return syntaxErrf(filename, curLine, "ssr:%s must directly follow an element with ssr:if or ssr:else-if", key)
-						}
-						lastChild := stack.Top().LastChild()
-						if lastChild == nil {
-							return nil, elseErr()
-						}
-						for {
-							nodeText, ok := lastChild.(*node.Text)
-							if !ok || strings.TrimSpace(nodeText.Text) != "" {
-								break
-							}
-							stack.Top().PopChild()
-							lastChild = stack.Top().LastChild()
-							if lastChild == nil {
-								return nil, elseErr()
-							}
-						}
-						nodeCond, ok := lastChild.(*node.SsrCondition)
-						if !ok {
-							return nil, elseErr()
-						}
-						hasWrapper = true
-						if key == "else" {
-							nodeCond.ElseBody = n
-						} else {
-							expr, err := parseText(string(value), filename, curLine, true)
-							if err != nil {
-								return nil, err
-							}
-							nodeCond.Conditions = append(nodeCond.Conditions, node.SsrConditionData{
-								BaseNode:  node.BaseNode{File: filename, Line: curLine},
-								Condition: expr[0],
-								Body:      n,
-							})
 						}
 					default:
 						return nil, syntaxErrf(filename, curLine, "unknown GoSSR attribute \"ssr:%s\"", key)
@@ -555,7 +561,7 @@ func Parse(filename string, imageResolver func(string) string) (*Template, error
 				})
 			}
 
-			if hasWrapper {
+			if wrapper != "" {
 				wrapped[n] = true
 			} else {
 				stack.Top().AddChildren(n)
@@ -596,6 +602,242 @@ func Parse(filename string, imageResolver func(string) string) (*Template, error
 		}
 		curLine += tokenLines
 	}
+}
+
+// addBranch adds n to the template as the branch that the attribute ssr:key with value opens:
+// ssr:if starts a condition, ssr:else-if and ssr:else extend the one directly before n.
+func addBranch(stack NodesStack, filename string, line int, key, value string, n node.Node) error {
+	if key == "if" {
+		expr, err := parseText(value, filename, line, true)
+		if err != nil {
+			return err
+		}
+		stack.Top().AddChildren(&node.SsrCondition{
+			BaseNode: node.BaseNode{File: filename, Line: line},
+			Conditions: []node.SsrConditionData{{
+				BaseNode:  node.BaseNode{File: filename, Line: line},
+				Condition: expr[0],
+				Body:      n,
+			}}},
+		)
+		return nil
+	}
+	elseErr := syntaxErrf(filename, line, "ssr:%s must directly follow an element with ssr:if or ssr:else-if", key)
+	lastChild := stack.Top().LastChild()
+	if lastChild == nil {
+		return elseErr
+	}
+	for {
+		nodeText, ok := lastChild.(*node.Text)
+		if !ok || strings.TrimSpace(nodeText.Text) != "" {
+			break
+		}
+		stack.Top().PopChild()
+		lastChild = stack.Top().LastChild()
+		if lastChild == nil {
+			return elseErr
+		}
+	}
+	nodeCond, ok := lastChild.(*node.SsrCondition)
+	if !ok {
+		return elseErr
+	}
+	if key == "else" {
+		nodeCond.ElseBody = n
+		return nil
+	}
+	expr, err := parseText(value, filename, line, true)
+	if err != nil {
+		return err
+	}
+	nodeCond.Conditions = append(nodeCond.Conditions, node.SsrConditionData{
+		BaseNode:  node.BaseNode{File: filename, Line: line},
+		Condition: expr[0],
+		Body:      n,
+	})
+	return nil
+}
+
+// checkLiveBlocks refuses what a live update cannot render again from the route's data alone,
+// which holds neither a form's values nor its token, nor the child page or the page's assets:
+// an <ssr:form>, <ssr:content/> or <ssr:assets/> in a live block; inside a form, a live site
+// that reads the form or holds one of its fields; and a form or field whose attribute reads a
+// live variable. A live site is what AnnotateBindings makes one: a value that reads a live
+// variable, and a block, an ssr:if chain or an ssr:for that reads one or an element with an
+// attribute that does.
+func checkLiveBlocks(nodes []node.Node, vars []Variable) error {
+	live := map[string]bool{}
+	for _, v := range vars {
+		if v.Reactive {
+			live[v.Name] = true
+		}
+	}
+	if len(live) == 0 {
+		return nil
+	}
+	var walk func(nodes []node.Node, inForm bool) error
+	walk = func(nodes []node.Node, inForm bool) error {
+		for _, n := range nodes {
+			var refs []string
+			var inner []node.Node
+			switch v := n.(type) {
+			case *node.Expression, *node.RawExpression:
+				refs = v.CollectVarRefs(live)
+			case *node.HtmlElement:
+				refs, inner = v.CollectAttributeVarRefs(live), v.Children
+			case *node.SsrCondition:
+				refs = v.CollectVarRefs(live)
+				for _, c := range v.Conditions {
+					inner = append(inner, c.Body)
+				}
+				if v.ElseBody != nil {
+					inner = append(inner, v.ElseBody)
+				}
+			case *node.Loop:
+				refs, inner = v.CollectVarRefs(live), v.Children
+			case *node.Content:
+				inner = v.Children
+			case *node.SsrForm, *node.SsrInput, *node.SsrSelect, *node.SsrTextarea:
+				var attrs []node.Node
+				if f, ok := v.(*node.SsrForm); ok {
+					for _, a := range f.Attributes {
+						attrs = append(attrs, a.Values...)
+					}
+				} else {
+					attrs = subNodes(v)
+				}
+				if r := (&node.Content{Children: attrs}).CollectVarRefs(live); len(r) > 0 {
+					file, line := v.(positioned).Position()
+					return syntaxErrf(file, line, "%s reads the live variable %s in an attribute, and a live update cannot render a form or its fields; drop reactive=\"true\" or read the variable on an element inside the form", describeNode(v), r[0])
+				}
+				if f, ok := v.(*node.SsrForm); ok {
+					if err := walk(f.Children, true); err != nil {
+						return err
+					}
+				}
+				continue
+			}
+			if len(refs) == 0 {
+				if err := walk(inner, inForm); err != nil {
+					return err
+				}
+				continue
+			}
+			if f := firstNode(inner, isUnrenderable); f != nil {
+				file, line := f.(positioned).Position()
+				return syntaxErrf(file, line, "%s is in a block that the live variable %s renders again, and a live update cannot render %s; move it out of the block or drop reactive=\"true\"", describeNode(f), refs[0], unrenderable(f))
+			}
+			if !inForm {
+				continue
+			}
+			if f := firstNode([]node.Node{n}, readsForm); f != nil {
+				file, line := f.(positioned).Position()
+				return syntaxErrf(file, line, "%s reads the form in a site that the live variable %s renders again, and a live update has no form values; read the form outside the site or drop reactive=\"true\"", describeNode(f), refs[0])
+			}
+		}
+		return nil
+	}
+	return walk(nodes, false)
+}
+
+// positioned is a node with the place in the template it comes from.
+type positioned interface{ Position() (string, int) }
+
+// firstNode returns the first of nodes and the nodes inside them, in document order, that
+// matches, or nil.
+func firstNode(nodes []node.Node, match func(node.Node) bool) node.Node {
+	for _, n := range nodes {
+		if match(n) {
+			return n
+		}
+		if f := firstNode(subNodes(n), match); f != nil {
+			return f
+		}
+	}
+	return nil
+}
+
+// isUnrenderable reports whether n is a node that a live update cannot render.
+func isUnrenderable(n node.Node) bool { return unrenderable(n) != "" }
+
+// unrenderable names what a live update would have to render to render n, or returns "".
+func unrenderable(n node.Node) string {
+	switch n.(type) {
+	case *node.SsrForm:
+		return "a form"
+	case *node.SsrContent:
+		return "the child page"
+	case *node.SsrAssets:
+		return "the page's assets"
+	}
+	return ""
+}
+
+// readsForm reports whether n reads the values of the form it is in: a value named form,
+// input or textarea, or a form field.
+func readsForm(n node.Node) bool {
+	switch v := n.(type) {
+	case *node.Variable:
+		return v.Name == "form" || v.Name == "input" || v.Name == "textarea"
+	case *node.SsrInput, *node.SsrSelect, *node.SsrTextarea:
+		return true
+	}
+	return false
+}
+
+// describeNode names n in an error message.
+func describeNode(n node.Node) string {
+	switch v := n.(type) {
+	case *node.SsrForm:
+		return fmt.Sprintf("<ssr:form name=%q>", v.Name)
+	case *node.SsrInput:
+		return fmt.Sprintf("<ssr:input name=%q>", v.Name)
+	case *node.SsrSelect:
+		return fmt.Sprintf("<ssr:select name=%q>", v.Name)
+	case *node.SsrTextarea:
+		return fmt.Sprintf("<ssr:textarea name=%q>", v.Name)
+	case *node.SsrContent:
+		return "<ssr:content/>"
+	case *node.SsrAssets:
+		return "<ssr:assets/>"
+	case *node.Variable:
+		return fmt.Sprintf("%q", v.Name)
+	}
+	return "this"
+}
+
+// ssrTags are the GoSSR tags, without their ssr: prefix.
+var ssrTags = map[string]bool{
+	"var": true, "content": true, "assets": true, "form": true,
+	"input": true, "select": true, "textarea": true, "call": true,
+}
+
+// ssrTagCondition refuses an ssr: attribute that the GoSSR tag <ssr:tag> does not take, and
+// returns the one ssr:if, ssr:else-if or ssr:else of an <ssr:form>, or nil. ssr:bind on a form
+// field and every attribute of <ssr:call> are checked with their tags.
+func ssrTagCondition(filename string, line int, tag string, attrs []tagAttr) (*tagAttr, error) {
+	if tag == "call" {
+		return nil, nil
+	}
+	var cond *tagAttr
+	for i, a := range attrs {
+		if !strings.HasPrefix(a.key, "ssr:") {
+			continue
+		}
+		switch {
+		case tag == "form" && (a.key == "ssr:if" || a.key == "ssr:else-if" || a.key == "ssr:else"):
+			if cond != nil {
+				return nil, syntaxErrf(filename, line, "<ssr:form> has both %s and %s; it takes one of ssr:if, ssr:else-if and ssr:else", cond.key, a.key)
+			}
+			cond = &attrs[i]
+		case a.key == "ssr:bind" && (tag == "input" || tag == "select" || tag == "textarea"):
+		case tag == "form":
+			return nil, syntaxErrf(filename, line, "unknown GoSSR attribute %q on <ssr:form>; it takes ssr:if, ssr:else-if and ssr:else", a.key)
+		default:
+			return nil, syntaxErrf(filename, line, "unknown GoSSR attribute %q on <ssr:%s>, which takes no ssr: attribute", a.key, tag)
+		}
+	}
+	return cond, nil
 }
 
 const fixCall = `declare <ssr:call name="lowerCamel" in="Type" out="Type"/> once, at the template's top level`
@@ -901,6 +1143,8 @@ func collectReactiveNode(n node.Node, result map[string]node.Node) {
 		collectReactiveNodesIn(v.Children, result)
 	case *node.Content:
 		collectReactiveNodesIn(v.Children, result)
+	case *node.SsrForm:
+		collectReactiveNodesIn(v.Children, result)
 	}
 }
 
@@ -1015,6 +1259,8 @@ func annotateBindingsNode(n node.Node, reactive map[string]bool, keyer func([]st
 		annotateBindingsNodes(v.Children, reactive, keyer, routeKeyPrefix, bindings, insideBlock, counter)
 	case *node.Content:
 		annotateBindingsNodes(v.Children, reactive, keyer, routeKeyPrefix, bindings, insideBlock, counter)
+	case *node.SsrForm:
+		annotateBindingsNodes(v.Children, reactive, keyer, routeKeyPrefix, bindings, insideBlock, counter)
 	case *node.SsrCondition:
 		refs := v.CollectVarRefs(reactive)
 		if len(refs) > 0 && !insideBlock {
@@ -1079,6 +1325,9 @@ func parseText(text string, filename string, fileLine int, insideExpr bool) ([]n
 
 	if lexer.err != nil {
 		return nil, lexer.err
+	}
+	if err := checkExprNames(lexer.result.Children); err != nil {
+		return nil, err
 	}
 
 	// Populate Source on every Expression/RawExpression node in left-to-right

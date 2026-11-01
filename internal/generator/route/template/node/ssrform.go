@@ -49,7 +49,7 @@ func (n *SsrForm) PopChild() {
 
 func (n *SsrForm) WriteGoCode(buf *gobuf.GoBuf) {
 	buf.WriteStringLn("{")
-	buf.WriteStringLn("form := c." + n.DPCtxFieldName)
+	buf.WriteStringLn("form := _c." + n.DPCtxFieldName)
 	buf.WriteStringLn("_ = form")
 	buf.WritePrintString(`<form method="post"`)
 	if n.EncType == "" {
@@ -73,7 +73,7 @@ func (n *SsrForm) WriteGoCode(buf *gobuf.GoBuf) {
 	buf.WritePrintString(">")
 
 	buf.WritePrintString(`<input type="hidden" name="_csrf_token_" value="` + html.EscapeString(n.Name) + `:`)
-	buf.WriteStringLn("if _, err := w.Write([]byte(form.BaseFormValues.GetCSRFToken())); err != nil {")
+	buf.WriteStringLn("if _, err := _w.Write([]byte(form.BaseFormValues.GetCSRFToken())); err != nil {")
 	buf.WriteStringLn("return err")
 	buf.WriteStringLn("}")
 	buf.WritePrintString(`">`)

@@ -136,6 +136,21 @@ test('reactive visitorsOnline: counter updates live on /home', async ({ page }) 
   ).not.toBe(initialValue);
 });
 
+test('one live connection: the layout and the page share one WebSocket on /home', async ({ page }) => {
+  const sockets: string[] = [];
+  page.on('websocket', ws => sockets.push(ws.url()));
+
+  await page.goto('/home');
+  const balance = page.locator('.navbar-text', { hasText: 'Balance:' }).first();
+  const visitors = page.locator('p', { hasText: 'visitors online right now' }).locator('strong');
+  const initialBalance = await balance.innerText();
+  const initialVisitors = await visitors.innerText();
+
+  await expect(balance).not.toHaveText(initialBalance, { timeout: 12_000 });
+  await expect(visitors).not.toHaveText(initialVisitors, { timeout: 12_000 });
+  expect(sockets).toEqual(['ws://localhost:18080/home/__ws']);
+});
+
 test('reactive attribute: class="badge {{ visitorsBadgeClass }}" updates live', async ({ page }) => {
   await page.goto('/home');
 
@@ -313,6 +328,72 @@ test('multiplexed ws: balance updates live on /users/johndoe123/info', async ({ 
       intervals: [500, 500, 500, 500, 1000, 1000, 1000, 1000, 1000],
     }
   ).not.toBe(initialBalance);
+
+  // The root, the users layout and the info page share one connection.
+  expect(wsConnections).toEqual(['ws://localhost:18080/users/johndoe123/info/__ws']);
+});
+
+// ---------------------------------------------------------------------------
+// 6b2. A live block whose markup does not change keeps its elements: the Add
+//      link sits in a block that re-renders with every userCount tick.
+// ---------------------------------------------------------------------------
+
+test('a live link keeps its focus when the connection opens and when a patch repeats it', async ({ page }) => {
+  // The server's frames are held until the link has focus, so the init comes after it.
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  const delivered: string[] = [];
+  await page.routeWebSocket(/\/__ws/, (ws) => {
+    const server = ws.connectToServer();
+    server.onMessage(async (message) => {
+      await held;
+      ws.send(message);
+      delivered.push(String(message));
+    });
+  });
+
+  await page.goto('/users/johndoe123/info');
+  const add = page.locator('a[href="/users/add"]');
+  await add.focus();
+  await add.evaluate((el) => { (el as any).served = true; });
+  release();
+
+  await expect.poll(
+    () => delivered.some((m) => m.includes('"t":"patch"') && m.includes('/users/add')),
+    { message: 'a patch that re-renders the Add link', timeout: 12_000 },
+  ).toBe(true);
+  expect(delivered[0]).toContain('"t":"init"');
+  expect(await page.evaluate(() => (document.activeElement as any)?.served === true)).toBe(true);
+});
+
+test('a live link that a patch changes keeps the focus on the new link', async ({ page }) => {
+  // Once the link has focus, patches that re-render it get an extra class, so the link is replaced.
+  const change = (v: unknown): unknown =>
+    typeof v === 'string' ? (v.includes('href="/users/add"') ? v.replace('btn-sm', 'btn-sm changed') : v)
+    : Array.isArray(v) ? v.map(change)
+    : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, change(x)]))
+    : v;
+  let armed = false;
+  let changed = false;
+  await page.routeWebSocket(/\/__ws/, (ws) => {
+    const server = ws.connectToServer();
+    server.onMessage((message) => {
+      const frame = JSON.parse(String(message));
+      if (!armed || frame.t !== 'patch' || !String(message).includes('/users/add')) return ws.send(message);
+      ws.send(JSON.stringify(change(frame)));
+      changed = true;
+    });
+  });
+
+  await page.goto('/users/johndoe123/info');
+  const add = page.locator('a[href="/users/add"]');
+  await add.focus();
+  await add.evaluate((el) => { (el as any).served = true; });
+  armed = true;
+
+  await expect.poll(() => changed, { message: 'a patch that changes the Add link', timeout: 12_000 }).toBe(true);
+  await expect(page.locator('a.changed[href="/users/add"]')).toBeFocused();
+  expect(await page.evaluate(() => (document.activeElement as any)?.served)).toBeUndefined();
 });
 
 // ---------------------------------------------------------------------------

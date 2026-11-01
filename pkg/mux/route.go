@@ -55,14 +55,24 @@ type Child interface{ Write(w io.Writer) error }
 // Frame is the part of a RouteState the mux wires up: the route's child and
 // the asset tags its page needs.
 type Frame struct {
-	child  Child
-	assets []string
+	child   Child
+	assets  []string
+	written map[string]struct{} // the asset tags already written, shared by the frames of one page
 }
 
 func (f *Frame) frame() *Frame { return f }
 
-// SetChild sets what WriteChild writes.
-func (f *Frame) SetChild(c Child) { f.child = c }
+// SetChild sets what WriteChild writes. A child that is a route shares this
+// route's record of written asset tags, so the page writes each tag once.
+func (f *Frame) SetChild(c Child) {
+	f.child = c
+	if f.written == nil {
+		f.written = map[string]struct{}{}
+	}
+	for fr := f.next(); fr != nil; fr = fr.next() {
+		fr.written = f.written
+	}
+}
 
 // SetAssets sets this route's asset tags.
 func (f *Frame) SetAssets(tags []string) { f.assets = tags }
@@ -76,15 +86,17 @@ func (f *Frame) WriteChild(w io.Writer) error {
 }
 
 // WriteAssets writes the asset tags of this route and every route below it,
-// each tag once.
+// root to leaf, skipping each tag an earlier call on the same page wrote.
 func (f *Frame) WriteAssets(w io.Writer) error {
-	written := map[string]struct{}{}
+	if f.written == nil {
+		f.written = map[string]struct{}{}
+	}
 	for fr := f; fr != nil; fr = fr.next() {
 		for _, a := range fr.assets {
-			if _, ok := written[a]; ok {
+			if _, ok := f.written[a]; ok {
 				continue
 			}
-			written[a] = struct{}{}
+			f.written[a] = struct{}{}
 			if _, err := io.WriteString(w, a); err != nil {
 				return err
 			}

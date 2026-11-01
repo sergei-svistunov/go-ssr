@@ -1,6 +1,9 @@
 package node
 
 import (
+	"slices"
+	"strings"
+
 	"github.com/sergei-svistunov/go-ssr/internal/generator/gobuf"
 	"github.com/sergei-svistunov/go-ssr/internal/generator/route/template/htmlutils"
 )
@@ -106,8 +109,13 @@ func (n *HtmlElement) writeInner(buf *gobuf.GoBuf) {
 	}
 	buf.WritePrintString(">")
 
+	children := n.Children
+	if n.TagName == "textarea" {
+		children = textareaChildren(buf, children)
+	}
+
 	if htmlutils.LiteralElements[n.TagName] {
-		for _, c := range n.Children {
+		for _, c := range children {
 			if tNode, ok := c.(*Text); ok {
 				buf.WritePrintString(tNode.Text)
 			} else {
@@ -115,10 +123,27 @@ func (n *HtmlElement) writeInner(buf *gobuf.GoBuf) {
 			}
 		}
 	} else {
-		for _, c := range n.Children {
+		for _, c := range children {
 			c.WriteGoCode(buf)
 		}
 	}
 
 	buf.WritePrintString("</" + n.TagName + ">")
+}
+
+// textareaChildren writes the newline that keeps a value's own leading newline, since HTML
+// parsing drops one newline right after <textarea>, and returns the children to write after
+// it, without the newline the template has there, which the browser would have dropped.
+func textareaChildren(buf *gobuf.GoBuf, children []Node) []Node {
+	buf.WritePrintString("\n")
+	if len(children) == 0 {
+		return children
+	}
+	t, ok := children[0].(*Text)
+	if !ok || !strings.HasPrefix(t.Text, "\n") {
+		return children
+	}
+	rest := slices.Clone(children)
+	rest[0] = &Text{BaseNode: t.BaseNode, Text: t.Text[1:]}
+	return rest
 }

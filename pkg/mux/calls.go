@@ -168,7 +168,7 @@ func (p *pageCalls) answer(ctx context.Context, msg reactive.CallMsg) (frame any
 	}
 	value, err := invokeCall(ctx, r, caller, msg)
 	if err != nil {
-		status, text := callFailure(msg.Name, err)
+		status, text := callFailure(ctx, msg.Name, err)
 		return reactive.NewFail(msg.ID, status, text), ""
 	}
 	return reactive.NewResult(msg.ID, value), ""
@@ -221,8 +221,9 @@ func guardFailure(err error) (int, string) {
 
 // callFailure maps a call's error to its fail frame: a 4xx or 5xx HttpError
 // keeps its status and message, a deadline is 504, and anything else is 500,
-// logged.
-func callFailure(name string, err error) (int, string) {
+// logged unless it is the cancellation of ctx, the call's context, by the end
+// of its connection.
+func callFailure(ctx context.Context, name string, err error) (int, string) {
 	var httpErr *HttpError
 	var redirect *HttpRedirect
 	switch {
@@ -232,6 +233,8 @@ func callFailure(name string, err error) (int, string) {
 		return http.StatusGatewayTimeout, callTooLong
 	case errors.Is(err, errCallPanicked):
 		// Already logged in invokeCall.
+	case errors.Is(err, context.Canceled) && errors.Is(ctx.Err(), context.Canceled):
+		// The connection has ended; no one waits for the answer.
 	case errors.As(err, &redirect):
 		log.Printf("mux: page call %q returned a redirect to %q; return data from the call and navigate with location.assign in the page's TypeScript", logName(name), redirect.Url)
 	default:

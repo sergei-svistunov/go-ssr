@@ -120,512 +120,512 @@ func (c *ssrState) Data(ctx context.Context, r *mux.Request, w mux.ResponseWrite
 
 func (c *ssrState) DefaultRoute(ctx context.Context, r *mux.Request) (string, error) { return "", nil }
 
-func (c *ssrState) Write(w io.Writer) error {
-	if _, err := w.Write(_betovsehn2s182ab6pmc9s7mfflfrkpbc6lhjii6rquri82fab20); err != nil {
+func (_c *ssrState) Write(_w io.Writer) error {
+	if _, err := _w.Write(_betovsehn2s182ab6pmc9s7mfflfrkpbc6lhjii6rquri82fab20); err != nil {
 		return err
 	}
 	{
-		form := c.FormAddData
+		form := _c.FormAddData
 		_ = form
-		if _, err := w.Write(_tqi22utq5r5h3pt3jreqic8764o1jin7j6moa7f131pl4abisas0); err != nil {
+		if _, err := _w.Write(_tqi22utq5r5h3pt3jreqic8764o1jin7j6moa7f131pl4abisas0); err != nil {
 			return err
 		}
-		if _, err := w.Write([]byte(form.BaseFormValues.GetCSRFToken())); err != nil {
+		if _, err := _w.Write([]byte(form.BaseFormValues.GetCSRFToken())); err != nil {
 			return err
 		}
-		if _, err := w.Write(_obrqfaid8vtn27gnbplspkv0dvepmskpdqjvr3l5n0j44pdu0v7g); err != nil {
+		if _, err := _w.Write(_obrqfaid8vtn27gnbplspkv0dvepmskpdqjvr3l5n0j44pdu0v7g); err != nil {
 			return err
 		}
 		{
 //line index.html:4
 			input := form.Login
 			_ = input
-			if _, err := w.Write(_qlll0rtr0dhlscet37qdl77tp5rc11867jtau5eji7qef8ndgd80); err != nil {
+			if _, err := _w.Write(_qlll0rtr0dhlscet37qdl77tp5rc11867jtau5eji7qef8ndgd80); err != nil {
 				return err
 			}
 			if input.IsNotNull() {
-				if _, err := w.Write(_63vr14drqsiva5f56b6amrrmmor3buvslfse7ml6l1afqb599jb0); err != nil {
+				if _, err := _w.Write(_63vr14drqsiva5f56b6amrrmmor3buvslfse7ml6l1afqb599jb0); err != nil {
 					return err
 				}
 				v := any(input.GetValue())
 				if input.HasError() {
 					v = input.GetFormValue()
 				}
-				if err := render.Attr(w, v); err != nil {
+				if err := render.Attr(_w, v); err != nil {
 					return err
 				}
-				if _, err := w.Write(_h8phvnf70cnj79ou3cn2avc02pn393g0vioni57khfdlf8e6603g); err != nil {
+				if _, err := _w.Write(_h8phvnf70cnj79ou3cn2avc02pn393g0vioni57khfdlf8e6603g); err != nil {
 					return err
 				}
 			}
-			if _, err := w.Write(_7oa5kl2vaj6vk6u1p4miubc4tul0b9gpct7vsgr81ktgomd9ld4g); err != nil {
+			if _, err := _w.Write(_7oa5kl2vaj6vk6u1p4miubc4tul0b9gpct7vsgr81ktgomd9ld4g); err != nil {
 				return err
 			}
 //line index.html:4
-			if err := render.Attr(w, mux.TernaryIf(form.IsValidated(), mux.TernaryIf(input.HasError(), "is-invalid", "is-valid"), "")); err != nil {
+			if err := render.Attr(_w, mux.TernaryIf(form.IsValidated(), mux.TernaryIf(input.HasError(), "is-invalid", "is-valid"), "")); err != nil {
 				return err
 			}
-			if _, err := w.Write(_lcmdet48ia9q0oam521uudg1jkg3li09sdb2shbhi1v9i6kec5og); err != nil {
+			if _, err := _w.Write(_lcmdet48ia9q0oam521uudg1jkg3li09sdb2shbhi1v9i6kec5og); err != nil {
 				return err
 			}
 		}
-		if _, err := w.Write(_h0ami8bp64alvblfuo2gocrpmmn60r4cnj4fo70r2loilm8btpbg); err != nil {
+		if _, err := _w.Write(_h0ami8bp64alvblfuo2gocrpmmn60r4cnj4fo70r2loilm8btpbg); err != nil {
 			return err
 		}
 //line index.html:6
 		if form.Login.HasError() {
-			if _, err := w.Write(_rltbj10nlgr3ugrdr83o9p9ua4nnvo19m4akesm7i3ddvbgrveq0); err != nil {
+			if _, err := _w.Write(_rltbj10nlgr3ugrdr83o9p9ua4nnvo19m4akesm7i3ddvbgrveq0); err != nil {
 				return err
 			}
 //line index.html:6
-			if err := render.Text(w, form.Login.GetError()); err != nil {
+			if err := render.Text(_w, form.Login.GetError()); err != nil {
 				return err
 			}
-			if _, err := w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
+			if _, err := _w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
 				return err
 			}
 		}
-		if _, err := w.Write(_d4g6j76ahiv4kn5hnb8q940ntbii1iumkho92335qfguu86v4fkg); err != nil {
+		if _, err := _w.Write(_d4g6j76ahiv4kn5hnb8q940ntbii1iumkho92335qfguu86v4fkg); err != nil {
 			return err
 		}
 		{
 //line index.html:10
 			input := form.Name
 			_ = input
-			if _, err := w.Write(_1o719rrsjhrau2miah76n0n8rdkp4kbc59dtq4tclscpfjik2g40); err != nil {
+			if _, err := _w.Write(_1o719rrsjhrau2miah76n0n8rdkp4kbc59dtq4tclscpfjik2g40); err != nil {
 				return err
 			}
 			if input.IsNotNull() {
-				if _, err := w.Write(_63vr14drqsiva5f56b6amrrmmor3buvslfse7ml6l1afqb599jb0); err != nil {
+				if _, err := _w.Write(_63vr14drqsiva5f56b6amrrmmor3buvslfse7ml6l1afqb599jb0); err != nil {
 					return err
 				}
 				v := any(input.GetValue())
 				if input.HasError() {
 					v = input.GetFormValue()
 				}
-				if err := render.Attr(w, v); err != nil {
+				if err := render.Attr(_w, v); err != nil {
 					return err
 				}
-				if _, err := w.Write(_h8phvnf70cnj79ou3cn2avc02pn393g0vioni57khfdlf8e6603g); err != nil {
+				if _, err := _w.Write(_h8phvnf70cnj79ou3cn2avc02pn393g0vioni57khfdlf8e6603g); err != nil {
 					return err
 				}
 			}
-			if _, err := w.Write(_tunrh30tbchtgi089ujdl7pqfc7j0p6st1qlu0us49njoah531u0); err != nil {
+			if _, err := _w.Write(_tunrh30tbchtgi089ujdl7pqfc7j0p6st1qlu0us49njoah531u0); err != nil {
 				return err
 			}
 //line index.html:10
-			if err := render.Attr(w, mux.TernaryIf(form.IsValidated(), mux.TernaryIf(input.HasError(), "is-invalid", "is-valid"), "")); err != nil {
+			if err := render.Attr(_w, mux.TernaryIf(form.IsValidated(), mux.TernaryIf(input.HasError(), "is-invalid", "is-valid"), "")); err != nil {
 				return err
 			}
-			if _, err := w.Write(_lcmdet48ia9q0oam521uudg1jkg3li09sdb2shbhi1v9i6kec5og); err != nil {
+			if _, err := _w.Write(_lcmdet48ia9q0oam521uudg1jkg3li09sdb2shbhi1v9i6kec5og); err != nil {
 				return err
 			}
 		}
-		if _, err := w.Write(_tkq2db2ve4cr4mtp1norhklrra8gmkbe77m0c3va6podheur56v0); err != nil {
+		if _, err := _w.Write(_tkq2db2ve4cr4mtp1norhklrra8gmkbe77m0c3va6podheur56v0); err != nil {
 			return err
 		}
 //line index.html:12
 		if form.Name.HasError() {
-			if _, err := w.Write(_rltbj10nlgr3ugrdr83o9p9ua4nnvo19m4akesm7i3ddvbgrveq0); err != nil {
+			if _, err := _w.Write(_rltbj10nlgr3ugrdr83o9p9ua4nnvo19m4akesm7i3ddvbgrveq0); err != nil {
 				return err
 			}
 //line index.html:12
-			if err := render.Text(w, form.Name.GetError()); err != nil {
+			if err := render.Text(_w, form.Name.GetError()); err != nil {
 				return err
 			}
-			if _, err := w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
+			if _, err := _w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
 				return err
 			}
 		}
-		if _, err := w.Write(_d4g6j76ahiv4kn5hnb8q940ntbii1iumkho92335qfguu86v4fkg); err != nil {
+		if _, err := _w.Write(_d4g6j76ahiv4kn5hnb8q940ntbii1iumkho92335qfguu86v4fkg); err != nil {
 			return err
 		}
 		{
 //line index.html:16
 			input := form.Age
 			_ = input
-			if _, err := w.Write(_765l9b2otngonbq8i6o96r370cqvo5nngu06iemfasrm2b83k7q0); err != nil {
+			if _, err := _w.Write(_765l9b2otngonbq8i6o96r370cqvo5nngu06iemfasrm2b83k7q0); err != nil {
 				return err
 			}
 			if input.IsNotNull() {
-				if _, err := w.Write(_63vr14drqsiva5f56b6amrrmmor3buvslfse7ml6l1afqb599jb0); err != nil {
+				if _, err := _w.Write(_63vr14drqsiva5f56b6amrrmmor3buvslfse7ml6l1afqb599jb0); err != nil {
 					return err
 				}
 				v := any(input.GetValue())
 				if input.HasError() {
 					v = input.GetFormValue()
 				}
-				if err := render.Attr(w, v); err != nil {
+				if err := render.Attr(_w, v); err != nil {
 					return err
 				}
-				if _, err := w.Write(_h8phvnf70cnj79ou3cn2avc02pn393g0vioni57khfdlf8e6603g); err != nil {
+				if _, err := _w.Write(_h8phvnf70cnj79ou3cn2avc02pn393g0vioni57khfdlf8e6603g); err != nil {
 					return err
 				}
 			}
-			if _, err := w.Write(_lnoj079k5uuijn8b581uvb3te2ahs0ar8pt2mbmr6hcjv2tq1fvg); err != nil {
+			if _, err := _w.Write(_lnoj079k5uuijn8b581uvb3te2ahs0ar8pt2mbmr6hcjv2tq1fvg); err != nil {
 				return err
 			}
 //line index.html:16
-			if err := render.Attr(w, mux.TernaryIf(form.IsValidated(), mux.TernaryIf(input.HasError(), "is-invalid", "is-valid"), "")); err != nil {
+			if err := render.Attr(_w, mux.TernaryIf(form.IsValidated(), mux.TernaryIf(input.HasError(), "is-invalid", "is-valid"), "")); err != nil {
 				return err
 			}
-			if _, err := w.Write(_lcmdet48ia9q0oam521uudg1jkg3li09sdb2shbhi1v9i6kec5og); err != nil {
+			if _, err := _w.Write(_lcmdet48ia9q0oam521uudg1jkg3li09sdb2shbhi1v9i6kec5og); err != nil {
 				return err
 			}
 		}
-		if _, err := w.Write(_mc3qvqijcll6338eovftfi405i66qpojgttio9moibpbssrs213g); err != nil {
+		if _, err := _w.Write(_mc3qvqijcll6338eovftfi405i66qpojgttio9moibpbssrs213g); err != nil {
 			return err
 		}
 //line index.html:18
 		if form.Age.HasError() {
-			if _, err := w.Write(_rltbj10nlgr3ugrdr83o9p9ua4nnvo19m4akesm7i3ddvbgrveq0); err != nil {
+			if _, err := _w.Write(_rltbj10nlgr3ugrdr83o9p9ua4nnvo19m4akesm7i3ddvbgrveq0); err != nil {
 				return err
 			}
 //line index.html:18
-			if err := render.Text(w, form.Age.GetError()); err != nil {
+			if err := render.Text(_w, form.Age.GetError()); err != nil {
 				return err
 			}
-			if _, err := w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
+			if _, err := _w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
 				return err
 			}
 		}
-		if _, err := w.Write(_d4g6j76ahiv4kn5hnb8q940ntbii1iumkho92335qfguu86v4fkg); err != nil {
+		if _, err := _w.Write(_d4g6j76ahiv4kn5hnb8q940ntbii1iumkho92335qfguu86v4fkg); err != nil {
 			return err
 		}
 		{
 //line index.html:22
 			input := form.Select
 			_ = input
-			if _, err := w.Write(_ai7pr690p8n2tmn7ea3q5bnub22t704vfn26amr1lkdjj90dm41g); err != nil {
+			if _, err := _w.Write(_ai7pr690p8n2tmn7ea3q5bnub22t704vfn26amr1lkdjj90dm41g); err != nil {
 				return err
 			}
 //line index.html:22
-			if err := render.Attr(w, mux.TernaryIf(form.IsValidated(), mux.TernaryIf(input.HasError(), "is-invalid", "is-valid"), "")); err != nil {
+			if err := render.Attr(_w, mux.TernaryIf(form.IsValidated(), mux.TernaryIf(input.HasError(), "is-invalid", "is-valid"), "")); err != nil {
 				return err
 			}
-			if _, err := w.Write(_lcmdet48ia9q0oam521uudg1jkg3li09sdb2shbhi1v9i6kec5og); err != nil {
+			if _, err := _w.Write(_lcmdet48ia9q0oam521uudg1jkg3li09sdb2shbhi1v9i6kec5og); err != nil {
 				return err
 			}
 			isSelected := func(v uint8) bool { return v == input.GetValue() }
 			for _, o := range input.GetOptions() {
-				if err := o.WriteHtml(w, isSelected); err != nil {
+				if err := o.WriteHtml(_w, isSelected); err != nil {
 					return err
 				}
 			}
-			if _, err := w.Write(_htglig184f26im57fan1f1f7ao7dde3p7nqiihqgkkvhp1bi4cu0); err != nil {
+			if _, err := _w.Write(_htglig184f26im57fan1f1f7ao7dde3p7nqiihqgkkvhp1bi4cu0); err != nil {
 				return err
 			}
 		}
-		if _, err := w.Write(_1u3ooq4gnofml8tnkca1jmjd28s8id2368vboh0b4kqcq24bg51g); err != nil {
+		if _, err := _w.Write(_1u3ooq4gnofml8tnkca1jmjd28s8id2368vboh0b4kqcq24bg51g); err != nil {
 			return err
 		}
 //line index.html:24
 		if form.Select.HasError() {
-			if _, err := w.Write(_rltbj10nlgr3ugrdr83o9p9ua4nnvo19m4akesm7i3ddvbgrveq0); err != nil {
+			if _, err := _w.Write(_rltbj10nlgr3ugrdr83o9p9ua4nnvo19m4akesm7i3ddvbgrveq0); err != nil {
 				return err
 			}
 //line index.html:24
-			if err := render.Text(w, form.Select.GetError()); err != nil {
+			if err := render.Text(_w, form.Select.GetError()); err != nil {
 				return err
 			}
-			if _, err := w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
+			if _, err := _w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
 				return err
 			}
 		}
-		if _, err := w.Write(_d4g6j76ahiv4kn5hnb8q940ntbii1iumkho92335qfguu86v4fkg); err != nil {
+		if _, err := _w.Write(_d4g6j76ahiv4kn5hnb8q940ntbii1iumkho92335qfguu86v4fkg); err != nil {
 			return err
 		}
 		{
 //line index.html:28
 			input := form.MultSelect
 			_ = input
-			if _, err := w.Write(_3e21rhv3igokvue9n4apvcu9vikuvpsd06lrn67t74rj86suadb0); err != nil {
+			if _, err := _w.Write(_3e21rhv3igokvue9n4apvcu9vikuvpsd06lrn67t74rj86suadb0); err != nil {
 				return err
 			}
 //line index.html:28
-			if err := render.Attr(w, mux.TernaryIf(form.IsValidated(), mux.TernaryIf(input.HasError(), "is-invalid", "is-valid"), "")); err != nil {
+			if err := render.Attr(_w, mux.TernaryIf(form.IsValidated(), mux.TernaryIf(input.HasError(), "is-invalid", "is-valid"), "")); err != nil {
 				return err
 			}
-			if _, err := w.Write(_lcmdet48ia9q0oam521uudg1jkg3li09sdb2shbhi1v9i6kec5og); err != nil {
+			if _, err := _w.Write(_lcmdet48ia9q0oam521uudg1jkg3li09sdb2shbhi1v9i6kec5og); err != nil {
 				return err
 			}
 			isSelected := func(v uint8) bool { _, exists := input.GetValue()[v]; return exists }
 			for _, o := range input.GetOptions() {
-				if err := o.WriteHtml(w, isSelected); err != nil {
+				if err := o.WriteHtml(_w, isSelected); err != nil {
 					return err
 				}
 			}
-			if _, err := w.Write(_htglig184f26im57fan1f1f7ao7dde3p7nqiihqgkkvhp1bi4cu0); err != nil {
+			if _, err := _w.Write(_htglig184f26im57fan1f1f7ao7dde3p7nqiihqgkkvhp1bi4cu0); err != nil {
 				return err
 			}
 		}
-		if _, err := w.Write(_eaff59u6ku9nig0je6nm5s34qpl4583ea4s0gdvkeqspmco1shbg); err != nil {
+		if _, err := _w.Write(_eaff59u6ku9nig0je6nm5s34qpl4583ea4s0gdvkeqspmco1shbg); err != nil {
 			return err
 		}
 //line index.html:30
 		if form.MultSelect.HasError() {
-			if _, err := w.Write(_rltbj10nlgr3ugrdr83o9p9ua4nnvo19m4akesm7i3ddvbgrveq0); err != nil {
+			if _, err := _w.Write(_rltbj10nlgr3ugrdr83o9p9ua4nnvo19m4akesm7i3ddvbgrveq0); err != nil {
 				return err
 			}
 //line index.html:30
-			if err := render.Text(w, form.MultSelect.GetError()); err != nil {
+			if err := render.Text(_w, form.MultSelect.GetError()); err != nil {
 				return err
 			}
-			if _, err := w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
+			if _, err := _w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
 				return err
 			}
 		}
-		if _, err := w.Write(_d4g6j76ahiv4kn5hnb8q940ntbii1iumkho92335qfguu86v4fkg); err != nil {
+		if _, err := _w.Write(_d4g6j76ahiv4kn5hnb8q940ntbii1iumkho92335qfguu86v4fkg); err != nil {
 			return err
 		}
 		{
 //line index.html:34
 			textarea := form.Description
 			_ = textarea
-			if _, err := w.Write(_g361tp9vc85gp786a7df16tadielsblotnj7nr9iu53v4s6kd6a0); err != nil {
+			if _, err := _w.Write(_g361tp9vc85gp786a7df16tadielsblotnj7nr9iu53v4s6kd6a0); err != nil {
 				return err
 			}
 //line index.html:34
-			if err := render.Attr(w, mux.TernaryIf(form.IsValidated(), mux.TernaryIf(textarea.HasError(), "is-invalid", "is-valid"), "")); err != nil {
+			if err := render.Attr(_w, mux.TernaryIf(form.IsValidated(), mux.TernaryIf(textarea.HasError(), "is-invalid", "is-valid"), "")); err != nil {
 				return err
 			}
-			if _, err := w.Write(_lcmdet48ia9q0oam521uudg1jkg3li09sdb2shbhi1v9i6kec5og); err != nil {
+			if _, err := _w.Write(_6ei0do8kuhpfehegt08a6q39c1s4po3600n378hi6p7u0hcghtcg); err != nil {
 				return err
 			}
-			if err := render.Text(w, textarea.GetValue()); err != nil {
+			if err := render.Text(_w, textarea.GetValue()); err != nil {
 				return err
 			}
-			if _, err := w.Write(_m1nmnfcnoneh7kdc3n37g3svivj3o839hkcemk3ifs0v9q2to6p0); err != nil {
+			if _, err := _w.Write(_m1nmnfcnoneh7kdc3n37g3svivj3o839hkcemk3ifs0v9q2to6p0); err != nil {
 				return err
 			}
 		}
-		if _, err := w.Write(_j2r59u2njeni8olsltnjrga0j7j9rvu2s2fho8onf5o9mf8h9cn0); err != nil {
+		if _, err := _w.Write(_j2r59u2njeni8olsltnjrga0j7j9rvu2s2fho8onf5o9mf8h9cn0); err != nil {
 			return err
 		}
 //line index.html:36
 		if form.Description.HasError() {
-			if _, err := w.Write(_rltbj10nlgr3ugrdr83o9p9ua4nnvo19m4akesm7i3ddvbgrveq0); err != nil {
+			if _, err := _w.Write(_rltbj10nlgr3ugrdr83o9p9ua4nnvo19m4akesm7i3ddvbgrveq0); err != nil {
 				return err
 			}
 //line index.html:36
-			if err := render.Text(w, form.Description.GetError()); err != nil {
+			if err := render.Text(_w, form.Description.GetError()); err != nil {
 				return err
 			}
-			if _, err := w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
+			if _, err := _w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
 				return err
 			}
 		}
-		if _, err := w.Write(_d4g6j76ahiv4kn5hnb8q940ntbii1iumkho92335qfguu86v4fkg); err != nil {
+		if _, err := _w.Write(_d4g6j76ahiv4kn5hnb8q940ntbii1iumkho92335qfguu86v4fkg); err != nil {
 			return err
 		}
 		{
 //line index.html:40
 			input := form.Image
 			_ = input
-			if _, err := w.Write(_i6vl56as5mcnsronkljhamj68gfprj261mi8shk453om6gchki80); err != nil {
+			if _, err := _w.Write(_i6vl56as5mcnsronkljhamj68gfprj261mi8shk453om6gchki80); err != nil {
 				return err
 			}
 //line index.html:40
-			if err := render.Attr(w, mux.TernaryIf(form.IsValidated(), mux.TernaryIf(input.HasError(), "is-invalid", "is-valid"), "")); err != nil {
+			if err := render.Attr(_w, mux.TernaryIf(form.IsValidated(), mux.TernaryIf(input.HasError(), "is-invalid", "is-valid"), "")); err != nil {
 				return err
 			}
-			if _, err := w.Write(_lcmdet48ia9q0oam521uudg1jkg3li09sdb2shbhi1v9i6kec5og); err != nil {
+			if _, err := _w.Write(_lcmdet48ia9q0oam521uudg1jkg3li09sdb2shbhi1v9i6kec5og); err != nil {
 				return err
 			}
 		}
-		if _, err := w.Write(_5el6cp4g7tobg8jktqenmabu47acr1t73u4trjnh568blhj8d0fg); err != nil {
+		if _, err := _w.Write(_5el6cp4g7tobg8jktqenmabu47acr1t73u4trjnh568blhj8d0fg); err != nil {
 			return err
 		}
 //line index.html:42
 		if form.Image.HasError() {
-			if _, err := w.Write(_rltbj10nlgr3ugrdr83o9p9ua4nnvo19m4akesm7i3ddvbgrveq0); err != nil {
+			if _, err := _w.Write(_rltbj10nlgr3ugrdr83o9p9ua4nnvo19m4akesm7i3ddvbgrveq0); err != nil {
 				return err
 			}
 //line index.html:42
-			if err := render.Text(w, form.Image.GetError()); err != nil {
+			if err := render.Text(_w, form.Image.GetError()); err != nil {
 				return err
 			}
-			if _, err := w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
+			if _, err := _w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
 				return err
 			}
 		}
-		if _, err := w.Write(_d4g6j76ahiv4kn5hnb8q940ntbii1iumkho92335qfguu86v4fkg); err != nil {
+		if _, err := _w.Write(_d4g6j76ahiv4kn5hnb8q940ntbii1iumkho92335qfguu86v4fkg); err != nil {
 			return err
 		}
 		{
 //line index.html:46
 			input := form.Images
 			_ = input
-			if _, err := w.Write(_r51hp55u9u0bqfarpa97i2vnfu2hn1fp0o5va19ri50s7gp72lng); err != nil {
+			if _, err := _w.Write(_r51hp55u9u0bqfarpa97i2vnfu2hn1fp0o5va19ri50s7gp72lng); err != nil {
 				return err
 			}
 //line index.html:46
-			if err := render.Attr(w, mux.TernaryIf(form.IsValidated(), mux.TernaryIf(input.HasError(), "is-invalid", "is-valid"), "")); err != nil {
+			if err := render.Attr(_w, mux.TernaryIf(form.IsValidated(), mux.TernaryIf(input.HasError(), "is-invalid", "is-valid"), "")); err != nil {
 				return err
 			}
-			if _, err := w.Write(_lcmdet48ia9q0oam521uudg1jkg3li09sdb2shbhi1v9i6kec5og); err != nil {
+			if _, err := _w.Write(_lcmdet48ia9q0oam521uudg1jkg3li09sdb2shbhi1v9i6kec5og); err != nil {
 				return err
 			}
 		}
-		if _, err := w.Write(_edia00bs3fjjvlmrcof0s4cac73r2sm5mmn99kaue2hbjbk1s0m0); err != nil {
+		if _, err := _w.Write(_edia00bs3fjjvlmrcof0s4cac73r2sm5mmn99kaue2hbjbk1s0m0); err != nil {
 			return err
 		}
 //line index.html:48
 		if form.Images.HasError() {
-			if _, err := w.Write(_rltbj10nlgr3ugrdr83o9p9ua4nnvo19m4akesm7i3ddvbgrveq0); err != nil {
+			if _, err := _w.Write(_rltbj10nlgr3ugrdr83o9p9ua4nnvo19m4akesm7i3ddvbgrveq0); err != nil {
 				return err
 			}
 //line index.html:48
-			if err := render.Text(w, form.Images.GetError()); err != nil {
+			if err := render.Text(_w, form.Images.GetError()); err != nil {
 				return err
 			}
-			if _, err := w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
+			if _, err := _w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
 				return err
 			}
 		}
-		if _, err := w.Write(_abmdb8ano97009e0394bh2f2i0gg5p0pt7l8g4k12til29d0q63g); err != nil {
+		if _, err := _w.Write(_abmdb8ano97009e0394bh2f2i0gg5p0pt7l8g4k12til29d0q63g); err != nil {
 			return err
 		}
 		{
 //line index.html:52
 			input := form.Confirm
 			_ = input
-			if _, err := w.Write(_r5mrigvrgk49rllv2onh2qcue4usmts43kpghp87drg6m3qrb0c0); err != nil {
+			if _, err := _w.Write(_r5mrigvrgk49rllv2onh2qcue4usmts43kpghp87drg6m3qrb0c0); err != nil {
 				return err
 			}
 			if _, exists := input.GetValue()[true]; exists {
-				if _, err := w.Write(_buhf1qlpbp58h0d9ciqt1dkidphv7j7qc8mq83o4vj07dii21q10); err != nil {
+				if _, err := _w.Write(_buhf1qlpbp58h0d9ciqt1dkidphv7j7qc8mq83o4vj07dii21q10); err != nil {
 					return err
 				}
 			}
-			if _, err := w.Write(_bnu2oi4cmk59idls6fma6otocpfq5fm0igvribh3ac4s07fnn430); err != nil {
+			if _, err := _w.Write(_bnu2oi4cmk59idls6fma6otocpfq5fm0igvribh3ac4s07fnn430); err != nil {
 				return err
 			}
 //line index.html:52
-			if err := render.Attr(w, mux.TernaryIf(input.HasError(), "invalid", "valid")); err != nil {
+			if err := render.Attr(_w, mux.TernaryIf(input.HasError(), "invalid", "valid")); err != nil {
 				return err
 			}
-			if _, err := w.Write(_lcmdet48ia9q0oam521uudg1jkg3li09sdb2shbhi1v9i6kec5og); err != nil {
+			if _, err := _w.Write(_lcmdet48ia9q0oam521uudg1jkg3li09sdb2shbhi1v9i6kec5og); err != nil {
 				return err
 			}
 		}
-		if _, err := w.Write(_a4t0cajmr26rknei4o23v03fb3mohq8pdhugus3b725i161rrieg); err != nil {
+		if _, err := _w.Write(_a4t0cajmr26rknei4o23v03fb3mohq8pdhugus3b725i161rrieg); err != nil {
 			return err
 		}
 //line index.html:54
 		if form.Confirm.HasError() {
-			if _, err := w.Write(_rltbj10nlgr3ugrdr83o9p9ua4nnvo19m4akesm7i3ddvbgrveq0); err != nil {
+			if _, err := _w.Write(_rltbj10nlgr3ugrdr83o9p9ua4nnvo19m4akesm7i3ddvbgrveq0); err != nil {
 				return err
 			}
 //line index.html:54
-			if err := render.Text(w, form.Confirm.GetError()); err != nil {
+			if err := render.Text(_w, form.Confirm.GetError()); err != nil {
 				return err
 			}
-			if _, err := w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
+			if _, err := _w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
 				return err
 			}
 		}
-		if _, err := w.Write(_abmdb8ano97009e0394bh2f2i0gg5p0pt7l8g4k12til29d0q63g); err != nil {
+		if _, err := _w.Write(_abmdb8ano97009e0394bh2f2i0gg5p0pt7l8g4k12til29d0q63g); err != nil {
 			return err
 		}
 		{
 //line index.html:58
 			input := form.Confirm
 			_ = input
-			if _, err := w.Write(_lg26hq1vbjh74o3jqugjprj5n3an9skl1fbeatsia5bkcbnrv260); err != nil {
+			if _, err := _w.Write(_lg26hq1vbjh74o3jqugjprj5n3an9skl1fbeatsia5bkcbnrv260); err != nil {
 				return err
 			}
 			if _, exists := input.GetValue()[false]; exists {
-				if _, err := w.Write(_buhf1qlpbp58h0d9ciqt1dkidphv7j7qc8mq83o4vj07dii21q10); err != nil {
+				if _, err := _w.Write(_buhf1qlpbp58h0d9ciqt1dkidphv7j7qc8mq83o4vj07dii21q10); err != nil {
 					return err
 				}
 			}
-			if _, err := w.Write(_5t4m235bac14v4mnm6ag8su3qhu4psbrc47ljkpb5eic7qd4r3e0); err != nil {
+			if _, err := _w.Write(_5t4m235bac14v4mnm6ag8su3qhu4psbrc47ljkpb5eic7qd4r3e0); err != nil {
 				return err
 			}
 //line index.html:58
-			if err := render.Attr(w, mux.TernaryIf(input.HasError(), "invalid", "valid")); err != nil {
+			if err := render.Attr(_w, mux.TernaryIf(input.HasError(), "invalid", "valid")); err != nil {
 				return err
 			}
-			if _, err := w.Write(_lcmdet48ia9q0oam521uudg1jkg3li09sdb2shbhi1v9i6kec5og); err != nil {
+			if _, err := _w.Write(_lcmdet48ia9q0oam521uudg1jkg3li09sdb2shbhi1v9i6kec5og); err != nil {
 				return err
 			}
 		}
-		if _, err := w.Write(_stppfgvg33vft1e048korlth37vqqamkktkgh2vtlo709lqnfsdg); err != nil {
+		if _, err := _w.Write(_stppfgvg33vft1e048korlth37vqqamkktkgh2vtlo709lqnfsdg); err != nil {
 			return err
 		}
 //line index.html:60
 		if form.Confirm.HasError() {
-			if _, err := w.Write(_rltbj10nlgr3ugrdr83o9p9ua4nnvo19m4akesm7i3ddvbgrveq0); err != nil {
+			if _, err := _w.Write(_rltbj10nlgr3ugrdr83o9p9ua4nnvo19m4akesm7i3ddvbgrveq0); err != nil {
 				return err
 			}
 //line index.html:60
-			if err := render.Text(w, form.Confirm.GetError()); err != nil {
+			if err := render.Text(_w, form.Confirm.GetError()); err != nil {
 				return err
 			}
-			if _, err := w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
+			if _, err := _w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
 				return err
 			}
 		}
-		if _, err := w.Write(_1u4i3h7ce44t20oh027k0dbhpfvnat84mp7p9luuu7a30erndtvg); err != nil {
+		if _, err := _w.Write(_1u4i3h7ce44t20oh027k0dbhpfvnat84mp7p9luuu7a30erndtvg); err != nil {
 			return err
 		}
 		{
 //line index.html:64
 			input := form.Radio
 			_ = input
-			if _, err := w.Write(_9il28ovt721reju6kf425t2v3ec2ai0uu23vioi0skpgoc7mhuk0); err != nil {
+			if _, err := _w.Write(_9il28ovt721reju6kf425t2v3ec2ai0uu23vioi0skpgoc7mhuk0); err != nil {
 				return err
 			}
 			if input.GetValue() == 1 {
-				if _, err := w.Write(_buhf1qlpbp58h0d9ciqt1dkidphv7j7qc8mq83o4vj07dii21q10); err != nil {
+				if _, err := _w.Write(_buhf1qlpbp58h0d9ciqt1dkidphv7j7qc8mq83o4vj07dii21q10); err != nil {
 					return err
 				}
 			}
-			if _, err := w.Write(_k2cfbk5f9dsmjcqtpakogsp6ubkqg53huakar8bmslr90utfqakg); err != nil {
+			if _, err := _w.Write(_k2cfbk5f9dsmjcqtpakogsp6ubkqg53huakar8bmslr90utfqakg); err != nil {
 				return err
 			}
 		}
-		if _, err := w.Write(_k4qnffos55lbjqihnjcpr9vnhq0facrp45id1m466mll5san9330); err != nil {
+		if _, err := _w.Write(_k4qnffos55lbjqihnjcpr9vnhq0facrp45id1m466mll5san9330); err != nil {
 			return err
 		}
 		{
 //line index.html:67
 			input := form.Radio
 			_ = input
-			if _, err := w.Write(_j6g1nvvj0cr6fjh96pbf6dsfrorgdiddg9qcrk4viemvj7rgk6sg); err != nil {
+			if _, err := _w.Write(_j6g1nvvj0cr6fjh96pbf6dsfrorgdiddg9qcrk4viemvj7rgk6sg); err != nil {
 				return err
 			}
 			if input.GetValue() == 2 {
-				if _, err := w.Write(_buhf1qlpbp58h0d9ciqt1dkidphv7j7qc8mq83o4vj07dii21q10); err != nil {
+				if _, err := _w.Write(_buhf1qlpbp58h0d9ciqt1dkidphv7j7qc8mq83o4vj07dii21q10); err != nil {
 					return err
 				}
 			}
-			if _, err := w.Write(_6dl83cnnmfiapudu6tu7t776vsh1i3uadi6tvl2s5rcu5to5rqbg); err != nil {
+			if _, err := _w.Write(_6dl83cnnmfiapudu6tu7t776vsh1i3uadi6tvl2s5rcu5to5rqbg); err != nil {
 				return err
 			}
 		}
-		if _, err := w.Write(_31165iiibr3fojs06nsk5nht9u58o607j4tjaegg38oggf5g82r0); err != nil {
+		if _, err := _w.Write(_31165iiibr3fojs06nsk5nht9u58o607j4tjaegg38oggf5g82r0); err != nil {
 			return err
 		}
 //line index.html:71
 		if form.GetError() != "" {
-			if _, err := w.Write(_d98iqq949bnkvl0am05us0b6jqcl7sqp3s515ehnr3vvln1ihd5g); err != nil {
+			if _, err := _w.Write(_d98iqq949bnkvl0am05us0b6jqcl7sqp3s515ehnr3vvln1ihd5g); err != nil {
 				return err
 			}
 //line index.html:71
-			if err := render.Text(w, form.GetError()); err != nil {
+			if err := render.Text(_w, form.GetError()); err != nil {
 				return err
 			}
-			if _, err := w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
+			if _, err := _w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
 				return err
 			}
 		}
-		if _, err := w.Write(_aefs0t81rpflat327rgi6tt8purjeg9jg0j6d1pqrkij9g48co4g); err != nil {
+		if _, err := _w.Write(_aefs0t81rpflat327rgi6tt8purjeg9jg0j6d1pqrkij9g48co4g); err != nil {
 			return err
 		}
 	}
-	if _, err := w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
+	if _, err := _w.Write(_lb1ickdh1tb7ohgrjd7ianbfm7t6gmdl6q6onmd53bsi1ap1pshg); err != nil {
 		return err
 	}
 	return nil
@@ -668,6 +668,9 @@ var (
 	_6dl83cnnmfiapudu6tu7t776vsh1i3uadi6tvl2s5rcu5to5rqbg = []byte{
 		0x20, 0x69, 0x64, 0x3d, 0x22, 0x72, 0x61, 0x64, 0x69, 0x6f, 0x32, 0x22, 0x20, 0x63, 0x6c, 0x61, 0x73, 0x73, 0x3d, 0x22, 0x66, 0x6f, 0x72, 0x6d,
 		0x2d, 0x63, 0x68, 0x65, 0x63, 0x6b, 0x2d, 0x69, 0x6e, 0x70, 0x75, 0x74, 0x22, 0x3e,
+	}
+	_6ei0do8kuhpfehegt08a6q39c1s4po3600n378hi6p7u0hcghtcg = []byte{
+		0x22, 0x3e, 0x0a,
 	}
 	_765l9b2otngonbq8i6o96r370cqvo5nngu06iemfasrm2b83k7q0 = []byte{
 		0x3c, 0x69, 0x6e, 0x70, 0x75, 0x74, 0x20, 0x6e, 0x61, 0x6d, 0x65, 0x3d, 0x22, 0x61, 0x67, 0x65, 0x22, 0x20, 0x74, 0x79, 0x70, 0x65, 0x3d, 0x22,

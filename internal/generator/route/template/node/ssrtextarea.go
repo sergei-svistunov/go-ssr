@@ -45,8 +45,8 @@ func (n *SsrTextarea) WriteGoCode(buf *gobuf.GoBuf) {
 			buf.WritePrintString(`"`)
 		}
 	}
-	buf.WritePrintString(">")
-	buf.WriteString("if err := render.Text(w, textarea.GetValue()); err != nil {")
+	buf.WritePrintString(">\n")
+	buf.WriteString("if err := render.Text(_w, textarea.GetValue()); err != nil {")
 	buf.WriteStringLn("return err")
 	buf.WriteStringLn("}")
 	buf.WritePrintString("</textarea>")

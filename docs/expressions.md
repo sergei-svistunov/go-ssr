@@ -122,7 +122,8 @@ conditional is meant to do. Parenthesise chains explicitly, or use `ssr:if` / `s
 A call compiles to a plain Go call, so the callee only has to resolve in the route's package. That means:
 
 - methods on any value reachable from a variable,
-- functions declared in the route directory's package (a helper in a `.go` file next to `index.html`),
+- functions declared in the route directory's package (a helper in a `.go` file next to `index.html`) whose
+  names do not start with `_`,
 - a variable of func type declared with `<ssr:var name="title" type="func() string"/>` and called as
   `{{ title() }}`.
 
@@ -159,14 +160,16 @@ Within an `<ssr:form>` two extra names are in scope:
 
 - `form` — the form's values struct: `form.IsValidated()`, `form.GetError()`, `form.Login.HasError()`,
   `form.Login.GetError()`.
-- `input`, `select`, `textarea` — the element currently being rendered, which makes a per-field class
-  expression possible on the element itself:
+- `input`, `textarea` — in the attributes of a field, the field being rendered: `input` on `<ssr:input>` and
+  `<ssr:select>`, `textarea` on `<ssr:textarea>`. That makes a per-field class expression possible on the
+  element itself:
 
 ```html
 <ssr:input name="login" class="form-control {{ form.IsValidated() ? input.HasError() ? 'is-invalid' : 'is-valid' : '' }}"/>
 ```
 
-See `forms` for the generated types behind these names.
+See `forms` for the generated types behind these names. A template cannot declare `form`, `input` or
+`textarea` itself, nor a name Go has, nor one that starts with `_`; see `template-syntax`.
 
 ## Reactive expressions
 

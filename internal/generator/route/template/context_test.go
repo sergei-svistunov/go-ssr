@@ -77,7 +77,7 @@ func escapers(t *testing.T, src string) []node.Esc {
 }
 
 var (
-	reWrite  = regexp.MustCompile(`w\.Write\((_[0-9a-v]+)\)|render\.\w+\(w, \w+\)`)
+	reWrite  = regexp.MustCompile(`_w\.Write\((_[0-9a-v]+)\)|render\.\w+\(_w, \w+\)`)
 	reLitVar = regexp.MustCompile(`(_[0-9a-v]+)=\[\]byte\{([^}]*)\}`)
 )
 
@@ -179,7 +179,7 @@ func TestEscaperByContext(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `<a class="[render.Attr(w, c)]" href="/u/[render.URLPart(w, id)]">[render.Text(w, name)][render.HTML(w, markup)]</a>`
+	want := `<a class="[render.Attr(_w, c)]" href="/u/[render.URLPart(_w, id)]">[render.Text(_w, name)][render.HTML(_w, markup)]</a>`
 	if got := rendered(t, tpl); got != want {
 		t.Errorf("rendered %s, want %s", got, want)
 	}
@@ -270,7 +270,9 @@ func TestContextRefusals(t *testing.T) {
 	for _, ok := range []string{
 		`<script src="/a.js"></script>`,
 		`<script> </script>`,
+		"<script src=\"/a.js\">\n</script>",
 		`<script></script>`,
+		`<script type="application/json"> </script>`,
 		`<script src="/a.js"/></script>`,
 		`<script type="application/json">{"a": 1}</script>`,
 		`<script type=" Application/LD+JSON ">{}</script>`,
@@ -489,7 +491,7 @@ func TestRawSelfClosingTagsStayOpen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "<div><textarea>[render.Text(w, x)]</textarea><p>after</p></div>"
+	want := "<div><textarea>\n[render.Text(_w, x)]</textarea><p>after</p></div>"
 	if got := rendered(t, tpl); got != want {
 		t.Errorf("rendered %s, want %s", got, want)
 	}
@@ -636,16 +638,17 @@ func TestFormFieldLiterals(t *testing.T) {
 	}
 
 	tpl, err := parseSource(t, `<ssr:form name="f">`+
-		`<ssr:input name="a&quot;b" type="Email"/>`+
-		`<ssr:input name="r" type="radio" value="x&quot;y"/>`+
-		`<ssr:textarea name="t&lt;"/>`+
-		`<ssr:select name="s&quot;"/></ssr:form>`)
+		`<ssr:input name="a" type="Email"/>`+
+		`<ssr:input name="r" type="radio" value="x&quot;y"/></ssr:form>`)
 	if err != nil {
 		t.Fatal(err)
 	}
 	tpl.forms[0].Node.DPCtxFieldName = "FormF"
+	// A field's name is a Go name, which the parser checks; the nodes escape it all the same.
+	tpl.forms[0].Node.Children = append(tpl.forms[0].Node.Children,
+		&node.SsrInput{Name: `a"b`}, &node.SsrTextarea{Name: "t<"}, &node.SsrSelect{Name: `s"`, GoType: "string"})
 	got := rendered(t, tpl)
-	for _, want := range []string{`<input name="a&#34;b" type="email"`, `<input name="r" type="radio" value="x&#34;y"`, `<textarea name="t&lt;">`, `<select name="s&#34;">`} {
+	for _, want := range []string{`<input name="a" type="email"`, `<input name="r" type="radio" value="x&#34;y"`, `<input name="a&#34;b"`, `<textarea name="t&lt;">`, `<select name="s&#34;">`} {
 		if !strings.Contains(got, want) {
 			t.Errorf("rendered %s, want %s", got, want)
 		}

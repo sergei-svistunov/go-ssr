@@ -51,3 +51,6 @@ type BaseNode struct {
 func (n *BaseNode) FilePos() string {
 	return fmt.Sprintf("//line %s:%d", n.File, n.Line)
 }
+
+// Position returns the template file and line the node comes from.
+func (n *BaseNode) Position() (string, int) { return n.File, n.Line }

@@ -46,27 +46,29 @@ type RouteDataProvider interface {
 const routeKey = "2cc974af"
 
 // writeBlock_2148738a1b6a87aa renders binding site "2cc974af.2148738a1b6a87aa" into w.
-func writeBlock_2148738a1b6a87aa(data *RouteData, w io.Writer) error {
+func writeBlock_2148738a1b6a87aa(_data *RouteData, _w io.Writer) error {
 //line index.html:20
-	visitorsBadgeClass := data.VisitorsBadgeClass
+	visitorsBadgeClass := _data.VisitorsBadgeClass
+	_ = visitorsBadgeClass
 //line index.html:19
-	visitorsOnline := data.VisitorsOnline
-	_ = w // w io.Writer is used by WriteInnerGoCode; this silences the linter when the block body emits no direct writes
-	if _, err := w.Write(_2t4232onc02ste7j2v337mu814toidchhscu958qhd8jug92jc4g); err != nil {
+	visitorsOnline := _data.VisitorsOnline
+	_ = visitorsOnline
+	_ = _w
+	if _, err := _w.Write(_2t4232onc02ste7j2v337mu814toidchhscu958qhd8jug92jc4g); err != nil {
 		return err
 	}
 //line index.html:21
-	if err := render.Attr(w, visitorsBadgeClass); err != nil {
+	if err := render.Attr(_w, visitorsBadgeClass); err != nil {
 		return err
 	}
-	if _, err := w.Write(_lcmdet48ia9q0oam521uudg1jkg3li09sdb2shbhi1v9i6kec5og); err != nil {
+	if _, err := _w.Write(_lcmdet48ia9q0oam521uudg1jkg3li09sdb2shbhi1v9i6kec5og); err != nil {
 		return err
 	}
 //line index.html:21
-	if err := render.Text(w, visitorsOnline); err != nil {
+	if err := render.Text(_w, visitorsOnline); err != nil {
 		return err
 	}
-	if _, err := w.Write(_mbr9v080makliifen3tq6se265vkc3trjao3n679n577ohj87a40); err != nil {
+	if _, err := _w.Write(_mbr9v080makliifen3tq6se265vkc3trjao3n679n577ohj87a40); err != nil {
 		return err
 	}
 	return nil
@@ -80,12 +82,13 @@ func renderBlock_2148738a1b6a87aa(data *RouteData) string {
 }
 
 // writeBlock_displayName renders binding site "2cc974af.displayName" into w.
-func writeBlock_displayName(data *RouteData, w io.Writer) error {
+func writeBlock_displayName(_data *RouteData, _w io.Writer) error {
 //line index.html:29
-	displayName := data.DisplayName
-	_ = w // w io.Writer is used by WriteInnerGoCode; this silences the linter when the block body emits no direct writes
+	displayName := _data.DisplayName
+	_ = displayName
+	_ = _w
 //line index.html:33
-	if err := render.Text(w, displayName); err != nil {
+	if err := render.Text(_w, displayName); err != nil {
 		return err
 	}
 	return nil
@@ -101,12 +104,10 @@ func renderBlock_displayName(data *RouteData) string {
 // ReactiveState holds the current live values for all reactive variables
 // in this route. Call Set<VarName> to push an update to the connected client.
 type ReactiveState struct {
-	conn                 *reactive.Conn
-	route                string     // owning route's 8-hex path hash (for patch frames)
-	data                 *RouteData // current route data; Set* methods update this in-place
-	muDisplayName        sync.Mutex
-	muVisitorsBadgeClass sync.Mutex
-	muVisitorsOnline     sync.Mutex
+	conn  *reactive.Conn
+	route string     // owning route's 8-hex path hash (for patch frames)
+	data  *RouteData // current route data; Set* methods update this in-place
+	mu    sync.Mutex // held across a Set's assignment, its renders and its enqueues
 }
 
 func NewReactiveState(conn *reactive.Conn, data *RouteData) *ReactiveState {
@@ -114,38 +115,38 @@ func NewReactiveState(conn *reactive.Conn, data *RouteData) *ReactiveState {
 }
 
 // SetDisplayName pushes a new value for the displayName binding.
-// It is non-blocking and safe to call from any goroutine.
+// It does not wait for the client and is safe to call from any goroutine.
 func (s *ReactiveState) SetDisplayName(v string) {
 	if s.conn.Ctx().Err() != nil {
 		return
 	}
-	s.muDisplayName.Lock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.data.DisplayName = v
-	s.muDisplayName.Unlock()
 	s.conn.Enqueue(s.route, "2cc974af.displayName", renderBlock_displayName(s.data))
 }
 
 // SetVisitorsBadgeClass pushes a new value for the visitorsBadgeClass binding.
-// It is non-blocking and safe to call from any goroutine.
+// It does not wait for the client and is safe to call from any goroutine.
 func (s *ReactiveState) SetVisitorsBadgeClass(v string) {
 	if s.conn.Ctx().Err() != nil {
 		return
 	}
-	s.muVisitorsBadgeClass.Lock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.data.VisitorsBadgeClass = v
-	s.muVisitorsBadgeClass.Unlock()
 	s.conn.Enqueue(s.route, "2cc974af.2148738a1b6a87aa", renderBlock_2148738a1b6a87aa(s.data))
 }
 
 // SetVisitorsOnline pushes a new value for the visitorsOnline binding.
-// It is non-blocking and safe to call from any goroutine.
+// It does not wait for the client and is safe to call from any goroutine.
 func (s *ReactiveState) SetVisitorsOnline(v int) {
 	if s.conn.Ctx().Err() != nil {
 		return
 	}
-	s.muVisitorsOnline.Lock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.data.VisitorsOnline = v
-	s.muVisitorsOnline.Unlock()
 	s.conn.Enqueue(s.route, "2cc974af.2148738a1b6a87aa", renderBlock_2148738a1b6a87aa(s.data))
 }
 
@@ -195,10 +196,11 @@ func (rt *ssrRoute) Layout() bool { return false }
 func (rt *ssrRoute) NewState() mux.RouteState {
 	s := &ssrState{dp: rt.dp}
 	s.SetAssets([]string{
-		"<link href=\"/static/css/vendors.5cea4e3d8eccf96590ce.css\" rel=\"stylesheet\">",
-		"<script defer=\"defer\" src=\"/static/js/vendors.5cea4e3d8eccf96590ce.js\"></script>",
-		"<link href=\"/static/css/pages/home.eb1fcc08529a6b061a27.css\" rel=\"stylesheet\">",
-		"<script defer=\"defer\" src=\"/static/js/pages/home.eb1fcc08529a6b061a27.js\"></script>",
+		"<script defer=\"defer\" src=\"/static/js/runtime.38c807b6136b274ea1a6.js\"></script>",
+		"<link href=\"/static/css/vendors.4bb742663d7877bf0d74.css\" rel=\"stylesheet\">",
+		"<script defer=\"defer\" src=\"/static/js/vendors.4bb742663d7877bf0d74.js\"></script>",
+		"<link href=\"/static/css/pages/home.c006fc9bcbb28342dd54.css\" rel=\"stylesheet\">",
+		"<script defer=\"defer\" src=\"/static/js/pages/home.c006fc9bcbb28342dd54.js\"></script>",
 	})
 	return s
 }
@@ -251,168 +253,182 @@ func (c *ssrState) Data(ctx context.Context, r *mux.Request, w mux.ResponseWrite
 
 func (c *ssrState) DefaultRoute(ctx context.Context, r *mux.Request) (string, error) { return "", nil }
 
-func (c *ssrState) Write(w io.Writer) error {
+func (_c *ssrState) Write(_w io.Writer) error {
 //line index.html:29
-	displayName := c.RouteData.DisplayName
+	displayName := _c.RouteData.DisplayName
+	_ = displayName
 //line index.html:11
-	divider := c.RouteData.Divider
+	divider := _c.RouteData.Divider
+	_ = divider
 //line index.html:88
-	fruits := c.RouteData.Fruits
+	fruits := _c.RouteData.Fruits
+	_ = fruits
 //line index.html:99
-	langs := c.RouteData.Langs
+	langs := _c.RouteData.Langs
+	_ = langs
 //line index.html:46
-	price := c.RouteData.Price
+	price := _c.RouteData.Price
+	_ = price
 //line index.html:47
-	quantity := c.RouteData.Quantity
+	quantity := _c.RouteData.Quantity
+	_ = quantity
 //line index.html:72
-	status := c.RouteData.Status
+	status := _c.RouteData.Status
+	_ = status
 //line index.html:48
-	userAge := c.RouteData.UserAge
+	userAge := _c.RouteData.UserAge
+	_ = userAge
 //line index.html:49
-	userName := c.RouteData.UserName
+	userName := _c.RouteData.UserName
+	_ = userName
 //line index.html:20
-	visitorsBadgeClass := c.RouteData.VisitorsBadgeClass
+	visitorsBadgeClass := _c.RouteData.VisitorsBadgeClass
+	_ = visitorsBadgeClass
 //line index.html:19
-	visitorsOnline := c.RouteData.VisitorsOnline
-	if _, err := w.Write(_ebsr0q4iglml2h7ee45auij3a9edgbmb2hdp9q65fp9og94hfnv0); err != nil {
+	visitorsOnline := _c.RouteData.VisitorsOnline
+	_ = visitorsOnline
+	if _, err := _w.Write(_ebsr0q4iglml2h7ee45auij3a9edgbmb2hdp9q65fp9og94hfnv0); err != nil {
 		return err
 	}
 //line index.html:12
-	if err := render.HTML(w, divider); err != nil {
+	if err := render.HTML(_w, divider); err != nil {
 		return err
 	}
-	if _, err := w.Write(_cfnf13qaj784hh9j32ara71jnc58qhdgpubi2m98aqq92q2ipqpg); err != nil {
-		return err
-	}
-//line index.html:21
-	if err := render.Attr(w, visitorsBadgeClass); err != nil {
-		return err
-	}
-	if _, err := w.Write(_lcmdet48ia9q0oam521uudg1jkg3li09sdb2shbhi1v9i6kec5og); err != nil {
+	if _, err := _w.Write(_cfnf13qaj784hh9j32ara71jnc58qhdgpubi2m98aqq92q2ipqpg); err != nil {
 		return err
 	}
 //line index.html:21
-	if err := render.Text(w, visitorsOnline); err != nil {
+	if err := render.Attr(_w, visitorsBadgeClass); err != nil {
 		return err
 	}
-	if _, err := w.Write(_624o0806p9jvc2cilb0m2rh8sfn43tem2pf470mhfr988jqr7rs0); err != nil {
+	if _, err := _w.Write(_lcmdet48ia9q0oam521uudg1jkg3li09sdb2shbhi1v9i6kec5og); err != nil {
+		return err
+	}
+//line index.html:21
+	if err := render.Text(_w, visitorsOnline); err != nil {
+		return err
+	}
+	if _, err := _w.Write(_624o0806p9jvc2cilb0m2rh8sfn43tem2pf470mhfr988jqr7rs0); err != nil {
 		return err
 	}
 //line index.html:33
-	if _, err := w.Write(_dhfuqu1ak3teha788psh3v2ncpv91sfd8858u51juv810lc24eig); err != nil {
+	if _, err := _w.Write(_dhfuqu1ak3teha788psh3v2ncpv91sfd8858u51juv810lc24eig); err != nil {
 		return err
 	}
-	if err := render.Text(w, displayName); err != nil {
+	if err := render.Text(_w, displayName); err != nil {
 		return err
 	}
-	if _, err := w.Write(_s40i14h1me3liobikctr5fc9ll7rt031ipci3mb185gr660t3cig); err != nil {
+	if _, err := _w.Write(_s40i14h1me3liobikctr5fc9ll7rt031ipci3mb185gr660t3cig); err != nil {
 		return err
 	}
 //line index.html:57
-	if err := render.Text(w, price); err != nil {
+	if err := render.Text(_w, price); err != nil {
 		return err
 	}
-	if _, err := w.Write(_83jlq1ld313s97rnafoqn50b0e879vik2hb6r81ckp7nbubj4ceg); err != nil {
+	if _, err := _w.Write(_83jlq1ld313s97rnafoqn50b0e879vik2hb6r81ckp7nbubj4ceg); err != nil {
 		return err
 	}
 //line index.html:58
-	if err := render.Text(w, quantity); err != nil {
+	if err := render.Text(_w, quantity); err != nil {
 		return err
 	}
-	if _, err := w.Write(_a6kft5km63k4ncmbveod2auquo7188fjcn10u574i2fg7jfu7gog); err != nil {
+	if _, err := _w.Write(_a6kft5km63k4ncmbveod2auquo7188fjcn10u574i2fg7jfu7gog); err != nil {
 		return err
 	}
 //line index.html:59
-	if err := render.Text(w, price*quantity); err != nil {
+	if err := render.Text(_w, price*quantity); err != nil {
 		return err
 	}
-	if _, err := w.Write(_3ium4k7ug14glk68k4pqk85j0upjtq0q5vg1ehaqfkh0f1vcu6ng); err != nil {
-		return err
-	}
-//line index.html:60
-	if err := render.Text(w, userName); err != nil {
-		return err
-	}
-	if _, err := w.Write(_srue94hh14q7bnvvnei69c4k338dk7doq862v7lf4cu4tdpdtrqg); err != nil {
+	if _, err := _w.Write(_3ium4k7ug14glk68k4pqk85j0upjtq0q5vg1ehaqfkh0f1vcu6ng); err != nil {
 		return err
 	}
 //line index.html:60
-	if err := render.Text(w, userAge); err != nil {
+	if err := render.Text(_w, userName); err != nil {
 		return err
 	}
-	if _, err := w.Write(_pscrksumchffp1odparubd77e3lma4aqjpki08k8bta1mpn89b20); err != nil {
+	if _, err := _w.Write(_srue94hh14q7bnvvnei69c4k338dk7doq862v7lf4cu4tdpdtrqg); err != nil {
+		return err
+	}
+//line index.html:60
+	if err := render.Text(_w, userAge); err != nil {
+		return err
+	}
+	if _, err := _w.Write(_pscrksumchffp1odparubd77e3lma4aqjpki08k8bta1mpn89b20); err != nil {
 		return err
 	}
 //line index.html:61
-	if err := render.Text(w, mux.TernaryIf(userAge >= 18, "Adult", "Minor")); err != nil {
+	if err := render.Text(_w, mux.TernaryIf(userAge >= 18, "Adult", "Minor")); err != nil {
 		return err
 	}
-	if _, err := w.Write(_79ulu5304pq7e4mlc6qh5r5egs77htjepv3cun08siebnqjlfmgg); err != nil {
+	if _, err := _w.Write(_79ulu5304pq7e4mlc6qh5r5egs77htjepv3cun08siebnqjlfmgg); err != nil {
 		return err
 	}
 //line index.html:73
-	if err := render.Text(w, status); err != nil {
+	if err := render.Text(_w, status); err != nil {
 		return err
 	}
-	if _, err := w.Write(_hltn1eqdecrbevnke0dv08bsc3sn8vjs36eda15kbsmu7t176uk0); err != nil {
+	if _, err := _w.Write(_hltn1eqdecrbevnke0dv08bsc3sn8vjs36eda15kbsmu7t176uk0); err != nil {
 		return err
 	}
 //line index.html:74
 	if status == "active" {
-		if _, err := w.Write(_sg4ee3tnd5kdl3sovfe7q816orbi7ef2nbpvce9plrqe5ee4ntfg); err != nil {
+		if _, err := _w.Write(_sg4ee3tnd5kdl3sovfe7q816orbi7ef2nbpvce9plrqe5ee4ntfg); err != nil {
 			return err
 		}
 //line index.html:75
 	} else if status == "pending" {
-		if _, err := w.Write(_b6tadofau4q8hb6gkl2mo74jb8tnod5hkv0vsbhb28j025fc23kg); err != nil {
+		if _, err := _w.Write(_b6tadofau4q8hb6gkl2mo74jb8tnod5hkv0vsbhb28j025fc23kg); err != nil {
 			return err
 		}
 //line index.html:76
 	} else {
-		if _, err := w.Write(_mod7qohgvd84edmsrunqalum3u2jb93juk3ug3k7s8fl8v54df3g); err != nil {
+		if _, err := _w.Write(_mod7qohgvd84edmsrunqalum3u2jb93juk3ug3k7s8fl8v54df3g); err != nil {
 			return err
 		}
 	}
-	if _, err := w.Write(_n0mktrrar3q4k6kmgv9ql8r38d5ptmj004dqv0ucd926h9ov0rl0); err != nil {
+	if _, err := _w.Write(_n0mktrrar3q4k6kmgv9ql8r38d5ptmj004dqv0ucd926h9ov0rl0); err != nil {
 		return err
 	}
 //line index.html:90
 	for _, fruit := range fruits {
-		if _, err := w.Write(_u7gqvvem62261dt1j9p6b7ql4n71iv9vds5b66o9fnqe1vv1uf3g); err != nil {
+		_ = fruit
+		if _, err := _w.Write(_u7gqvvem62261dt1j9p6b7ql4n71iv9vds5b66o9fnqe1vv1uf3g); err != nil {
 			return err
 		}
 //line index.html:90
-		if err := render.Text(w, fruit); err != nil {
+		if err := render.Text(_w, fruit); err != nil {
 			return err
 		}
-		if _, err := w.Write(_2r9972n9hj841mpqco77bjcufn7gtu387u4ppfrdmdeb5tgjm380); err != nil {
+		if _, err := _w.Write(_2r9972n9hj841mpqco77bjcufn7gtu387u4ppfrdmdeb5tgjm380); err != nil {
 			return err
 		}
 	}
-	if _, err := w.Write(_2723cljc5ifm91pcjbmbumt0o4dtcoetcuaej31nqnhte1b9m0q0); err != nil {
+	if _, err := _w.Write(_2723cljc5ifm91pcjbmbumt0o4dtcoetcuaej31nqnhte1b9m0q0); err != nil {
 		return err
 	}
 //line index.html:101
 	for i, lang := range langs {
-		if _, err := w.Write(_9kusj6sf9bhjdehks3er0rc4fqidtq7h43eefduiqcg39llg3lrg); err != nil {
+		_ = lang
+		_ = i
+		if _, err := _w.Write(_9kusj6sf9bhjdehks3er0rc4fqidtq7h43eefduiqcg39llg3lrg); err != nil {
 			return err
 		}
 //line index.html:101
-		if err := render.Text(w, i); err != nil {
+		if err := render.Text(_w, i); err != nil {
 			return err
 		}
-		if _, err := w.Write(_8m12ul50q3g31tqmj34iaboj8mc2st1sihj80o28ul14cupskjsg); err != nil {
+		if _, err := _w.Write(_8m12ul50q3g31tqmj34iaboj8mc2st1sihj80o28ul14cupskjsg); err != nil {
 			return err
 		}
 //line index.html:101
-		if err := render.Text(w, lang); err != nil {
+		if err := render.Text(_w, lang); err != nil {
 			return err
 		}
-		if _, err := w.Write(_2r9972n9hj841mpqco77bjcufn7gtu387u4ppfrdmdeb5tgjm380); err != nil {
+		if _, err := _w.Write(_2r9972n9hj841mpqco77bjcufn7gtu387u4ppfrdmdeb5tgjm380); err != nil {
 			return err
 		}
 	}
-	if _, err := w.Write(_grel44p4ck5bu7hemsfrenjiahred1vcbn5i4af350nhr5a6fm7g); err != nil {
+	if _, err := _w.Write(_grel44p4ck5bu7hemsfrenjiahred1vcbn5i4af350nhr5a6fm7g); err != nil {
 		return err
 	}
 	return nil

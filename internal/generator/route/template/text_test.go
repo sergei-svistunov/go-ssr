@@ -19,7 +19,7 @@ func TestTextParse(t *testing.T) {
 		{input: "value in array", insideExpr: true},
 		{input: "{{ (a == 10) && (b > 'abc') || (d - e * 5) != (!b) && c }}"},
 		{input: "{{ a.Field }}"},
-		{input: "{{ a.func(123, '345', b) }}"},
+		{input: "{{ a.Func(123, '345', b) }}"},
 		{input: "{{$ '<h1>Raw html</h1>' }}"},
 		{input: "{{$ a }} {{$ '<h1>Raw html</h1>' }}"},
 		{input: "{{ a[10] }}"},

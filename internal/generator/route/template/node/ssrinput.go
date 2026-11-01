@@ -50,7 +50,7 @@ func (n *SsrInput) WriteGoCode(buf *gobuf.GoBuf) {
 		buf.WriteStringLn("if input.HasError() {")
 		buf.WriteStringLn("	v = input.GetFormValue()")
 		buf.WriteStringLn("}")
-		buf.WriteStringLn("if err := render.Attr(w, v); err != nil {")
+		buf.WriteStringLn("if err := render.Attr(_w, v); err != nil {")
 		buf.WriteStringLn("return err")
 		buf.WriteStringLn("}")
 		buf.WritePrintString(`"`)

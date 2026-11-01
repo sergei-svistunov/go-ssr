@@ -164,6 +164,9 @@ func startApp(ctx context.Context, p *project) (*app, error) {
 	}
 	setProcessGroup(cmd)
 	cmd.Cancel = func() error { return terminateGroup(cmd) }
+	// An application that ignores the signal keeps the output pipes open;
+	// past the grace, Wait returns without them.
+	cmd.WaitDelay = stopGrace
 
 	a := &app{
 		dir:     p.cfg.Dir,
@@ -181,6 +184,9 @@ func startApp(ctx context.Context, p *project) (*app, error) {
 
 	go func() {
 		err := cmd.Wait()
+		// Wait may have returned at WaitDelay with the application still
+		// running in the group.
+		_ = killGroup(cmd)
 
 		a.mu.Lock()
 		a.exited = true

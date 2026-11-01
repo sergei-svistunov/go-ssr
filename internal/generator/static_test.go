@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"mime"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/sergei-svistunov/go-ssr/internal/generator/route"
 )
@@ -428,6 +430,137 @@ func readAllAndClose(c interface {
 				return buf.Bytes(), nil
 			}
 			return buf.Bytes(), err
+		}
+	}
+}
+
+func TestGenStaticFiles_ManifestIgnoresMtime(t *testing.T) {
+	files := map[string]string{"a.css": "body{color:red}", "b.js": "var b=1;"}
+	manifestOf := func(mtime time.Time) []byte {
+		t.Helper()
+		g := setupStaticFixture(t, files)
+		for name := range files {
+			if err := os.Chtimes(filepath.Join(g.webDir, "dist", name), mtime, mtime); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, _, err := g.genStaticFiles(); err != nil {
+			t.Fatal(err)
+		}
+		data, err := os.ReadFile(filepath.Join(g.webDir, "pages", staticEmbedDirName, manifestName))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return data
+	}
+
+	first := manifestOf(time.Date(2020, 1, 2, 3, 4, 5, 6, time.UTC))
+	second := manifestOf(time.Date(2024, 6, 7, 8, 9, 10, 11, time.UTC))
+	if !bytes.Equal(first, second) {
+		t.Fatalf("manifests differ:\n%s\n%s", first, second)
+	}
+	if bytes.Contains(first, []byte("mtime")) {
+		t.Fatalf("manifest records mtime:\n%s", first)
+	}
+}
+
+func TestGenStaticFiles_ReadsManifestWithMtime(t *testing.T) {
+	g := setupStaticFixture(t, map[string]string{"keep.css": "keep", "change.css": "old"})
+	if _, _, err := g.genStaticFiles(); err != nil {
+		t.Fatal(err)
+	}
+	embDir := filepath.Join(g.webDir, "pages", staticEmbedDirName)
+	manifestPath := filepath.Join(embDir, manifestName)
+	var m map[string]map[string]any
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(data, &m); err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range m {
+		e["mtime"] = 1234567890
+		e["contentType"] = "application/x-old"
+	}
+	data, err = json.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(manifestPath, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	keepPath := filepath.Join(embDir, "keep.css.gz")
+	old := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+	if err := os.Chtimes(keepPath, old, old); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(g.webDir, "dist", "change.css"), []byte("new"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := g.genStaticFiles(); err != nil {
+		t.Fatal(err)
+	}
+
+	info, err := os.Stat(keepPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !info.ModTime().Equal(old) {
+		t.Fatalf("unchanged file was re-staged")
+	}
+	if got := readStagedGzip(t, filepath.Join(embDir, "change.css.gz")); got != "new" {
+		t.Fatalf("changed file staged as %q, want %q", got, "new")
+	}
+	data, err = os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(data, []byte("mtime")) {
+		t.Fatalf("manifest still records mtime:\n%s", data)
+	}
+	if got := loadManifest(manifestPath)["keep.css.gz"].ContentType; got != "text/css; charset=utf-8" {
+		t.Fatalf("kept entry has content type %q", got)
+	}
+}
+
+func readStagedGzip(t *testing.T, p string) string {
+	t.Helper()
+	gz, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gzr, err := gzip.NewReader(bytes.NewReader(gz))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := readAllAndClose(gzr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(got)
+}
+
+func TestStaticContentType_FixedTable(t *testing.T) {
+	if err := mime.AddExtensionType(".woff2", "application/x-host"); err != nil {
+		t.Fatal(err)
+	}
+	if err := mime.AddExtensionType(".xyz", "text/x-host"); err != nil {
+		t.Fatal(err)
+	}
+	cases := map[string]string{
+		".js":    "text/javascript; charset=utf-8",
+		".css":   "text/css; charset=utf-8",
+		".map":   "application/json",
+		".woff2": "font/woff2",
+		".ico":   "image/x-icon",
+		".xyz":   "application/octet-stream",
+		"":       "application/octet-stream",
+	}
+	for ext, want := range cases {
+		if got := staticContentType(ext); got != want {
+			t.Errorf("staticContentType(%q) = %q, want %q", ext, got, want)
 		}
 	}
 }

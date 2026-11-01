@@ -87,6 +87,30 @@ func TestAnalyze_ParseErrorsCarryPositions(t *testing.T) {
 			wantMsg:  "unknown GoSSR attribute",
 		},
 		{
+			name:     "unknown attribute on ssr:form",
+			template: "<div>\n\n<ssr:form name=\"f\" ssr:for=\"x in xs\"></ssr:form>\n</div>",
+			wantLine: 3,
+			wantMsg:  "unknown GoSSR attribute \"ssr:for\" on <ssr:form>",
+		},
+		{
+			name:     "form in a live block",
+			template: "<ssr:var name=\"on\" type=\"bool\" reactive=\"true\"/>\n<div>\n<ssr:form name=\"f\" ssr:if=\"on\"></ssr:form>\n</div>",
+			wantLine: 3,
+			wantMsg:  "a live update cannot render a form",
+		},
+		{
+			name:     "reserved loop item",
+			template: "<ssr:var name=\"xs\" type=\"[]int\"/>\n<ul>\n<li ssr:for=\"render in xs\">x</li>\n</ul>",
+			wantLine: 3,
+			wantMsg:  `the ssr:for item "render" is a name the generated code uses; pick another name`,
+		},
+		{
+			name:     "form read in a live site",
+			template: "<ssr:var name=\"on\" type=\"bool\" reactive=\"true\"/>\n<ssr:form name=\"f\">\n<p ssr:if=\"on\">{{ form.GetError() }}</p>\n</ssr:form>",
+			wantLine: 3,
+			wantMsg:  "a live update has no form values",
+		},
+		{
 			name:     "misplaced else",
 			template: "<div>\n<p ssr:else>x</p>\n</div>",
 			wantLine: 2,

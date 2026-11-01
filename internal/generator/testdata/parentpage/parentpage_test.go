@@ -3,6 +3,8 @@ package app_test
 import (
 	"net/http"
 	"net/http/httptest"
+	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -59,5 +61,30 @@ func TestParentPage(t *testing.T) {
 
 	if w := get("/teams"); w.Code != http.StatusNotFound {
 		t.Errorf("GET /teams = %d, want 404", w.Code)
+	}
+}
+
+// The members page writes the scripts of the root layout and its own, each
+// once: the webpack runtime that every entry lists comes first.
+func TestPageScripts(t *testing.T) {
+	h, err := pages.NewSsrHandler(mux.Options{CSRFKey: []byte(strings.Repeat("k", 32))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/teams/red/members", nil))
+
+	var got []string
+	for _, m := range regexp.MustCompile(`<script defer="defer" src="([^"]+)"></script>`).FindAllStringSubmatch(w.Body.String(), -1) {
+		got = append(got, m[1])
+	}
+	want := []string{
+		"/static/js/runtime.1.js",
+		"/static/js/vendors.1.js",
+		"/static/js/main.1.js",
+		"/static/js/pages/teams/_team_/members.1.js",
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("GET /teams/red/members scripts = %q, want %q", got, want)
 	}
 }

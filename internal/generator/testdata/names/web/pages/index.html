@@ -1,0 +1,22 @@
+<!doctype html>
+<html>
+<body>
+<ssr:var name="w" type="[]string"/>
+<ssr:var name="c" type="int"/>
+<ssr:var name="data" type="int" reactive="true"/>
+<ssr:var name="unused" type="string"/>
+<ul id="pairs"><li ssr:for="c, w in w">{{ c }}={{ w }}</li></ul>
+<p id="stars"><b ssr:for="item in w">*</b><i ssr:for="i, item in w">*</i></p>
+<p id="block" ssr:if="data > c">{{ data }} &gt; {{ c }}</p>
+<ssr:form name="note" enctype="multipart/form-data">
+    <p ssr:for="c in w"><ssr:input name="text" class="{{ c }} {{ input.HasError() ? 'bad' : '' }}"/></p>
+    <ssr:select name="pick"/>
+    <ssr:select name="tags" multiple/>
+    <ssr:input name="flags" type="checkbox" value="a"/>
+    <ssr:input name="flags" type="checkbox" value="b"/>
+    <ssr:input name="photo" type="file"/>
+    <ssr:input name="photos" type="file" multiple/>
+    <p id="live">{{ data }}</p>
+</ssr:form>
+</body>
+</html>

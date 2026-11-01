@@ -1,0 +1,22 @@
+{
+  "outputPath": "static",
+  "entrypoints": {
+    "main": [
+      "/static/js/runtime.1.js",
+      "/static/js/vendors.1.js",
+      "/static/css/main.1.css",
+      "/static/js/main.1.js"
+    ],
+    "pages/teams/_team_": [
+      "/static/js/runtime.1.js",
+      "/static/js/vendors.1.js",
+      "/static/js/pages/teams/_team_.1.js"
+    ],
+    "pages/teams/_team_/members": [
+      "/static/js/runtime.1.js",
+      "/static/js/vendors.1.js",
+      "/static/js/pages/teams/_team_/members.1.js"
+    ]
+  },
+  "images": {}
+}

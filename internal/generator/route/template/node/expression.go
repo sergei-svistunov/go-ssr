@@ -42,7 +42,7 @@ func (n *Expression) WriteInnerGoCode(buf *gobuf.GoBuf) {
 }
 
 func (n *Expression) writeValue(buf *gobuf.GoBuf) {
-	buf.WriteString("if err := " + n.Esc.Func() + "(w, ")
+	buf.WriteString("if err := " + n.Esc.Func() + "(_w, ")
 	n.Value.WriteGoCode(buf)
 	buf.WriteStringLn("); err != nil {")
 	buf.WriteStringLn("return err")

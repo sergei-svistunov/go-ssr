@@ -834,12 +834,13 @@ func (g *Generator) genRoute(rPath string, r *route.Route) error {
 	buf.WriteStringLn("}")
 	buf.WriteString("\n")
 
-	buf.WriteStringLn("func (c *ssrState) Write(w io.Writer) error {")
+	// Write and the block functions name their own values with a leading "_", which no
+	// template name has, so a template's names never shadow them.
+	buf.WriteStringLn("func (_c *ssrState) Write(_w io.Writer) error {")
 	for _, variable := range routeVariables {
 		buf.WriteStringLn(variable.FilePos())
-		buf.WriteString(variable.Name)
-		buf.WriteString(":=c.RouteData.")
-		buf.WriteStringLn(getExportedName(variable.Name))
+		buf.WriteStringLn(variable.Name + ":=_c.RouteData." + getExportedName(variable.Name))
+		buf.WriteStringLn("_ = " + variable.Name)
 	}
 	r.Template().WriteGoCode(buf)
 	buf.WriteStringLn("return nil")
@@ -877,13 +878,15 @@ func (g *Generator) genRouteDP(rPath string, r *route.Route) error {
 
 	hasClientWritable := len(clientWritableVars(r.Template().GetVariables())) > 0
 	calls := r.Template().GetCalls()
+	forms := r.Template().GetForms()
+	usesHTTP := len(calls) > 0 || len(forms) > 0
 
 	buf.WriteStringLn("import (")
 	buf.WriteQuotedString("context", "\n")
 	if hasClientWritable {
 		buf.WriteQuotedString("errors", "\n")
 	}
-	if len(calls) > 0 {
+	if usesHTTP {
 		buf.WriteQuotedString("net/http", "\n")
 	}
 	buf.WriteString("\n")
@@ -950,6 +953,21 @@ func (g *Generator) genRouteDP(rPath string, r *route.Route) error {
 			buf.WriteStringLn("}")
 			buf.WriteString("\n")
 		}
+	}
+
+	for _, f := range forms {
+		values := getFormValuesTypeName(f.Name)
+		buf.WriteString("\n")
+		buf.WriteStringLn("// " + getFormInitMethod(f.Name) + " fills the form " + f.Name + " before the page renders.")
+		buf.WriteStringLn("func (p *DP) " + getFormInitMethod(f.Name) + "(ctx context.Context, r *mux.Request, w mux.ResponseWriter, data *" + values + ") error {")
+		buf.WriteStringLn("	return nil")
+		buf.WriteStringLn("}")
+		buf.WriteString("\n")
+		buf.WriteStringLn("// " + getFormProcessMethod(f.Name) + " handles a submission of the form " + f.Name + " that passed its checks.")
+		buf.WriteStringLn("// The generated default refuses every submission — write it to process the form.")
+		buf.WriteStringLn("func (p *DP) " + getFormProcessMethod(f.Name) + "(ctx context.Context, r *mux.Request, w mux.ResponseWriter, data *" + values + ") error {")
+		buf.WriteStringLn("	return mux.NewHttpError(http.StatusForbidden, http.StatusText(http.StatusForbidden))")
+		buf.WriteStringLn("}")
 	}
 
 	for _, c := range calls {
@@ -1075,12 +1093,7 @@ func getRoutePackageAlias(rPath string) string {
 	return "route" + pathToVariable(rPath)
 }
 
-func getExportedName(name string) string {
-	if name == "" {
-		return ""
-	}
-	return strings.ToUpper(string(name[0])) + name[1:]
-}
+func getExportedName(name string) string { return template.ExportedName(name) }
 
 // zeroValueForType returns the Go zero-value literal for a type used in
 // Validate<VarName> stubs.

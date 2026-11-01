@@ -298,18 +298,36 @@ func TestFailedTemplateSendsNoHalfPage(t *testing.T) {
 	}
 }
 
-func TestFrameWritesEachAssetOnce(t *testing.T) {
-	root, leaf := &fakeState{}, &fakeState{}
-	root.SetAssets([]string{"<a>", "<b>"})
-	leaf.SetAssets([]string{"<b>", "<c>"})
-	root.SetChild(leaf)
+// Each <ssr:assets/> on a page's path is one WriteAssets call; together they
+// write every tag once, whichever renders first.
+func TestFrameWritesEachAssetOncePerResponse(t *testing.T) {
 	for _, tc := range []struct {
-		state *fakeState
-		want  string
-	}{{root, "<a><b><c>"}, {leaf, "<b><c>"}} {
+		order []int // 0 the root layout, 1 the nested layout
+		want  []string
+	}{
+		{[]int{0, 1}, []string{"<a><b><c><d>", ""}},
+		{[]int{1, 0}, []string{"<b><c><d>", "<a>"}},
+	} {
+		root, layout, leaf := &fakeState{}, &fakeState{}, &fakeState{}
+		root.SetAssets([]string{"<a>", "<b>"})
+		layout.SetAssets([]string{"<b>", "<c>"})
+		leaf.SetAssets([]string{"<c>", "<d>"})
+		root.SetChild(layout)
+		layout.SetChild(leaf)
+		for i, s := range tc.order {
+			var b strings.Builder
+			if err := []*fakeState{root, layout}[s].WriteAssets(&b); err != nil || b.String() != tc.want[i] {
+				t.Errorf("order %v: call %d wrote %q, %v; want %q", tc.order, i+1, b.String(), err, tc.want[i])
+			}
+		}
+	}
+
+	page := &fakeState{} // a single-route page: SetChild never runs
+	page.SetAssets([]string{"<a>"})
+	for i, want := range []string{"<a>", ""} {
 		var b strings.Builder
-		if err := tc.state.WriteAssets(&b); err != nil || b.String() != tc.want {
-			t.Errorf("WriteAssets = %q, %v; want %q", b.String(), err, tc.want)
+		if err := page.WriteAssets(&b); err != nil || b.String() != want {
+			t.Errorf("single route: call %d wrote %q, %v; want %q", i+1, b.String(), err, want)
 		}
 	}
 }

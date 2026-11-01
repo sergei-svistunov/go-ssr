@@ -101,8 +101,8 @@ Live values:
 - A request segment shaped like a parameter folder's name, such as `/users/_userId_`, is always a value of the
   parameter. An empty segment (`/users//info`, `//`) answers 404.
 - `{{$ }}` still writes any value unescaped, but only in element text (E13, E08, E12).
-- Inline `<script>` bodies, `<style>` elements and `style` attributes are refused (E16, E10): the default
-  Content-Security-Policy blocks them.
+- Non-blank inline `<script>` bodies, `<style>` elements, empty ones included, and `style` attributes are
+  refused (E16, E10): the default Content-Security-Policy blocks them.
 - Binding keys: only a site that renders exactly one variable keeps the variable's name as its key. Any other site
   gets a hash of its source, and a `{{$ }}` site never shares a key with a `{{ }}` site.
 - The generated `__ssr_gen__.ts`: `ReadVars` entries are `string`, the markup the server rendered, so code that did
@@ -161,11 +161,61 @@ Live values:
   runs webpack and generates the Go code after. It rewrites `__ssr_gen__.ts` only when its content changes, and a
   changed one makes the assets stale.
 - A form's `Process` no longer runs before a parent layout's checks.
+- `pages/static_embed/.etags.json` no longer records file times, so the same sources give a byte-identical
+  manifest on every build. A manifest written by an earlier version is still read.
+- Static assets get their content types from a fixed table of the file types webpack emits instead of the
+  host's MIME database, so every host generates the same `.etags.json` and `ssrstaticfiles_gen.go`. Source maps
+  are served as `application/json`; a type not in the table as `application/octet-stream`.
 - Scaffolding refuses a `depsPackage` that climbs out of the module, such as `example.com/app/../x`, which wrote
   outside the project directory. The scaffold, the generator and the MCP route scaffold write through `os.Root`
   and never follow a symbolic link out of the project; generated Go files get mode 0644 instead of 0755.
 - A `Subscribe` that returns nil leaves the connection open; before, the connection was closed.
 - On a live connection and in a page call, `r.URLParam` and `r.URL` are the page's, query included.
+- When the context of an application started through the MCP server ends, the wait for it ends within the
+  3-second stop grace even if it ignores the terminate signal or a child holds its output open, and its process
+  group is killed then.
+- A page call that returns its context's cancellation after its connection ended is not logged; a
+  `context.Canceled` returned while the connection lives still is.
+- Every frame the server sends on a live connection — `init`, `ack`, `err`, `result`, `fail` as well as `patch`
+  — has the 10-second slow-client limit; before, only patches had it, and a client that sent writes and never
+  read held the connection's goroutines until the 10-minute limit.
+- `ssr:if`, `ssr:else-if` and `ssr:else` on `<ssr:form>` work as on any element; before, the generator wrote the
+  attribute into the `<form>` and the form always rendered. An `ssr:` attribute that a GoSSR tag does not take,
+  such as `ssr:for` on `<ssr:form>` or `ssr:if` on `<ssr:input>` or `<ssr:content/>`, is a generator error at
+  its line instead of being written into the page or dropped. An `<ssr:form>` in a block that a live variable
+  renders again is a generator error at its line instead of generated code that does not compile.
+- Two of `ssr:if`, `ssr:else-if`, `ssr:else` and `ssr:for` on one element are a generator error at its line; before,
+  the element was added to the page once for each, so `<p ssr:if="a" ssr:for="x in xs">` rendered a loop and,
+  separately, a condition.
+- A name in a template no longer breaks the generated code. The generated code names its own values in a
+  page's code with a leading `_`, so `ssr:for="w in items"` and variables or loop items named `c` or `data`
+  render as written; before, they shadowed the writer, the page's state or the route data, and the generated
+  code did not compile while the generator reported success. A name the generated code cannot take — one that
+  starts with `_`, a Go keyword, `in`, a name Go predeclares, `form`, `input`, `textarea`, `mux` or `render` — is
+  a generator error at its line. So are two variables, two forms or two fields of a form that become one Go name,
+  a form or field name that is not a Go name, a field named after a method of `form.BaseFormValues` such as
+  `getError`, which hid the method from the template, one name for an `ssr:for` index and item, and a Go keyword
+  or a name starting with `_` read in an expression. A variable, loop item or loop index the template never reads
+  compiles.
+- A live value inside an `<ssr:form>` is live; before, it rendered once and never changed. Inside a form, a live
+  site that reads the form or holds a field, and a form or field attribute that reads a live variable, are
+  generator errors at their line, since a live update has no form values; so are `<ssr:content/>` and
+  `<ssr:assets/>` in a live block, which generated code that did not compile.
+- The `dataprovider.go` written for a new route with a form has its `Init<Form>` and `Process<Form>`, and
+  `Process<Form>` refuses with 403 until it is written; before, the stub lacked them and did not compile.
+- A textarea keeps a value that starts with a newline. HTML parsing drops one newline right after `<textarea>`,
+  so the value lost it on every round trip; the generator now writes a newline after the start tag of every
+  textarea, `<ssr:textarea>` and a plain `<textarea>` alike, and a plain `<textarea>` whose template text starts
+  with a newline still reads as before.
+- The generated `Set<Name>` methods of a route hold one lock across the assignment, the renders and the
+  enqueues; before, two variables of one binding site set from two goroutines raced, and a client writing one of
+  them could start the race.
+- A page whose layout and page both have live values or page calls opens one WebSocket; before, it opened one
+  per route. The scaffolded `webpack.config.js` sets `optimization.runtimeChunk: 'single'`, so the page's entries
+  share one webpack runtime and run one copy of `gossr-runtime`, whose connection all the page's routes share.
+- A page writes each asset tag once however many of its routes carry `<ssr:assets/>`; before, a nested layout
+  with its own `<ssr:assets/>` wrote the runtime chunk again, so the page ran `gossr-runtime` twice and opened
+  two WebSockets.
 
 ### Migration from v0.6.0
 
@@ -199,4 +249,11 @@ Live values:
 | `(*reactive.Conn).HandleWrites`, `ReceiveWriteMsg` | `(*reactive.Conn).ReadFrames(ctx, onWrite, onCall)` |
 | a client-writable variable of a `render` or generic type | a `string` or a concrete struct |
 | `ReadVars` typed like the Go variable | `string`: parse what `ssr.get()` and `ssr.on()` give |
+| a webpack config without `runtimeChunk` opens one WebSocket per route of a page | add `runtimeChunk: 'single',` to `optimization` in `webpack.config.js` |
 | gossr-runtime 0.1.x | gossr-runtime 0.2.0 |
+| `ssr:if` and `ssr:for` (or another pair of them) on one element | put one on an element inside the other |
+| an `ssr:` attribute on a GoSSR tag is written into the page or ignored | a generator error, except `ssr:if`, `ssr:else-if` and `ssr:else` on `<ssr:form>`; remove it or move it to an element around the tag |
+| a variable, loop item or loop index named with a leading `_`, a Go keyword or predeclared name, `in`, `form`, `input`, `textarea`, `mux` or `render` | a generator error; rename it |
+| two variables, two forms or two fields of a form whose names differ only in the case of the first letter; a form or field name that is not a Go name | a generator error; rename one |
+| a form field named after a method of `form.BaseFormValues` (`getError`, `hasError`, `setError`, `isValidated`, `markValidated`, `setElements`, `getCSRFToken`) | a generator error; rename it |
+| a live value inside `<ssr:form>` renders once | it is live; a live site there that reads the form is a generator error, so keep the live value and the form's values in separate sites |

@@ -29,9 +29,9 @@ import (
 	"github.com/sergei-svistunov/go-ssr/internal/wsorigin"
 )
 
-// slowClientTimeout is the maximum time the send goroutine will wait for
-// the WS write buffer to drain before closing the connection.
-const slowClientTimeout = 10 * time.Second
+// slowClientTimeout is the longest a frame may wait to be written before the
+// connection is closed as a slow client.
+var slowClientTimeout = 10 * time.Second
 
 // ----------------------------------------------------------------------------
 // Wire-protocol frame types
@@ -200,14 +200,11 @@ func NewConn(ctx context.Context, cancel context.CancelFunc, ws *websocket.Conn)
 	}
 }
 
-// SendJSON sends a single JSON-encoded value as a WebSocket text frame.
-// It is safe for concurrent use.
+// SendJSON sends a single JSON-encoded value as a WebSocket text frame. A
+// frame the client does not accept within 10 seconds closes the connection
+// with 1008 "slow client". It is safe for concurrent use.
 func (c *Conn) SendJSON(v any) error {
-	data, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-	return c.ws.Write(c.ctx, websocket.MessageText, data)
+	return c.sendWithTimeout(v)
 }
 
 // Enqueue updates the pending patch for the given binding key and signals the
@@ -301,10 +298,10 @@ func (c *Conn) flushDirty() error {
 }
 
 // sendWithTimeout encodes v as JSON and sends it as a text frame, applying the
-// slow-client timeout. If the write blocks for more than slowClientTimeout,
-// the connection is closed with WS close code 1008 (policy violation),
-// c.cancel() is called to terminate the send loop, and an error is returned
-// so the send loop exits cleanly.
+// slow-client timeout. If the write, including its wait for other writes,
+// takes more than slowClientTimeout, the connection is closed with WS close
+// code 1008 (policy violation), c.cancel() is called to end the connection's
+// hooks and the send loop, and an error is returned.
 func (c *Conn) sendWithTimeout(v any) error {
 	data, err := json.Marshal(v)
 	if err != nil {

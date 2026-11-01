@@ -55,7 +55,7 @@ func (n *SsrSelect) WriteGoCode(buf *gobuf.GoBuf) {
 		buf.WriteStringLn("isSelected := func(v " + n.GoType + ") bool { return v == input.GetValue() }")
 	}
 	buf.WriteStringLn("for _, o := range input.GetOptions() {")
-	buf.WriteStringLn("	if err := o.WriteHtml(w, isSelected); err != nil {")
+	buf.WriteStringLn("	if err := o.WriteHtml(_w, isSelected); err != nil {")
 	buf.WriteStringLn("		return err")
 	buf.WriteStringLn("	}")
 	buf.WriteStringLn("}")

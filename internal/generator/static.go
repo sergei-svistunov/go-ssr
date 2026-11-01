@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
-	"mime"
 	"os"
 	"path"
 	"path/filepath"
@@ -45,6 +44,38 @@ var skipCompressExt = map[string]bool{
 	".mp3":   true,
 }
 
+// staticContentTypes are the content types of the files webpack emits. They are
+// fixed here rather than read from the host's MIME database, so every host
+// generates the same manifest and catalog.
+var staticContentTypes = map[string]string{
+	".js":    "text/javascript; charset=utf-8",
+	".css":   "text/css; charset=utf-8",
+	".map":   "application/json",
+	".json":  "application/json",
+	".svg":   "image/svg+xml",
+	".png":   "image/png",
+	".jpg":   "image/jpeg",
+	".jpeg":  "image/jpeg",
+	".gif":   "image/gif",
+	".webp":  "image/webp",
+	".ico":   "image/x-icon",
+	".woff":  "font/woff",
+	".woff2": "font/woff2",
+	".ttf":   "font/ttf",
+	".txt":   "text/plain; charset=utf-8",
+	".html":  "text/html; charset=utf-8",
+	".wasm":  "application/wasm",
+}
+
+// staticContentType returns the content type for a lower-case extension,
+// application/octet-stream for one not in staticContentTypes.
+func staticContentType(ext string) string {
+	if ct, ok := staticContentTypes[ext]; ok {
+		return ct
+	}
+	return "application/octet-stream"
+}
+
 type staticFileEntry struct {
 	URLKey      string
 	EmbedPath   string
@@ -56,7 +87,6 @@ type staticFileEntry struct {
 }
 
 type manifestEntry struct {
-	Mtime       int64  `json:"mtime"`
 	SrcHash     string `json:"srcHash"`
 	ETag        string `json:"etag"`
 	ContentType string `json:"contentType"`
@@ -70,11 +100,10 @@ type manifestEntry struct {
 // embed.FS catalog plus an HTTP handler. Returns true if any files were
 // embedded so the caller can decide whether to wire up the static handler.
 //
-// Caching: an .etags.json manifest in the staging dir tracks per-file mtime
-// AND a SHA-256 of the source bytes. The fast path skips re-staging when both
-// match. Hashing the source is needed because mtime alone is not reliable —
-// git checkout, rsync -a, tar -p, unzip -X and Docker COPY all preserve
-// mtimes, so an unchanged mtime does not guarantee unchanged content.
+// Caching: an .etags.json manifest in the staging dir records a SHA-256 of
+// each source file's bytes. A file whose hash matches and whose staged copy
+// exists is not re-staged. The manifest holds no times, so byte-identical
+// sources always produce a byte-identical manifest.
 func (g *Generator) genStaticFiles() (bool, []string, error) {
 	pagesDir := filepath.Join(g.webDir, "pages")
 	embDir := filepath.Join(pagesDir, staticEmbedDirName)
@@ -126,16 +155,7 @@ func (g *Generator) genStaticFiles() (bool, []string, error) {
 		}
 		dstPath := filepath.Join(embDir, filepath.FromSlash(dstRel))
 
-		srcInfo, err := src.Stat(filepath.FromSlash(rel))
-		if err != nil {
-			return err
-		}
-		srcMtime := srcInfo.ModTime().UnixNano()
-
-		ct := mime.TypeByExtension(ext)
-		if ct == "" {
-			ct = "application/octet-stream"
-		}
+		ct := staticContentType(ext)
 
 		urlKey := urlPrefix + rel
 
@@ -147,7 +167,7 @@ func (g *Generator) genStaticFiles() (bool, []string, error) {
 		srcHash := hex.EncodeToString(srcSum[:])
 
 		if cached, ok := manifest[dstRel]; ok && cached.SrcHash == srcHash && fileExists(dstPath) {
-			cached.Mtime = srcMtime
+			cached.ContentType = ct
 			newManifest[dstRel] = cached
 			entries = append(entries, staticFileEntry{
 				URLKey:      urlKey,
@@ -194,7 +214,6 @@ func (g *Generator) genStaticFiles() (bool, []string, error) {
 		storedSize := int64(len(stored))
 
 		newManifest[dstRel] = manifestEntry{
-			Mtime:       srcMtime,
 			SrcHash:     srcHash,
 			ETag:        etag,
 			ContentType: ct,
