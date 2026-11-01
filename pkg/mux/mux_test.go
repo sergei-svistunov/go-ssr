@@ -8,7 +8,6 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -102,9 +101,9 @@ func newMux(routes map[string]Route, opts Options) *Mux {
 	return m
 }
 
-func doGet(m *Mux, path string) *httptest.ResponseRecorder {
+func doGet(t testing.TB, m *Mux, path string) *httptest.ResponseRecorder {
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, path, nil)
+	r := httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil)
 	m.ServeHTTP(w, r)
 	return w
 }
@@ -116,7 +115,7 @@ func TestMux_StaticRoute(t *testing.T) {
 		"/home": testRoute{body: "home page"},
 	}, Options{})
 
-	w := doGet(m, "/home")
+	w := doGet(t, m, "/home")
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
@@ -134,7 +133,7 @@ func TestMux_NotFound(t *testing.T) {
 		"/home": testRoute{body: "home page"},
 	}, Options{})
 
-	w := doGet(m, "/nonexistent")
+	w := doGet(t, m, "/nonexistent")
 
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", w.Code)
@@ -150,7 +149,7 @@ func TestMux_DynamicParam(t *testing.T) {
 		}},
 	}, Options{})
 
-	w := doGet(m, "/users/john42")
+	w := doGet(t, m, "/users/john42")
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
@@ -166,7 +165,7 @@ func TestMux_DefaultSubRoute_Redirect(t *testing.T) {
 		"/users/list": testRoute{body: "user list"},
 	}, Options{})
 
-	w := doGet(m, "/users")
+	w := doGet(t, m, "/users")
 
 	if w.Code != http.StatusFound {
 		t.Fatalf("expected 302, got %d", w.Code)
@@ -182,7 +181,7 @@ func TestMux_TrailingSlashStripped(t *testing.T) {
 		"/home": testRoute{body: "home page"},
 	}, Options{})
 
-	w := doGet(m, "/home/")
+	w := doGet(t, m, "/home/")
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
@@ -194,7 +193,7 @@ func TestMux_RouteError_DefaultHandler(t *testing.T) {
 		"/fail": testRoute{err: NewHttpError(http.StatusForbidden, "forbidden")},
 	}, Options{})
 
-	w := doGet(m, "/fail")
+	w := doGet(t, m, "/fail")
 
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("expected 403, got %d", w.Code)
@@ -212,7 +211,7 @@ func TestMux_RouteError_CustomHandler(t *testing.T) {
 		},
 	})
 
-	w := doGet(m, "/fail")
+	w := doGet(t, m, "/fail")
 
 	if w.Code != http.StatusTeapot {
 		t.Fatalf("expected 418, got %d", w.Code)
@@ -227,7 +226,7 @@ func TestMux_Redirect_DefaultHandler(t *testing.T) {
 		"/old": testRoute{err: Redirect(http.StatusMovedPermanently, "/new")},
 	}, Options{})
 
-	w := doGet(m, "/old")
+	w := doGet(t, m, "/old")
 
 	if w.Code != http.StatusMovedPermanently {
 		t.Fatalf("expected 301, got %d", w.Code)
@@ -244,13 +243,13 @@ func TestMux_NestedRoutes(t *testing.T) {
 	}, Options{})
 
 	// Leaf route works
-	w := doGet(m, "/users/42")
+	w := doGet(t, m, "/users/42")
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
 
 	// Parent with children redirects
-	w = doGet(m, "/users")
+	w = doGet(t, m, "/users")
 	if w.Code != http.StatusFound {
 		t.Fatalf("expected 302 redirect, got %d", w.Code)
 	}
@@ -261,7 +260,7 @@ func TestMux_RootPath(t *testing.T) {
 		"/": testRoute{body: "root"},
 	}, Options{})
 
-	w := doGet(m, "/")
+	w := doGet(t, m, "/")
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
@@ -280,7 +279,7 @@ func TestMux_MultipleDynamicSegments(t *testing.T) {
 		}},
 	}, Options{})
 
-	w := doGet(m, "/users/alice/posts/99")
+	w := doGet(t, m, "/users/alice/posts/99")
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
@@ -300,7 +299,7 @@ func TestMux_StaticRouteOverDynamic(t *testing.T) {
 	}, Options{})
 
 	// Static match should take priority
-	w := doGet(m, "/users/admin")
+	w := doGet(t, m, "/users/admin")
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
@@ -309,7 +308,7 @@ func TestMux_StaticRouteOverDynamic(t *testing.T) {
 	}
 
 	// Dynamic still works for other values
-	w = doGet(m, "/users/john")
+	w = doGet(t, m, "/users/john")
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
@@ -323,7 +322,7 @@ func TestMux_GenericError_Returns500(t *testing.T) {
 		"/fail": testRoute{err: errors.New("unexpected")},
 	}, Options{})
 
-	w := doGet(m, "/fail")
+	w := doGet(t, m, "/fail")
 
 	if w.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500, got %d", w.Code)
@@ -338,7 +337,7 @@ func TestMux_ResponseWriter_HeadersFromRoute(t *testing.T) {
 		}},
 	}, Options{})
 
-	w := doGet(m, "/page")
+	w := doGet(t, m, "/page")
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
@@ -371,7 +370,7 @@ func TestMux_CookieAndOriginOptionsReachRoute(t *testing.T) {
 			InsecureCookies: insecure,
 			OriginPatterns:  patterns,
 		})
-		doGet(m, "/")
+		doGet(t, m, "/")
 		if got == nil {
 			t.Fatal("route was not called")
 		}
@@ -406,7 +405,7 @@ func TestMux_NoStoreSurvivesLaterRoutes(t *testing.T) {
 		"/":        noStoreRoute,
 		"/contact": cacheRoute("public, max-age=300"),
 	}, Options{})
-	w := doGet(m, "/contact")
+	w := doGet(t, m, "/contact")
 	if w.Code != http.StatusOK {
 		t.Fatalf("status %d", w.Code)
 	}
@@ -420,15 +419,15 @@ func TestMux_CacheControlLeftAloneWithoutNoStore(t *testing.T) {
 		"/":        cacheRoute("public, max-age=300"),
 		"/contact": testRoute{body: "ok"},
 	}, Options{})
-	w := doGet(m, "/contact")
+	w := doGet(t, m, "/contact")
 	if got := w.Header().Get("Cache-Control"); got != "public, max-age=300" {
 		t.Errorf("Cache-Control = %q, want the route's own value", got)
 	}
 }
 
-func doCrossSite(m *Mux, method string) (*httptest.ResponseRecorder, *http.Request) {
+func doCrossSite(t testing.TB, m *Mux, method string) (*httptest.ResponseRecorder, *http.Request) {
 	w := httptest.NewRecorder()
-	r := formRequest(method, "/", "form", "")
+	r := formRequest(t, method, "/", "form", "")
 	r.Header.Set("Sec-Fetch-Site", "cross-site")
 	r.Header.Set("Origin", "https://evil.example")
 	m.ServeHTTP(w, r)
@@ -439,7 +438,7 @@ func TestMux_RejectsCrossSiteUnsafeMethodsBeforeRouting(t *testing.T) {
 	for _, method := range []string{http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete} {
 		var got *Request
 		m := newMux(map[string]Route{"/": captureRoute{got: &got}}, Options{})
-		w, _ := doCrossSite(m, method)
+		w, _ := doCrossSite(t, m, method)
 		if w.Code != http.StatusForbidden {
 			t.Errorf("%s: status %d, want 403", method, w.Code)
 		}
@@ -452,7 +451,7 @@ func TestMux_RejectsCrossSiteUnsafeMethodsBeforeRouting(t *testing.T) {
 func TestMux_SafeMethodsAreNotOriginChecked(t *testing.T) {
 	var got *Request
 	m := newMux(map[string]Route{"/": captureRoute{got: &got}}, Options{})
-	w, _ := doCrossSite(m, http.MethodGet)
+	w, _ := doCrossSite(t, m, http.MethodGet)
 	if w.Code != http.StatusOK || got == nil {
 		t.Errorf("cross-site GET: status %d, route called %v", w.Code, got != nil)
 	}
@@ -461,7 +460,7 @@ func TestMux_SafeMethodsAreNotOriginChecked(t *testing.T) {
 func TestMux_ListedOriginMayUseUnsafeMethods(t *testing.T) {
 	var got *Request
 	m := newMux(map[string]Route{"/": captureRoute{got: &got}}, Options{OriginPatterns: []string{"evil.example"}})
-	w, _ := doCrossSite(m, http.MethodPost)
+	w, _ := doCrossSite(t, m, http.MethodPost)
 	if w.Code != http.StatusOK || got == nil {
 		t.Errorf("listed origin POST: status %d, route called %v", w.Code, got != nil)
 	}
@@ -469,9 +468,9 @@ func TestMux_ListedOriginMayUseUnsafeMethods(t *testing.T) {
 
 // doCrossSitePath sends a cross-site request with a valid form token, so
 // only the origin check can refuse it.
-func doCrossSitePath(m *Mux, method, path string) *httptest.ResponseRecorder {
+func doCrossSitePath(t testing.TB, m *Mux, method, path string) *httptest.ResponseRecorder {
 	w := httptest.NewRecorder()
-	r := formRequest(method, path, "form", "")
+	r := formRequest(t, method, path, "form", "")
 	r.Header.Set("Sec-Fetch-Site", "cross-site")
 	r.Header.Set("Origin", "https://evil.example")
 	m.ServeHTTP(w, r)
@@ -480,7 +479,7 @@ func doCrossSitePath(m *Mux, method, path string) *httptest.ResponseRecorder {
 
 func TestMux_CrossSiteToUnknownPathIs404(t *testing.T) {
 	m := newMux(map[string]Route{"/": testRoute{body: "ok"}}, Options{})
-	if w := doCrossSitePath(m, http.MethodPost, "/nope"); w.Code != http.StatusNotFound {
+	if w := doCrossSitePath(t, m, http.MethodPost, "/nope"); w.Code != http.StatusNotFound {
 		t.Errorf("status %d, want 404 (routing before the origin gate)", w.Code)
 	}
 }
@@ -493,11 +492,11 @@ func TestMux_AllowCrossSiteExemptsChosenRequests(t *testing.T) {
 	}, Options{
 		AllowCrossSite: func(r *Request) bool { return r.URL.Path == "/callback" },
 	})
-	if w := doCrossSitePath(m, http.MethodPost, "/callback"); w.Code != http.StatusOK || got == nil {
+	if w := doCrossSitePath(t, m, http.MethodPost, "/callback"); w.Code != http.StatusOK || got == nil {
 		t.Errorf("/callback: status %d, route called %v; want the hook to let it through", w.Code, got != nil)
 	}
 	got = nil
-	if w := doCrossSitePath(m, http.MethodPost, "/other"); w.Code != http.StatusForbidden || got != nil {
+	if w := doCrossSitePath(t, m, http.MethodPost, "/other"); w.Code != http.StatusForbidden || got != nil {
 		t.Errorf("/other: status %d, route called %v; want 403", w.Code, got != nil)
 	}
 }
@@ -521,7 +520,7 @@ func TestMux_AllowCrossSiteKeepsTheTokenCheck(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			*log = nil
-			r := httptest.NewRequest(http.MethodPost, "https://app.example"+tc.path, strings.NewReader("a=b"))
+			r := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "https://app.example"+tc.path, strings.NewReader("a=b"))
 			r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 			r.Header.Set("Sec-Fetch-Site", "cross-site")
 			r.Header.Set("Origin", "https://evil.example")
@@ -540,7 +539,7 @@ func TestMux_ErrorMessageIsPlainText(t *testing.T) {
 	m := newMux(map[string]Route{"/": hookRoute{guard: func(*Request) error {
 		return NewHttpError(http.StatusForbidden, "<b>x</b>")
 	}}}, Options{})
-	w := doGet(m, "/")
+	w := doGet(t, m, "/")
 	if got := w.Header().Get("Content-Type"); got != "text/plain; charset=utf-8" {
 		t.Errorf("Content-Type %q, want text/plain; charset=utf-8", got)
 	}
@@ -557,7 +556,7 @@ func TestMux_CrossSiteErrorHandlerSeesURLParams(t *testing.T) {
 			http.Error(w, err.Error(), http.StatusForbidden)
 		},
 	})
-	doCrossSitePath(m, http.MethodPost, "/users/42")
+	doCrossSitePath(t, m, http.MethodPost, "/users/42")
 	if seen["userId"] != "42" {
 		t.Errorf("URLParams = %v, want userId=42 resolved before the origin gate", seen)
 	}
@@ -572,7 +571,7 @@ func captureRefusalLog(t *testing.T) *bytes.Buffer {
 	routedRefusals = logThrottle{}
 	handshakeRefusals = logThrottle{}
 	t.Cleanup(func() {
-		log.SetOutput(os.Stderr)
+		log.SetOutput(io.Discard)
 		routedRefusals = logThrottle{}
 		handshakeRefusals = logThrottle{}
 	})
@@ -582,7 +581,7 @@ func captureRefusalLog(t *testing.T) *bytes.Buffer {
 func TestMux_CrossSiteRejectionIsLogged(t *testing.T) {
 	buf := captureRefusalLog(t)
 	m := newMux(map[string]Route{"/": testRoute{body: "ok"}}, Options{})
-	doCrossSitePath(m, http.MethodPost, "/")
+	doCrossSitePath(t, m, http.MethodPost, "/")
 	if !strings.Contains(buf.String(), "cross-site") || !strings.Contains(buf.String(), "evil.example") {
 		t.Errorf("expected a log line naming the origin, got %q", buf.String())
 	}
@@ -600,7 +599,7 @@ func TestMux_NoStoreSurvivesRedirectFromLaterRoute(t *testing.T) {
 		"/":        noStoreRoute,
 		"/contact": redirectingCacheRoute,
 	}, Options{})
-	w := doGet(m, "/contact")
+	w := doGet(t, m, "/contact")
 	if w.Code != http.StatusSeeOther {
 		t.Fatalf("status %d, want 303", w.Code)
 	}
@@ -612,7 +611,7 @@ func TestMux_NoStoreSurvivesRedirectFromLaterRoute(t *testing.T) {
 func TestMux_CrossSiteLogQuotesThePath(t *testing.T) {
 	buf := captureRefusalLog(t)
 	m := newMux(map[string]Route{"/": testRoute{body: "ok"}, "/x\nmux: forged": testRoute{body: "ok"}}, Options{})
-	doCrossSitePath(m, http.MethodPost, "/x%0Amux:%20forged")
+	doCrossSitePath(t, m, http.MethodPost, "/x%0Amux:%20forged")
 	if n := strings.Count(strings.TrimSuffix(buf.String(), "\n"), "\n"); n != 0 {
 		t.Errorf("a path with a newline forged %d extra log line(s): %q", n, buf.String())
 	}
@@ -628,7 +627,7 @@ func TestMux_NoStoreAppliesToDefaultRouteRedirect(t *testing.T) {
 		}},
 		"/users/info": testRoute{body: "ok"},
 	}, Options{})
-	w := doGet(m, "/users")
+	w := doGet(t, m, "/users")
 	if w.Code != http.StatusFound {
 		t.Fatalf("status %d, want 302", w.Code)
 	}
@@ -642,7 +641,7 @@ func TestMux_RequestOriginPatternsCannotAliasTheMux(t *testing.T) {
 	shared = append(shared, "dev.example")
 	var got *Request
 	m := newMux(map[string]Route{"/": captureRoute{got: &got}}, Options{OriginPatterns: shared})
-	doGet(m, "/")
+	doGet(t, m, "/")
 	if got == nil {
 		t.Fatal("route was not called")
 	}
@@ -653,7 +652,7 @@ func TestMux_RequestOriginPatternsCannotAliasTheMux(t *testing.T) {
 	got.OriginPatterns = append(got.OriginPatterns, "leaked.example")
 	var second *Request
 	m2 := newMux(map[string]Route{"/": captureRoute{got: &second}}, Options{OriginPatterns: shared})
-	doGet(m2, "/")
+	doGet(t, m2, "/")
 	if len(second.OriginPatterns) != 1 {
 		t.Errorf("a hook's append leaked into another request: %v", second.OriginPatterns)
 	}
@@ -669,7 +668,7 @@ func TestMux_RoutedRequestCarriesOptionsInItsContext(t *testing.T) {
 		InsecureCookies: true,
 		OriginPatterns:  []string{"dev.example"},
 	})
-	doGet(m, "/")
+	doGet(t, m, "/")
 	if rebuilt == nil {
 		t.Fatal("route was not called")
 	}
@@ -689,7 +688,7 @@ func TestMux_NoStoreSurvivesARebuiltRequest(t *testing.T) {
 			return nil
 		}},
 	}, Options{})
-	w := doGet(m, "/contact")
+	w := doGet(t, m, "/contact")
 	if got := w.Header().Get("Cache-Control"); got != "no-store" {
 		t.Errorf("Cache-Control = %q, want no-store: the mark was lost with the rebuilt Request", got)
 	}
@@ -697,7 +696,7 @@ func TestMux_NoStoreSurvivesARebuiltRequest(t *testing.T) {
 
 func TestRequest_NoStoreOutsideMuxIsANoop(t *testing.T) {
 	// Must not panic when the Request was not built by the mux.
-	NewRequest(httptest.NewRequest(http.MethodGet, "/", nil)).NoStore()
+	NewRequest(httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)).NoStore()
 }
 
 func TestMux_ArrivalSessionSurvivesARebuiltRequest(t *testing.T) {
@@ -712,7 +711,7 @@ func TestMux_ArrivalSessionSurvivesARebuiltRequest(t *testing.T) {
 		rebuilt = NewRequest(r.Request).CSRFSession()
 		return nil
 	}}}, Options{CSRFSession: func(*Request) string { return session }})
-	doGet(m, "/")
+	doGet(t, m, "/")
 
 	if direct != "anonymous" {
 		t.Errorf("arrival session on the mux's own Request = %q, want anonymous", direct)
@@ -725,7 +724,7 @@ func TestMux_ArrivalSessionSurvivesARebuiltRequest(t *testing.T) {
 func TestLogThrottle_CollapsesRepeats(t *testing.T) {
 	var buf bytes.Buffer
 	log.SetOutput(&buf)
-	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	t.Cleanup(func() { log.SetOutput(io.Discard) })
 
 	th := logThrottle{interval: time.Hour}
 	for i := 0; i < 5; i++ {
@@ -748,7 +747,7 @@ func TestMux_CrossSiteFloodDoesNotFloodTheLog(t *testing.T) {
 
 	m := newMux(map[string]Route{"/": testRoute{body: "ok"}}, Options{})
 	for i := 0; i < 20; i++ {
-		doCrossSitePath(m, http.MethodPost, "/")
+		doCrossSitePath(t, m, http.MethodPost, "/")
 	}
 	if n := strings.Count(buf.String(), "refused as cross-site"); n != 1 {
 		t.Errorf("20 refusals wrote %d log lines; an unauthenticated client must not drive log volume", n)
@@ -765,7 +764,7 @@ func TestMux_ArrivalSessionIsResolvedBeforeAnyHookRuns(t *testing.T) {
 		seen = r.CSRFSession()
 		return nil
 	}}}, Options{CSRFSession: func(*Request) string { return session }})
-	doGet(m, "/")
+	doGet(t, m, "/")
 	if seen != "anonymous" {
 		t.Errorf("arrival session = %q, want the one the request came in with", seen)
 	}
@@ -778,7 +777,7 @@ func TestRequest_SharedStateIsSafeAcrossGoroutines(t *testing.T) {
 	m := newMux(map[string]Route{"/": captureRoute{got: &got}}, Options{
 		CSRFSession: func(*Request) string { return "user-1" },
 	})
-	doGet(m, "/")
+	doGet(t, m, "/")
 	if got == nil {
 		t.Fatal("route was not called")
 	}

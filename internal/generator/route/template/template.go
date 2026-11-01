@@ -5,6 +5,7 @@ package template
 import (
 	"bytes"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"go/ast"
 	"go/parser"
@@ -167,7 +168,7 @@ func Parse(filename string, imageResolver func(string) string) (*Template, error
 		}
 		switch tokenType {
 		case html.ErrorToken:
-			if tok.Err() == io.EOF {
+			if errors.Is(tok.Err(), io.EOF) {
 				if err := checkLiveRCDATA(filename, rcdata, variables); err != nil {
 					return nil, err
 				}
@@ -276,12 +277,12 @@ func Parse(filename string, imageResolver func(string) string) (*Template, error
 					})
 				case "content":
 					contentNode = &node.SsrContent{
-						BaseNode: node.BaseNode{filename, curLine},
+						BaseNode: node.BaseNode{File: filename, Line: curLine},
 						Default:  attrsMap["default"],
 					}
 					stack.Top().AddChildren(contentNode)
 				case "assets":
-					stack.Top().AddChildren(&node.SsrAssets{node.BaseNode{filename, curLine}})
+					stack.Top().AddChildren(&node.SsrAssets{BaseNode: node.BaseNode{File: filename, Line: curLine}})
 				case "call":
 					call, err := parseCall(filename, curLine, attrs, stack, wrapped, calls)
 					if err != nil {
@@ -299,7 +300,7 @@ func Parse(filename string, imageResolver func(string) string) (*Template, error
 					}
 
 					formNode := &node.SsrForm{
-						BaseNode:   node.BaseNode{filename, curLine},
+						BaseNode:   node.BaseNode{File: filename, Line: curLine},
 						Name:       attrsMap["name"],
 						EncType:    attrsMap["enctype"],
 						Attributes: attributes,
@@ -364,7 +365,7 @@ func Parse(filename string, imageResolver func(string) string) (*Template, error
 						}
 
 						n = &node.SsrInput{
-							BaseNode:   node.BaseNode{filename, curLine},
+							BaseNode:   node.BaseNode{File: filename, Line: curLine},
 							Name:       attrsMap["name"],
 							Type:       attrsMap["type"],
 							Value:      attrsMap["value"],
@@ -378,14 +379,14 @@ func Parse(filename string, imageResolver func(string) string) (*Template, error
 						}
 					case "textarea":
 						n = &node.SsrTextarea{
-							BaseNode:   node.BaseNode{filename, curLine},
+							BaseNode:   node.BaseNode{File: filename, Line: curLine},
 							Name:       attrsMap["name"],
 							Attributes: attributes,
 						}
 						nodeType = FormElementTextarea
 					case "select":
 						n = &node.SsrSelect{
-							BaseNode:   node.BaseNode{filename, curLine},
+							BaseNode:   node.BaseNode{File: filename, Line: curLine},
 							Name:       attrsMap["name"],
 							GoType:     goType,
 							Attributes: attributes,
@@ -439,7 +440,7 @@ func Parse(filename string, imageResolver func(string) string) (*Template, error
 
 			tag := string(tagName)
 			n := &node.HtmlElement{
-				BaseNode: node.BaseNode{filename, curLine},
+				BaseNode: node.BaseNode{File: filename, Line: curLine},
 				TagName:  tag,
 				// The tokenizer reads the text after "<title/>" as the element's, as browsers do.
 				SelfClosed: tokenType == html.SelfClosingTagToken && !rawTags[tag],
@@ -487,9 +488,9 @@ func Parse(filename string, imageResolver func(string) string) (*Template, error
 						}
 						hasWrapper = true
 						stack.Top().AddChildren(&node.SsrCondition{
-							BaseNode: node.BaseNode{filename, curLine},
+							BaseNode: node.BaseNode{File: filename, Line: curLine},
 							Conditions: []node.SsrConditionData{{
-								BaseNode:  node.BaseNode{filename, curLine},
+								BaseNode:  node.BaseNode{File: filename, Line: curLine},
 								Condition: expr[0],
 								Body:      n,
 							}}},
@@ -527,7 +528,7 @@ func Parse(filename string, imageResolver func(string) string) (*Template, error
 								return nil, err
 							}
 							nodeCond.Conditions = append(nodeCond.Conditions, node.SsrConditionData{
-								BaseNode:  node.BaseNode{filename, curLine},
+								BaseNode:  node.BaseNode{File: filename, Line: curLine},
 								Condition: expr[0],
 								Body:      n,
 							})
@@ -589,7 +590,7 @@ func Parse(filename string, imageResolver func(string) string) (*Template, error
 			// Ignore comments
 		case html.DoctypeToken:
 			stack.Top().AddChildren(&node.HtmlRaw{
-				BaseNode: node.BaseNode{filename, curLine},
+				BaseNode: node.BaseNode{File: filename, Line: curLine},
 				Data:     string(tok.Raw()),
 			})
 		}
@@ -698,6 +699,12 @@ type tagAttr struct {
 // values are quoted.
 func readAttrs(tok *html.Tokenizer, hasAttrs bool, filename string, line int, tag string) ([]tagAttr, error) {
 	scanned := scanAttrs(tok.Raw())
+	// Browsers keep the first of two attributes with one name, other parsers the last.
+	for _, a := range scanned {
+		if a.dup {
+			return nil, syntaxErrf(filename, line, "<%s> has the attribute %s twice", tag, a.name)
+		}
+	}
 	var attrs []tagAttr
 	for more := hasAttrs; more; {
 		var k, v []byte
@@ -707,7 +714,6 @@ func readAttrs(tok *html.Tokenizer, hasAttrs bool, filename string, line int, ta
 	if len(attrs) != len(scanned) {
 		return nil, syntaxErrf(filename, line, "cannot read the attributes of <%s>", tag)
 	}
-	seen := make(map[string]bool, len(attrs))
 	for i := range attrs {
 		if attrs[i].key != scanned[i].name {
 			return nil, syntaxErrf(filename, line, "cannot read the attributes of <%s>", tag)
@@ -718,11 +724,6 @@ func readAttrs(tok *html.Tokenizer, hasAttrs bool, filename string, line int, ta
 		if attrs[i].key == bindRouteAttr {
 			return nil, syntaxErrf(filename, line, "<%s> sets %s, which the generator writes on elements with ssr:bind; remove it", tag, bindRouteAttr)
 		}
-		// Browsers keep the first of two attributes with one name, other parsers the last.
-		if seen[attrs[i].key] {
-			return nil, syntaxErrf(filename, line, "<%s> has the attribute %s twice", tag, attrs[i].key)
-		}
-		seen[attrs[i].key] = true
 		attrs[i].quoted = scanned[i].quoted
 	}
 	return attrs, nil

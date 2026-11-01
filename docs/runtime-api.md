@@ -129,6 +129,7 @@ type Options struct {
     CSRFSession            func(r *Request) string
     MaxLiveConnsPerSession int
     CSPSources             map[string][]string
+    MaxBodyBytes           int64
 }
 
 type ErrorHandler func(w http.ResponseWriter, r *Request, err error)
@@ -136,10 +137,13 @@ type ErrorHandler func(w http.ResponseWriter, r *Request, err error)
 func New(routes map[string]Route, opts Options) (*Mux, error)
 
 var MaxMultipartMemory int64 = 32 << 20
+
+const DefaultMaxBodyBytes = 10 << 20
 ```
 
 `NewSsrHandler` passes its options to `mux.New`, which returns an error for a `CSRFKey` shorter than 32 bytes,
-a malformed `OriginPatterns` entry or a `CSPSources` entry that would weaken the policy. `config` has an
+a malformed `OriginPatterns` entry, a `CSPSources` entry that would weaken the policy or a negative
+`MaxBodyBytes`. `config` has an
 example of each option.
 
 - `ErrorHandler` renders refusals and errors; without one, `*HttpError` is written as plain text with its
@@ -168,8 +172,11 @@ example of each option.
 - `MaxLiveConnsPerSession` caps the live connections open at once per session; a handshake beyond it is
   refused with 429. 0 means no limit.
 - `CSPSources` adds sources to directives of the Content-Security-Policy; see `security`.
+- `MaxBodyBytes` caps the body of a POST to a page, multipart included; 0 means `DefaultMaxBodyBytes`
+  (10 MiB). A body declared longer is refused with 413 `Request body too large.` before any hook runs, and one
+  that turns out longer when read is refused with 413 before any form hook.
 - `MaxMultipartMemory` is how much of a multipart form body is kept in memory; the rest goes to temporary
-  files.
+  files, within `MaxBodyBytes`.
 
 ### Writers used by generated code
 

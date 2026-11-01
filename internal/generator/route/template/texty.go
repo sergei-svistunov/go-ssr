@@ -536,25 +536,25 @@ yydefault:
 		yyDollar = yyS[yypt-1 : yypt+1]
 //line text.y:32
 		{
-			yyVAL.NodeContent = &node.Content{bn(yylex), []node.Node{&node.Text{bn(yylex), yyDollar[1].string}}}
+			yyVAL.NodeContent = &node.Content{BaseNode: bn(yylex), Children: []node.Node{&node.Text{BaseNode: bn(yylex), Text: yyDollar[1].string}}}
 		}
 	case 3:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line text.y:33
 		{
-			yyVAL.NodeContent = &node.Content{bn(yylex), []node.Node{&node.Expression{BaseNode: bn(yylex), Value: yyDollar[2].Node}}}
+			yyVAL.NodeContent = &node.Content{BaseNode: bn(yylex), Children: []node.Node{&node.Expression{BaseNode: bn(yylex), Value: yyDollar[2].Node}}}
 		}
 	case 4:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line text.y:34
 		{
-			yyVAL.NodeContent = &node.Content{bn(yylex), []node.Node{&node.RawExpression{BaseNode: bn(yylex), Value: yyDollar[2].Node}}}
+			yyVAL.NodeContent = &node.Content{BaseNode: bn(yylex), Children: []node.Node{&node.RawExpression{BaseNode: bn(yylex), Value: yyDollar[2].Node}}}
 		}
 	case 5:
 		yyDollar = yyS[yypt-2 : yypt+1]
 //line text.y:35
 		{
-			yyDollar[1].NodeContent.Children = append(yyDollar[1].NodeContent.Children, &node.Text{bn(yylex), yyDollar[2].string})
+			yyDollar[1].NodeContent.Children = append(yyDollar[1].NodeContent.Children, &node.Text{BaseNode: bn(yylex), Text: yyDollar[2].string})
 			yyVAL.NodeContent = yyDollar[1].NodeContent
 		}
 	case 6:
@@ -575,157 +575,157 @@ yydefault:
 		yyDollar = yyS[yypt-1 : yypt+1]
 //line text.y:38
 		{
-			yyVAL.NodeContent = &node.Content{bn(yylex), []node.Node{yyDollar[1].Node}}
+			yyVAL.NodeContent = &node.Content{BaseNode: bn(yylex), Children: []node.Node{yyDollar[1].Node}}
 		}
 	case 9:
 		yyDollar = yyS[yypt-1 : yypt+1]
 //line text.y:39
 		{
-			yyVAL.NodeContent = &node.Content{bn(yylex), []node.Node{yyDollar[1].Node}}
+			yyVAL.NodeContent = &node.Content{BaseNode: bn(yylex), Children: []node.Node{yyDollar[1].Node}}
 		}
 	case 10:
 		yyDollar = yyS[yypt-1 : yypt+1]
 //line text.y:41
 		{
-			yyVAL.Node = &node.Variable{bn(yylex), yyDollar[1].string}
+			yyVAL.Node = &node.Variable{BaseNode: bn(yylex), Name: yyDollar[1].string}
 		}
 	case 11:
 		yyDollar = yyS[yypt-1 : yypt+1]
 //line text.y:42
 		{
-			yyVAL.Node = &node.String{bn(yylex), yyDollar[1].string}
+			yyVAL.Node = &node.String{BaseNode: bn(yylex), Text: yyDollar[1].string}
 		}
 	case 12:
 		yyDollar = yyS[yypt-1 : yypt+1]
 //line text.y:43
 		{
-			yyVAL.Node = &node.Number{bn(yylex), yyDollar[1].string}
+			yyVAL.Node = &node.Number{BaseNode: bn(yylex), Text: yyDollar[1].string}
 		}
 	case 13:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line text.y:44
 		{
-			yyVAL.Node = &node.Operator{bn(yylex), "==", yyDollar[1].Node, yyDollar[3].Node}
+			yyVAL.Node = &node.Operator{BaseNode: bn(yylex), Op: "==", Left: yyDollar[1].Node, Right: yyDollar[3].Node}
 		}
 	case 14:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line text.y:45
 		{
-			yyVAL.Node = &node.Operator{bn(yylex), "!=", yyDollar[1].Node, yyDollar[3].Node}
+			yyVAL.Node = &node.Operator{BaseNode: bn(yylex), Op: "!=", Left: yyDollar[1].Node, Right: yyDollar[3].Node}
 		}
 	case 15:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line text.y:46
 		{
-			yyVAL.Node = &node.Operator{bn(yylex), "+", yyDollar[1].Node, yyDollar[3].Node}
+			yyVAL.Node = &node.Operator{BaseNode: bn(yylex), Op: "+", Left: yyDollar[1].Node, Right: yyDollar[3].Node}
 		}
 	case 16:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line text.y:47
 		{
-			yyVAL.Node = &node.Operator{bn(yylex), "-", yyDollar[1].Node, yyDollar[3].Node}
+			yyVAL.Node = &node.Operator{BaseNode: bn(yylex), Op: "-", Left: yyDollar[1].Node, Right: yyDollar[3].Node}
 		}
 	case 17:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line text.y:48
 		{
-			yyVAL.Node = &node.Operator{bn(yylex), "*", yyDollar[1].Node, yyDollar[3].Node}
+			yyVAL.Node = &node.Operator{BaseNode: bn(yylex), Op: "*", Left: yyDollar[1].Node, Right: yyDollar[3].Node}
 		}
 	case 18:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line text.y:49
 		{
-			yyVAL.Node = &node.Operator{bn(yylex), "/", yyDollar[1].Node, yyDollar[3].Node}
+			yyVAL.Node = &node.Operator{BaseNode: bn(yylex), Op: "/", Left: yyDollar[1].Node, Right: yyDollar[3].Node}
 		}
 	case 19:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line text.y:50
 		{
-			yyVAL.Node = &node.Operator{bn(yylex), "%", yyDollar[1].Node, yyDollar[3].Node}
+			yyVAL.Node = &node.Operator{BaseNode: bn(yylex), Op: "%", Left: yyDollar[1].Node, Right: yyDollar[3].Node}
 		}
 	case 20:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line text.y:51
 		{
-			yyVAL.Node = &node.Operator{bn(yylex), "<", yyDollar[1].Node, yyDollar[3].Node}
+			yyVAL.Node = &node.Operator{BaseNode: bn(yylex), Op: "<", Left: yyDollar[1].Node, Right: yyDollar[3].Node}
 		}
 	case 21:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line text.y:52
 		{
-			yyVAL.Node = &node.Operator{bn(yylex), "<=", yyDollar[1].Node, yyDollar[3].Node}
+			yyVAL.Node = &node.Operator{BaseNode: bn(yylex), Op: "<=", Left: yyDollar[1].Node, Right: yyDollar[3].Node}
 		}
 	case 22:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line text.y:53
 		{
-			yyVAL.Node = &node.Operator{bn(yylex), ">", yyDollar[1].Node, yyDollar[3].Node}
+			yyVAL.Node = &node.Operator{BaseNode: bn(yylex), Op: ">", Left: yyDollar[1].Node, Right: yyDollar[3].Node}
 		}
 	case 23:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line text.y:54
 		{
-			yyVAL.Node = &node.Operator{bn(yylex), ">=", yyDollar[1].Node, yyDollar[3].Node}
+			yyVAL.Node = &node.Operator{BaseNode: bn(yylex), Op: ">=", Left: yyDollar[1].Node, Right: yyDollar[3].Node}
 		}
 	case 24:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line text.y:55
 		{
-			yyVAL.Node = &node.Operator{bn(yylex), "&&", yyDollar[1].Node, yyDollar[3].Node}
+			yyVAL.Node = &node.Operator{BaseNode: bn(yylex), Op: "&&", Left: yyDollar[1].Node, Right: yyDollar[3].Node}
 		}
 	case 25:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line text.y:56
 		{
-			yyVAL.Node = &node.Operator{bn(yylex), "||", yyDollar[1].Node, yyDollar[3].Node}
+			yyVAL.Node = &node.Operator{BaseNode: bn(yylex), Op: "||", Left: yyDollar[1].Node, Right: yyDollar[3].Node}
 		}
 	case 26:
 		yyDollar = yyS[yypt-2 : yypt+1]
 //line text.y:57
 		{
-			yyVAL.Node = &node.Operator{bn(yylex), "!", nil, yyDollar[2].Node}
+			yyVAL.Node = &node.Operator{BaseNode: bn(yylex), Op: "!", Right: yyDollar[2].Node}
 		}
 	case 27:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line text.y:58
 		{
-			yyVAL.Node = &node.Parentheses{bn(yylex), yyDollar[2].Node}
+			yyVAL.Node = &node.Parentheses{BaseNode: bn(yylex), Value: yyDollar[2].Node}
 		}
 	case 28:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line text.y:59
 		{
-			yyVAL.Node = &node.StructField{bn(yylex), yyDollar[1].Node, yyDollar[3].string}
+			yyVAL.Node = &node.StructField{BaseNode: bn(yylex), Expr: yyDollar[1].Node, FieldName: yyDollar[3].string}
 		}
 	case 29:
 		yyDollar = yyS[yypt-4 : yypt+1]
 //line text.y:60
 		{
-			yyVAL.Node = &node.Indexed{bn(yylex), yyDollar[1].Node, yyDollar[3].Node}
+			yyVAL.Node = &node.Indexed{BaseNode: bn(yylex), Expr: yyDollar[1].Node, Index: yyDollar[3].Node}
 		}
 	case 30:
 		yyDollar = yyS[yypt-4 : yypt+1]
 //line text.y:61
 		{
-			yyVAL.Node = &node.Function{bn(yylex), yyDollar[1].Node, yyDollar[3].NodeExpressionsList}
+			yyVAL.Node = &node.Function{BaseNode: bn(yylex), Expr: yyDollar[1].Node, Arguments: yyDollar[3].NodeExpressionsList}
 		}
 	case 31:
 		yyDollar = yyS[yypt-5 : yypt+1]
 //line text.y:62
 		{
-			yyVAL.Node = &node.TernaryIf{bn(yylex), yyDollar[1].Node, yyDollar[3].Node, yyDollar[5].Node}
+			yyVAL.Node = &node.TernaryIf{BaseNode: bn(yylex), Cond: yyDollar[1].Node, T: yyDollar[3].Node, F: yyDollar[5].Node}
 		}
 	case 32:
 		yyDollar = yyS[yypt-0 : yypt+1]
 //line text.y:64
 		{
-			yyVAL.NodeExpressionsList = &node.ExpressionsList{bn(yylex), nil}
+			yyVAL.NodeExpressionsList = &node.ExpressionsList{BaseNode: bn(yylex)}
 		}
 	case 33:
 		yyDollar = yyS[yypt-1 : yypt+1]
 //line text.y:65
 		{
-			yyVAL.NodeExpressionsList = &node.ExpressionsList{bn(yylex), []node.Node{yyDollar[1].Node}}
+			yyVAL.NodeExpressionsList = &node.ExpressionsList{BaseNode: bn(yylex), Values: []node.Node{yyDollar[1].Node}}
 		}
 	case 34:
 		yyDollar = yyS[yypt-3 : yypt+1]
@@ -738,13 +738,13 @@ yydefault:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line text.y:68
 		{
-			yyVAL.Node = &node.Loop{bn(yylex), "", yyDollar[1].string, yyDollar[3].Node, nil, ""}
+			yyVAL.Node = &node.Loop{BaseNode: bn(yylex), Variable: yyDollar[1].string, Array: yyDollar[3].Node}
 		}
 	case 36:
 		yyDollar = yyS[yypt-5 : yypt+1]
 //line text.y:69
 		{
-			yyVAL.Node = &node.Loop{bn(yylex), yyDollar[1].string, yyDollar[3].string, yyDollar[5].Node, nil, ""}
+			yyVAL.Node = &node.Loop{BaseNode: bn(yylex), Index: yyDollar[1].string, Variable: yyDollar[3].string, Array: yyDollar[5].Node}
 		}
 	}
 	goto yystack /* stack new state and value */

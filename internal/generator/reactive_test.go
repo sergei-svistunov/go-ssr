@@ -13,6 +13,7 @@ package generator_test
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -31,12 +32,22 @@ func makeGen(t *testing.T, webDir string) *generator.Generator {
 	t.Helper()
 	// Dir is the project root — use the parent of webDir.
 	dir := filepath.Dir(webDir)
-	return generator.New(&config.Config{
+	g := generator.New(&config.Config{
 		Dir:    dir,
 		WebDir: webDir,
 		// Use a fake package name to avoid import resolution in tests.
 		WebPackage: "example.com/web",
 	})
+	g.SetOutput(nil, io.Discard, testLog{t})
+	return g
+}
+
+// testLog writes the generator's diagnostics to the test log.
+type testLog struct{ t *testing.T }
+
+func (w testLog) Write(p []byte) (int, error) {
+	w.t.Log(strings.TrimSuffix(string(p), "\n"))
+	return len(p), nil
 }
 
 // writeTemplate writes an index.html at webDir/pages/routePath/index.html.
@@ -193,10 +204,6 @@ func TestGenerator_NestedReactiveRoutes_BindingKeysNamespaced(t *testing.T) {
 	}
 
 	// Both files' snapshot() must use namespaced keys (routeKey.count, not just "count").
-	// The namespaced key appears as a string literal in snapshot().
-	if !strings.Contains(dashContent, `"count"`) {
-		// Snap function uses quoted key string.
-	}
 	// A namespaced key looks like "XXXXXXXX.count" (8 hex + dot + varname).
 	// We can't predict the exact hash, but we can check for dot-separated keys.
 	if !strings.Contains(dashContent, ".count") {
@@ -1561,6 +1568,7 @@ func TestGenerator_HandlerCallsExportedReactiveState(t *testing.T) {
 		WebDir:     webDir,
 		WebPackage: "example.com/app/web",
 	})
+	g.SetOutput(nil, io.Discard, testLog{t})
 	if err := g.Analyze(); err != nil {
 		t.Fatalf("Analyze: %v", err)
 	}
@@ -1643,14 +1651,14 @@ replace github.com/sergei-svistunov/go-ssr => %s
 	appDir := filepath.Join(tmpDir, "app")
 
 	// Resolve dependencies (go.sum) before building.
-	tidyCmd := exec.Command("go", "mod", "tidy")
+	tidyCmd := exec.CommandContext(t.Context(), "go", "mod", "tidy")
 	tidyCmd.Dir = appDir
 	if out, err := tidyCmd.CombinedOutput(); err != nil {
 		t.Fatalf("go mod tidy failed:\n%s", string(out))
 	}
 
 	// Run "go build ./..." inside the temp app directory.
-	buildCmd := exec.Command("go", "build", "./...")
+	buildCmd := exec.CommandContext(t.Context(), "go", "build", "./...")
 	buildCmd.Dir = appDir
 	out, err := buildCmd.CombinedOutput()
 	if err != nil {

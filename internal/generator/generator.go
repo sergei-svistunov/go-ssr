@@ -1,6 +1,7 @@
 package generator
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -42,10 +43,12 @@ type Generator struct {
 	in     io.Reader
 	out    io.Writer
 	errOut io.Writer
+
+	webpack func(context.Context) error
 }
 
 func New(cfg *config.Config) *Generator {
-	return &Generator{
+	g := &Generator{
 		dir:           cfg.Dir,
 		prod:          cfg.Prod,
 		webDir:        cfg.WebDir,
@@ -59,6 +62,8 @@ func New(cfg *config.Config) *Generator {
 		out:           os.Stdout,
 		errOut:        os.Stderr,
 	}
+	g.webpack = g.Webpack
+	return g
 }
 
 // SetOutput redirects the output of the external tools the generator runs (npm,
@@ -115,7 +120,7 @@ func (g *Generator) Analyze() error {
 		}
 
 		if runtime.GOOS == "windows" {
-			routePath = strings.Replace(routePath, "\\", "/", -1)
+			routePath = strings.ReplaceAll(routePath, "\\", "/")
 		}
 
 		// E01 — reserved path segment __ws.
@@ -202,7 +207,59 @@ func (g *Generator) Validate() ([]Diagnostic, error) {
 	return diags, nil
 }
 
+// Build regenerates the project in the order its parts depend on: it analyzes
+// the templates, writes each route's __ssr_gen__.ts, which the pages'
+// TypeScript imports, runs webpack when webpack is true or a __ssr_gen__.ts
+// changed, and generates the Go code, which embeds what webpack built.
+func (g *Generator) Build(ctx context.Context, webpack bool) error {
+	if err := g.Analyze(); err != nil {
+		return err
+	}
+	changed, err := g.GenerateTS()
+	if err != nil {
+		return err
+	}
+	if webpack || changed {
+		if err := g.webpack(ctx); err != nil {
+			return err
+		}
+		// The templates' image URLs come from the assets webpack just wrote.
+		if err := g.Analyze(); err != nil {
+			return err
+		}
+	}
+	return g.GenerateGo()
+}
+
+// GenerateTS writes the __ssr_gen__.ts of every analyzed route that has a live
+// connection and reports whether any of them changed.
+func (g *Generator) GenerateTS() (bool, error) {
+	if err := g.validateReactiveBindings(); err != nil {
+		return false, err
+	}
+	changed := false
+	for _, rPath := range g.getRoutesPaths() {
+		c, err := g.genRouteTSTypes(rPath, g.routes[rPath])
+		if err != nil {
+			return false, fmt.Errorf("could not generate TS types for route %s: %w", rPath, err)
+		}
+		changed = changed || c
+	}
+	return changed, nil
+}
+
+// Generate writes the Go code and the __ssr_gen__.ts of every analyzed route.
 func (g *Generator) Generate() error {
+	return g.generate(true)
+}
+
+// GenerateGo writes the Go code of every analyzed route, for a caller that ran
+// GenerateTS before building the assets.
+func (g *Generator) GenerateGo() error {
+	return g.generate(false)
+}
+
+func (g *Generator) generate(withTS bool) error {
 	hasStatic, staticURLs, err := g.genStaticFiles()
 	if err != nil {
 		return fmt.Errorf("could not generate static files: %w", err)
@@ -235,7 +292,10 @@ func (g *Generator) Generate() error {
 			return fmt.Errorf("could not generate route dataprovider %s: %w", rPath, err)
 		}
 
-		if err := g.genRouteTSTypes(rPath, r); err != nil {
+		if !withTS {
+			continue
+		}
+		if _, err := g.genRouteTSTypes(rPath, r); err != nil {
 			return fmt.Errorf("could not generate TS types for route %s: %w", rPath, err)
 		}
 	}
@@ -442,7 +502,7 @@ func (g *Generator) genHandler(hasStatic bool) error {
 		return fmt.Errorf("could not format generated code: %w\n%s", err, buf.String())
 	}
 
-	if err := os.WriteFile(filepath.Join(g.webDir, "pages", "ssrhandler_gen.go"), formattedCode, 0755); err != nil {
+	if err := writeFile(g.webDir, filepath.Join("pages", "ssrhandler_gen.go"), formattedCode); err != nil {
 		return fmt.Errorf("could not write handler.go: %w", err)
 	}
 
@@ -792,7 +852,7 @@ func (g *Generator) genRoute(rPath string, r *route.Route) error {
 		return fmt.Errorf("could not format generated code: %w\n%s", err, buf.String())
 	}
 
-	if err := os.WriteFile(filepath.Join(g.webDir, "pages", rPath, "ssrroute_gen.go"), formattedCode, 0755); err != nil {
+	if err := writeFile(g.webDir, filepath.Join("pages", rPath, "ssrroute_gen.go"), formattedCode); err != nil {
 		return fmt.Errorf("could not write route.go: %w", err)
 	}
 
@@ -804,8 +864,8 @@ func (g *Generator) genRouteDP(rPath string, r *route.Route) error {
 		return nil
 	}
 
-	filename := filepath.Join(g.webDir, "pages", rPath, "dataprovider.go")
-	if fileExists(filename) {
+	name := filepath.Join("pages", rPath, "dataprovider.go")
+	if fileExists(filepath.Join(g.webDir, name)) {
 		// Already exists, skip
 		return nil
 	}
@@ -836,7 +896,7 @@ func (g *Generator) genRouteDP(rPath string, r *route.Route) error {
 		if g.depsPackage != "" {
 			have[g.depsPackageName()] = true
 		}
-		imports := loadGoPackage(filepath.Dir(filename)).callImports(calls, have)
+		imports := loadGoPackage(filepath.Dir(filepath.Join(g.webDir, name))).callImports(calls, have)
 		for _, name := range slices.Sorted(maps.Keys(imports)) {
 			buf.WriteString(name + " ")
 			buf.WriteQuotedString(imports[name], "\n")
@@ -907,7 +967,7 @@ func (g *Generator) genRouteDP(rPath string, r *route.Route) error {
 		return fmt.Errorf("could not format generated code: %w\n%s", err, buf.String())
 	}
 
-	if err := os.WriteFile(filename, formattedCode, 0755); err != nil {
+	if err := writeFile(g.webDir, name, formattedCode); err != nil {
 		return fmt.Errorf("could not write dataprovider.go: %w", err)
 	}
 

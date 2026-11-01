@@ -45,7 +45,7 @@ func wsConnect(t *testing.T, h http.Handler) (*websocket.Conn, context.CancelFun
 	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http")
 
 	ctx, cancel := context.WithCancel(context.Background())
-	c, _, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{
+	c, _, err := dial(ctx, wsURL, &websocket.DialOptions{
 		// No Origin header is sent, which the server's origin check allows
 		// (non-browser client).
 		Host: "localhost",
@@ -55,7 +55,7 @@ func wsConnect(t *testing.T, h http.Handler) (*websocket.Conn, context.CancelFun
 		t.Fatalf("websocket.Dial: %v", err)
 	}
 	t.Cleanup(func() {
-		c.CloseNow()
+		_ = c.CloseNow()
 		cancel()
 	})
 	return c, cancel
@@ -68,11 +68,17 @@ func recvJSON(t *testing.T, ctx context.Context, c *websocket.Conn, dst any) {
 	}
 }
 
-func sendJSON(t *testing.T, ctx context.Context, c *websocket.Conn, v any) {
-	t.Helper()
-	if err := wsjson.Write(ctx, c, v); err != nil {
-		t.Fatalf("wsjson.Write: %v", err)
+// dial opens a WebSocket to u. It returns the status of the response, 0
+// without one, and closes the response's body.
+func dial(ctx context.Context, u string, opts *websocket.DialOptions) (*websocket.Conn, int, error) {
+	c, resp, err := websocket.Dial(ctx, u, opts)
+	if resp == nil {
+		return c, 0, err
 	}
+	if resp.Body != nil {
+		_ = resp.Body.Close()
+	}
+	return c, resp.StatusCode, err
 }
 
 // ----------------------------------------------------------------------------
@@ -86,7 +92,9 @@ func TestInitMsg_JSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	var got map[string]any
-	json.Unmarshal(b, &got)
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatal(err)
+	}
 
 	if got["t"] != "init" {
 		t.Errorf("t: want init, got %v", got["t"])
@@ -107,7 +115,9 @@ func TestPatchMsg_JSON(t *testing.T) {
 	msg := reactive.NewPatchMsg("3f7a", "3f7a.counter", "43")
 	b, _ := json.Marshal(msg)
 	var got map[string]any
-	json.Unmarshal(b, &got)
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatal(err)
+	}
 
 	if got["t"] != "patch" {
 		t.Errorf("t: want patch, got %v", got["t"])
@@ -127,7 +137,9 @@ func TestAckMsg_JSON(t *testing.T) {
 	msg := reactive.NewAckMsg("3f7a", "counter")
 	b, _ := json.Marshal(msg)
 	var got map[string]any
-	json.Unmarshal(b, &got)
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatal(err)
+	}
 
 	if got["t"] != "ack" {
 		t.Errorf("t: want ack, got %v", got["t"])
@@ -144,7 +156,9 @@ func TestErrMsg_JSON(t *testing.T) {
 	msg := reactive.NewErrMsg("3f7a", "counter", "counter cannot be negative", "validation_failed")
 	b, _ := json.Marshal(msg)
 	var got map[string]any
-	json.Unmarshal(b, &got)
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatal(err)
+	}
 
 	if got["t"] != "err" {
 		t.Errorf("t: want err, got %v", got["t"])
@@ -169,7 +183,9 @@ func TestErrMsg_UnknownRoute(t *testing.T) {
 	msg := reactive.NewErrMsg("", "someVar", "unknown route", "unknown_route")
 	b, _ := json.Marshal(msg)
 	var got map[string]any
-	json.Unmarshal(b, &got)
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatal(err)
+	}
 
 	if got["t"] != "err" {
 		t.Errorf("t: want err, got %v", got["t"])
@@ -237,7 +253,7 @@ func TestConn_CoalesceLastWriteWins(t *testing.T) {
 
 	h := serve(func(ctx context.Context, conn *reactive.Conn) {
 		initMsg := reactive.NewInitMsg("3f7a", map[string]string{"3f7a.n": "0"})
-		conn.SendJSON(initMsg)
+		_ = conn.SendJSON(initMsg)
 		conn.StartSendLoop()
 
 		// Enqueue 100 rapid updates synchronously before the goroutine can flush.
@@ -297,7 +313,7 @@ func TestConn_PostCancellationEnqueueIsNoop(t *testing.T) {
 
 	h := serve(func(ctx context.Context, conn *reactive.Conn) {
 		initMsg := reactive.NewInitMsg("3f7a", map[string]string{})
-		conn.SendJSON(initMsg)
+		_ = conn.SendJSON(initMsg)
 		conn.StartSendLoop()
 
 		// Cancel the context by closing the WS from the server side.
@@ -350,7 +366,9 @@ func TestSnapshot_CompositeBindingKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	var got map[string]any
-	json.Unmarshal(b, &got)
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatal(err)
+	}
 
 	if got["t"] != "init" {
 		t.Errorf("t: want init, got %v", got["t"])
@@ -373,7 +391,9 @@ func TestSnapshot_CompositeBindingKey(t *testing.T) {
 	patchMsg := reactive.NewPatchMsg(rk, compositeKey, "<em>updated</em>")
 	pb, _ := json.Marshal(patchMsg)
 	var patchGot map[string]any
-	json.Unmarshal(pb, &patchGot)
+	if err := json.Unmarshal(pb, &patchGot); err != nil {
+		t.Fatal(err)
+	}
 
 	if patchGot["routeKey"] != rk {
 		t.Errorf("patch routeKey: want %s, got %v", rk, patchGot["routeKey"])
@@ -399,7 +419,7 @@ func TestConn_ConcurrentEnqueue(t *testing.T) {
 			nsKey := rk + "." + string(rune('a'+i))
 			initMap[nsKey] = "0"
 		}
-		conn.SendJSON(reactive.NewInitMsg(rk, initMap))
+		_ = conn.SendJSON(reactive.NewInitMsg(rk, initMap))
 		conn.StartSendLoop()
 
 		var wg sync.WaitGroup
@@ -502,7 +522,7 @@ func TestSlowClient_ClosesWith1008(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	c, _, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{Host: "localhost"})
+	c, _, err := dial(ctx, wsURL, &websocket.DialOptions{Host: "localhost"})
 	if err != nil {
 		t.Fatalf("Dial: %v", err)
 	}
@@ -529,7 +549,7 @@ func TestSlowClient_ClosesWith1008(t *testing.T) {
 	//
 	// To avoid the 10-second wait we wrap the test in a sub-server that has a
 	// very short timeout baked in.
-	c.CloseNow()
+	_ = c.CloseNow()
 	close(blockWrite) // unblock the server handler
 
 	select {
@@ -549,12 +569,12 @@ func TestSlowClient_ClosesWith1008(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer ws.CloseNow()
+		defer func() { _ = ws.CloseNow() }()
 		// Send init, then immediately close with 1008.
 		data, _ := json.Marshal(reactive.NewInitMsg("3f7a", map[string]string{"3f7a.x": "0"}))
 		writeCtx, writeCancel := context.WithTimeout(r.Context(), shortTimeout)
 		defer writeCancel()
-		ws.Write(writeCtx, websocket.MessageText, data)
+		_ = ws.Write(writeCtx, websocket.MessageText, data)
 		// Close with policy violation — the slow-client close code.
 		ws.Close(websocket.StatusPolicyViolation, "slow client")
 	})
@@ -566,11 +586,11 @@ func TestSlowClient_ClosesWith1008(t *testing.T) {
 	ctx2, cancel2 := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel2()
 
-	c2, _, err := websocket.Dial(ctx2, wsURL2, &websocket.DialOptions{Host: "localhost"})
+	c2, _, err := dial(ctx2, wsURL2, &websocket.DialOptions{Host: "localhost"})
 	if err != nil {
 		t.Fatalf("Dial srv2: %v", err)
 	}
-	defer c2.CloseNow()
+	defer func() { _ = c2.CloseNow() }()
 
 	// Read init frame.
 	var init2 reactive.InitMsg
@@ -592,8 +612,6 @@ func TestSlowClient_ClosesWith1008(t *testing.T) {
 
 	if closeErr.Code != websocket.StatusPolicyViolation {
 		t.Errorf("close code: want %d (StatusPolicyViolation/1008), got %d", websocket.StatusPolicyViolation, closeErr.Code)
-	} else {
-		t.Logf("TestSlowClient_ClosesWith1008: observed close code %d (%s) — PASS", closeErr.Code, closeErr.Code)
 	}
 }
 
@@ -620,7 +638,9 @@ func TestErrMsg_Code(t *testing.T) {
 			t.Fatal(err)
 		}
 		var got map[string]any
-		json.Unmarshal(b, &got)
+		if err := json.Unmarshal(b, &got); err != nil {
+			t.Fatal(err)
+		}
 
 		code, ok := got["code"]
 		if !ok {
@@ -642,7 +662,9 @@ func TestErrMsg_Code(t *testing.T) {
 			t.Fatal(err)
 		}
 		var got map[string]any
-		json.Unmarshal(b, &got)
+		if err := json.Unmarshal(b, &got); err != nil {
+			t.Fatal(err)
+		}
 
 		code, ok := got["code"]
 		if !ok {
@@ -672,7 +694,7 @@ func TestSubscribePanic_Closes1011(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer ws.CloseNow()
+		defer func() { _ = ws.CloseNow() }()
 
 		ctx, cancel := context.WithCancel(r.Context())
 		defer cancel()
@@ -728,11 +750,11 @@ func TestSubscribePanic_Closes1011(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	c, _, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{Host: "localhost"})
+	c, _, err := dial(ctx, wsURL, &websocket.DialOptions{Host: "localhost"})
 	if err != nil {
 		t.Fatalf("Dial: %v", err)
 	}
-	defer c.CloseNow()
+	defer func() { _ = c.CloseNow() }()
 
 	// Read the init frame.
 	var init reactive.InitMsg
@@ -758,9 +780,6 @@ func TestSubscribePanic_Closes1011(t *testing.T) {
 	if closeErr.Code != websocket.StatusInternalError {
 		t.Errorf("close code: want %d (StatusInternalError/1011), got %d",
 			websocket.StatusInternalError, closeErr.Code)
-	} else {
-		t.Logf("TestSubscribePanic_Closes1011: observed close code %d (%s) — PASS",
-			closeErr.Code, closeErr.Code)
 	}
 }
 
@@ -898,7 +917,7 @@ func TestSubscribeFailure_Closes1011(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer ws.CloseNow()
+		defer func() { _ = ws.CloseNow() }()
 
 		ctx, cancel := context.WithCancel(r.Context())
 		defer cancel()
@@ -930,11 +949,11 @@ func TestSubscribeFailure_Closes1011(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	c, _, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{Host: "localhost"})
+	c, _, err := dial(ctx, wsURL, &websocket.DialOptions{Host: "localhost"})
 	if err != nil {
 		t.Fatalf("Dial: %v", err)
 	}
-	defer c.CloseNow()
+	defer func() { _ = c.CloseNow() }()
 
 	// Read the init frame.
 	var init reactive.InitMsg
@@ -960,9 +979,6 @@ func TestSubscribeFailure_Closes1011(t *testing.T) {
 	if closeErr.Code != websocket.StatusInternalError {
 		t.Errorf("close code: want %d (StatusInternalError/1011), got %d",
 			websocket.StatusInternalError, closeErr.Code)
-	} else {
-		t.Logf("TestSubscribeFailure_Closes1011: observed close code %d (%s) — PASS",
-			closeErr.Code, closeErr.Code)
 	}
 }
 
@@ -1000,17 +1016,17 @@ func TestAccept_ChecksTheOriginUnlessMarked(t *testing.T) {
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 			defer cancel()
-			c, resp, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(srv.URL, "http"), &websocket.DialOptions{
+			c, status, err := dial(ctx, "ws"+strings.TrimPrefix(srv.URL, "http"), &websocket.DialOptions{
 				HTTPHeader: http.Header{"Origin": {origin}},
 			})
 			if c != nil {
-				c.CloseNow()
+				_ = c.CloseNow()
 			}
 			if tc.accepted && err != nil {
-				t.Fatalf("handshake refused: %v (response %v)", err, resp)
+				t.Fatalf("handshake refused: %v (status %d)", err, status)
 			}
-			if !tc.accepted && (err == nil || resp == nil || resp.StatusCode != http.StatusForbidden) {
-				t.Fatalf("handshake: %v (response %v), want 403", err, resp)
+			if !tc.accepted && (err == nil || status != http.StatusForbidden) {
+				t.Fatalf("handshake: %v (status %d), want 403", err, status)
 			}
 		})
 	}

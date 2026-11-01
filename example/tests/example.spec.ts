@@ -147,14 +147,13 @@ test('reactive attribute: class="badge {{ visitorsBadgeClass }}" updates live', 
   const initialClass = await counter.evaluate((el) => el.className);
   expect(initialClass).toMatch(/^badge visitors-\w+$/); // Server rendered a badge class.
 
-  // The badge class is recomputed on every visitorsOnline tick (4 s).
-  // Across two random buckets the class will eventually change. Allow up to 30 s.
+  // Every visitorsOnline tick (4 s) moves the count to another badge band. Allow 12 s.
   await expect.poll(
     async () => counter.evaluate((el) => el.className),
     {
       message: 'class="badge ..." attribute should change via server-push WS patch',
-      timeout: 30_000,
-      intervals: Array(30).fill(1000),
+      timeout: 12_000,
+      intervals: Array(12).fill(1000),
     }
   ).not.toBe(initialClass);
 });

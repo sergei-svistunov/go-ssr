@@ -56,13 +56,13 @@ func renderBlock_userCount(data *RouteData) string {
 // in this route. Call Set<VarName> to push an update to the connected client.
 type ReactiveState struct {
 	conn        *reactive.Conn
-	routeKey    string     // owning route's 8-hex path hash (for patch frames)
+	route       string     // owning route's 8-hex path hash (for patch frames)
 	data        *RouteData // current route data; Set* methods update this in-place
 	muUserCount sync.Mutex
 }
 
 func NewReactiveState(conn *reactive.Conn, data *RouteData) *ReactiveState {
-	return &ReactiveState{conn: conn, routeKey: routeKey, data: data}
+	return &ReactiveState{conn: conn, route: routeKey, data: data}
 }
 
 // SetUserCount pushes a new value for the userCount binding.
@@ -74,7 +74,7 @@ func (s *ReactiveState) SetUserCount(v int) {
 	s.muUserCount.Lock()
 	s.data.UserCount = v
 	s.muUserCount.Unlock()
-	s.conn.Enqueue(s.routeKey, "954dac29.userCount", renderBlock_userCount(s.data))
+	s.conn.Enqueue(s.route, "954dac29.userCount", renderBlock_userCount(s.data))
 }
 
 // Snapshot returns the current rendered values for all reactive binding sites.
@@ -107,8 +107,8 @@ func (rt *ssrRoute) Layout() bool { return true }
 func (rt *ssrRoute) NewState() mux.RouteState {
 	s := &ssrState{dp: rt.dp}
 	s.SetAssets([]string{
-		"<link href=\"/static/css/vendors.5a2176a80029d4f81fc6.css\" rel=\"stylesheet\">",
-		"<script defer=\"defer\" src=\"/static/js/vendors.5a2176a80029d4f81fc6.js\"></script>",
+		"<link href=\"/static/css/vendors.5cea4e3d8eccf96590ce.css\" rel=\"stylesheet\">",
+		"<script defer=\"defer\" src=\"/static/js/vendors.5cea4e3d8eccf96590ce.js\"></script>",
 		"<script defer=\"defer\" src=\"/static/js/bootstrap.ee5455b5f18a25638194.js\"></script>",
 		"<script defer=\"defer\" src=\"/static/js/luxon.d838df54b702121e6f64.js\"></script>",
 		"<link href=\"/static/css/pages/users.459fb8fcdedfbf5756f9.css\" rel=\"stylesheet\">",

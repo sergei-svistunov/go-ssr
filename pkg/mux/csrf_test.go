@@ -6,11 +6,11 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"errors"
+	"io"
 	"log"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -57,7 +57,7 @@ func mintCSRF(t *testing.T) (*http.Cookie, string) {
 // option.
 func mintCSRFWith(t *testing.T, insecure bool) (*http.Cookie, string) {
 	t.Helper()
-	r := through(t, Options{InsecureCookies: insecure}, httptest.NewRequest(http.MethodGet, "/contact", nil))
+	r := through(t, Options{InsecureCookies: insecure}, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/contact", nil))
 	w := httptest.NewRecorder()
 	token, err := r.CSRFToken(w)
 	if err != nil {
@@ -80,9 +80,9 @@ func postForm(t *testing.T, cookie *http.Cookie, field string) *Request {
 	t.Helper()
 	vals := url.Values{"name": {"x"}}
 	if field != "" {
-		vals.Set(CSRFTokenName, field)
+		vals.Set(CSRFFieldName, field)
 	}
-	req := httptest.NewRequest(http.MethodPost, "/contact", strings.NewReader(vals.Encode()))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/contact", strings.NewReader(vals.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	if cookie != nil {
 		req.AddCookie(&http.Cookie{Name: cookie.Name, Value: cookie.Value})
@@ -121,7 +121,7 @@ func TestNewRequiresCSRFKey(t *testing.T) {
 }
 
 func TestCSRFWithoutMuxFails(t *testing.T) {
-	r := NewRequest(httptest.NewRequest(http.MethodGet, "/contact", nil))
+	r := NewRequest(httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/contact", nil))
 	w := httptest.NewRecorder()
 	if _, err := r.CSRFToken(w); err == nil || err.Error() != "mux: no CSRF key" {
 		t.Errorf("CSRFToken without a mux: err = %v, want mux: no CSRF key", err)
@@ -138,7 +138,7 @@ func TestReadFormWithoutMuxRefusesEveryToken(t *testing.T) {
 	copy(raw[csrfNonceLen+csrfTimeLen:], csrfMAC(nil, raw[:csrfNonceLen+csrfTimeLen], ""))
 	forged := base64.RawURLEncoding.EncodeToString(raw)
 
-	req := httptest.NewRequest(http.MethodPost, "/contact", strings.NewReader(CSRFTokenName+"=contact:"+forged))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/contact", strings.NewReader(CSRFFieldName+"=contact:"+forged))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: forged})
 	_, err := readForm(NewRequest(req))
@@ -187,7 +187,7 @@ func TestCSRFToken_InsecureCookiesDropsHostPrefixAndSecure(t *testing.T) {
 }
 
 func TestCSRFToken_MarksResponseNoStore(t *testing.T) {
-	r := through(t, Options{}, httptest.NewRequest(http.MethodGet, "/contact", nil))
+	r := through(t, Options{}, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/contact", nil))
 	w := httptest.NewRecorder()
 	if _, err := r.CSRFToken(w); err != nil {
 		t.Fatal(err)
@@ -199,7 +199,7 @@ func TestCSRFToken_MarksResponseNoStore(t *testing.T) {
 
 func TestCSRFToken_OverridesEarlierCacheControl(t *testing.T) {
 	// A page carrying a token is never cacheable, whatever ran before.
-	r := through(t, Options{}, httptest.NewRequest(http.MethodGet, "/contact", nil))
+	r := through(t, Options{}, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/contact", nil))
 	w := httptest.NewRecorder()
 	w.Header().Set("Cache-Control", "public, max-age=300")
 	if _, err := r.CSRFToken(w); err != nil {
@@ -231,7 +231,7 @@ func captureLog(t *testing.T) *bytes.Buffer {
 	// The configuration hint is one-per-process; rearm it so each test sees
 	// its own first occurrence.
 	insecureCookieHint = sync.Once{}
-	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	t.Cleanup(func() { log.SetOutput(io.Discard) })
 	return &buf
 }
 
@@ -358,7 +358,7 @@ func TestReadForm_AcceptsAnyCookieOfThatName(t *testing.T) {
 func TestReadForm_MissingCookieRejectedBeforeBodyIsParsed(t *testing.T) {
 	// A multipart body without a boundary cannot be parsed; the cookie check
 	// must come first so a cookie-less POST never buffers the body.
-	req := httptest.NewRequest(http.MethodPost, "/contact", strings.NewReader("garbage"))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/contact", strings.NewReader("garbage"))
 	req.Header.Set("Content-Type", "multipart/form-data")
 	_, err := readForm(through(t, Options{}, req))
 	wantHttpError(t, err, http.StatusBadRequest)
@@ -370,7 +370,7 @@ func TestReadForm_MissingCookieRejectedBeforeBodyIsParsed(t *testing.T) {
 func TestCSRFToken_ReusesTokenAlreadyIssuedInResponse(t *testing.T) {
 	// A layout and a leaf that both render a form share one response; the
 	// second call must hand out the token the first one set, not a new one.
-	r := through(t, Options{}, httptest.NewRequest(http.MethodGet, "/users/add", nil))
+	r := through(t, Options{}, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/users/add", nil))
 	w := httptest.NewRecorder()
 	leaf, err := r.CSRFToken(w)
 	if err != nil {
@@ -392,7 +392,7 @@ func TestCSRFToken_ReusesValidCookieAcrossRenders(t *testing.T) {
 	// Opening a second form page must not invalidate a form already open in
 	// another tab: a valid incoming cookie is kept and only refreshed.
 	c, token := mintCSRF(t)
-	req := httptest.NewRequest(http.MethodGet, "/users/add", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/users/add", nil)
 	req.AddCookie(&http.Cookie{Name: c.Name, Value: c.Value})
 	r := through(t, Options{}, req)
 	w := httptest.NewRecorder()
@@ -417,8 +417,8 @@ func TestCSRFToken_ReusesValidCookieAcrossRenders(t *testing.T) {
 
 func TestCSRFToken_MintsWhenIncomingCookieIsMalformed(t *testing.T) {
 	for _, bad := range []string{"short", strings.Repeat("x", 44), "not base64 at all, but forty-four bytes!"} {
-		req := httptest.NewRequest(http.MethodGet, "/contact", nil)
-		req.AddCookie(&http.Cookie{Name: "__Host-" + CSRFTokenName, Value: bad})
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/contact", nil)
+		req.AddCookie(&http.Cookie{Name: "__Host-" + CSRFFieldName, Value: bad})
 		r := through(t, Options{}, req)
 		token, err := r.CSRFToken(httptest.NewRecorder())
 		if err != nil {
@@ -436,7 +436,7 @@ func TestCSRFToken_MintsWhenIncomingCookieIsMalformed(t *testing.T) {
 func TestReadForm_FormOpenedBeforeAnotherRenderStillSubmits(t *testing.T) {
 	// Tab A renders /contact, tab B renders /users/add, tab A submits.
 	cookieA, tokenA := mintCSRF(t)
-	reqB := httptest.NewRequest(http.MethodGet, "/users/add", nil)
+	reqB := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/users/add", nil)
 	reqB.AddCookie(&http.Cookie{Name: cookieA.Name, Value: cookieA.Value})
 	rB := through(t, Options{}, reqB)
 	wB := httptest.NewRecorder()
@@ -456,7 +456,7 @@ func TestCSRFToken_OnPostPrefersTheValidCookie(t *testing.T) {
 	// A stale default-path cookie is sent first; the re-rendered form must
 	// carry the valid token, not the stale value.
 	c, token := mintCSRF(t)
-	req := httptest.NewRequest(http.MethodPost, "/contact", strings.NewReader(""))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/contact", strings.NewReader(""))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(&http.Cookie{Name: c.Name, Value: "stale-value-from-before-the-upgrade"})
 	req.AddCookie(&http.Cookie{Name: c.Name, Value: c.Value})
@@ -472,17 +472,17 @@ func TestCSRFToken_OnPostPrefersTheValidCookie(t *testing.T) {
 }
 
 func TestReadForm_OnPostRejectsWhenNoCookieIsValid(t *testing.T) {
-	req := httptest.NewRequest(http.MethodPost, "/contact", strings.NewReader(
-		CSRFTokenName+"=contact:not-a-token"))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/contact", strings.NewReader(
+		CSRFFieldName+"=contact:not-a-token"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.AddCookie(&http.Cookie{Name: "__Host-" + CSRFTokenName, Value: "not-a-token"})
+	req.AddCookie(&http.Cookie{Name: "__Host-" + CSRFFieldName, Value: "not-a-token"})
 	_, err := readForm(through(t, Options{}, req))
 	wantHttpError(t, err, http.StatusBadRequest)
 }
 
 func TestCSRFToken_EmptyCookieValueIsReplaced(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/contact", nil)
-	req.AddCookie(&http.Cookie{Name: "__Host-" + CSRFTokenName, Value: ""})
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/contact", nil)
+	req.AddCookie(&http.Cookie{Name: "__Host-" + CSRFFieldName, Value: ""})
 	r := through(t, Options{}, req)
 	w := httptest.NewRecorder()
 	leaf, err := r.CSRFToken(w)
@@ -505,7 +505,7 @@ func TestCSRFToken_UnsafeMethodWithNoValidCookieMints(t *testing.T) {
 	// Nothing valid is being displaced here — any other tab's token is dead
 	// too — and the render needs a token the next submit can use.
 	for _, method := range []string{http.MethodPut, http.MethodPatch, http.MethodDelete} {
-		r := withMuxOptions(Options{}, httptest.NewRequest(method, "/contact", nil))
+		r := withMuxOptions(Options{}, httptest.NewRequestWithContext(t.Context(), method, "/contact", nil))
 		w := httptest.NewRecorder()
 		token, err := r.CSRFToken(w)
 		if err != nil {
@@ -519,7 +519,7 @@ func TestCSRFToken_UnsafeMethodWithNoValidCookieMints(t *testing.T) {
 
 func TestCSRFToken_UnsafeMethodWithValidCookieReuses(t *testing.T) {
 	c, token := mintCSRF(t)
-	req := httptest.NewRequest(http.MethodPut, "/contact", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPut, "/contact", nil)
 	req.AddCookie(&http.Cookie{Name: c.Name, Value: c.Value})
 	got, err := withMuxOptions(Options{}, req).CSRFToken(httptest.NewRecorder())
 	if err != nil {

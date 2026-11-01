@@ -61,7 +61,9 @@ func (p *DP) ProcessAdd(ctx context.Context, r *mux.Request, w mux.ResponseWrite
 		return err
 	}
 	defer f.Close()
-	io.ReadAll(f)
+	if _, err := io.ReadAll(f); err != nil {
+		return err
+	}
 
 	if err := p.model.AddUser(model.MockUser{
 		Id:       0,

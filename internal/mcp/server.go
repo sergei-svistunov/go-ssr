@@ -27,7 +27,7 @@ func Serve(ctx context.Context) error {
 	protocolIn := os.Stdin
 	os.Stdout = os.Stderr
 
-	server := newServer()
+	server := newServer(ctx)
 
 	// An application started through gossr_run is a child of this process. Left
 	// behind, it would hold its port with no tool able to reach it again.
@@ -41,8 +41,9 @@ func Serve(ctx context.Context) error {
 }
 
 // newServer builds the server with every tool and resource registered. Tests use
-// it with an in-memory transport.
-func newServer() *mcp.Server {
+// it with an in-memory transport. An application started through gossr_run is
+// stopped when ctx is cancelled.
+func newServer(ctx context.Context) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{
 		Name:    "gossr",
 		Title:   "GoSSR",
@@ -51,7 +52,7 @@ func newServer() *mcp.Server {
 		Instructions: instructions,
 	})
 
-	registerTools(server)
+	registerTools(ctx, server)
 	registerDocResources(server)
 
 	return server

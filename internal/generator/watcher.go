@@ -87,7 +87,7 @@ func (g *Generator) Watch(ctx context.Context) error {
 				log.Println("error:", err)
 
 			case <-timer.C:
-				if !(affectWebpack || affectSSR || affectGo) {
+				if !affectWebpack && !affectSSR && !affectGo {
 					continue
 				}
 				g.stopProject()
@@ -97,22 +97,9 @@ func (g *Generator) Watch(ctx context.Context) error {
 					}
 				}
 
-				if affectWebpack {
-					log.Println("---------REGENERATE STATIC---------")
-					if err := g.Webpack(); err != nil {
-						_, _ = fmt.Fprintf(os.Stderr, "%v\n", err)
-						fillWatcher()
-						continue
-					}
-				}
 				if affectWebpack || affectSSR {
-					log.Println("---------REGENERATE SSR---------")
-					if err := g.Analyze(); err != nil {
-						_, _ = fmt.Fprintf(os.Stderr, "%v\n", err)
-						fillWatcher()
-						continue
-					}
-					if err := g.Generate(); err != nil {
+					log.Println("---------REGENERATE---------")
+					if err := g.Build(ctx, affectWebpack); err != nil {
 						_, _ = fmt.Fprintf(os.Stderr, "%v\n", err)
 						fillWatcher()
 						continue

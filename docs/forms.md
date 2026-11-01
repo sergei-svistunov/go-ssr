@@ -183,8 +183,8 @@ for _, h := range data.Gallery.GetValue() {
 ```
 
 Multipart bodies are parsed with `http.Request.ParseMultipartForm`: up to `mux.MaxMultipartMemory` (32 MB) is
-kept in memory and the rest spills to temporary files, with no total limit. Cap request bodies in front of the
-handler at what your largest upload needs; see `security`.
+kept in memory and the rest spills to temporary files. The whole body is capped at `mux.Options.MaxBodyBytes`,
+10 MiB by default; raise it to what your largest upload needs. See `security`.
 
 ## CSRF protection
 

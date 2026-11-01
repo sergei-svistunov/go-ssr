@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"go/token"
 	"io/fs"
@@ -49,14 +50,31 @@ func parseAssetPolicy(s string) (assetPolicy, error) {
 	}
 }
 
-// generate builds assets when the policy calls for it, then analyzes and
-// generates. Problems with the project's content come back as diagnostics; the
-// error return is for operational failures.
-func (p *project) generate(policy assetPolicy) ([]generator.Diagnostic, error) {
+// generate analyzes the project, writes the routes' TypeScript, builds assets
+// when the policy calls for it, and generates the Go code. The TypeScript comes
+// before the assets because the pages import it, and the Go code after them
+// because it embeds them. Problems with the project's content come back as
+// diagnostics; the error return is for operational failures.
+func (p *project) generate(ctx context.Context, policy assetPolicy) ([]generator.Diagnostic, error) {
+	diags, hardErr := splitDiagnostics(p.gen.Analyze())
+	if hardErr != nil {
+		return nil, hardErr
+	}
+	if len(diags) > 0 {
+		// Generating from a partially parsed tree would write code for some
+		// routes and leave stale code for the broken ones.
+		return diags, nil
+	}
+
+	_, tsErr := p.gen.GenerateTS()
+	if diags, hardErr := splitDiagnostics(tsErr); hardErr != nil || len(diags) > 0 {
+		return diags, hardErr
+	}
+
 	switch policy {
 	case assetsForce:
 		p.assetsReason = "requested"
-		if err := p.gen.Webpack(); err != nil {
+		if err := p.gen.Webpack(ctx); err != nil {
 			return nil, fmt.Errorf("building assets: %w", err)
 		}
 		p.webpackRan = true
@@ -67,7 +85,7 @@ func (p *project) generate(policy assetPolicy) ([]generator.Diagnostic, error) {
 		}
 		p.assetsReason = reason
 		if stale {
-			if err := p.gen.Webpack(); err != nil {
+			if err := p.gen.Webpack(ctx); err != nil {
 				// Code generation is the job; the asset build is a convenience
 				// that needs Node. Report the failure and carry on rather than
 				// letting a missing toolchain block generating Go code.
@@ -83,22 +101,15 @@ func (p *project) generate(policy assetPolicy) ([]generator.Diagnostic, error) {
 		}
 	}
 
-	diags, hardErr := splitDiagnostics(p.gen.Analyze())
-	if hardErr != nil {
-		return nil, hardErr
-	}
-	if len(diags) > 0 {
-		// Generating from a partially parsed tree would write code for some
-		// routes and leave stale code for the broken ones.
-		return diags, nil
+	if p.webpackRan {
+		// The templates' image URLs come from the assets webpack just wrote.
+		diags, hardErr := splitDiagnostics(p.gen.Analyze())
+		if hardErr != nil || len(diags) > 0 {
+			return diags, hardErr
+		}
 	}
 
-	genDiags, hardErr := splitDiagnostics(p.gen.Generate())
-	if hardErr != nil {
-		return nil, hardErr
-	}
-
-	return genDiags, nil
+	return splitDiagnostics(p.gen.GenerateGo())
 }
 
 // dataProviderPaths returns the set of existing dataprovider.go files, so a

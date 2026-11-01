@@ -6,8 +6,8 @@
       "/static/js/pages/contact.e13519ff518c20dc1334.js"
     ],
     "pages/home": [
-      "/static/css/vendors.5a2176a80029d4f81fc6.css",
-      "/static/js/vendors.5a2176a80029d4f81fc6.js",
+      "/static/css/vendors.5cea4e3d8eccf96590ce.css",
+      "/static/js/vendors.5cea4e3d8eccf96590ce.js",
       "/static/css/pages/home.eb1fcc08529a6b061a27.css",
       "/static/js/pages/home.eb1fcc08529a6b061a27.js"
     ],
@@ -16,21 +16,21 @@
       "/static/js/pages/users/_userId_/contacts.e5ff5d4bb11130a0f9cd.js"
     ],
     "pages/users/_userId_/info": [
-      "/static/css/vendors.5a2176a80029d4f81fc6.css",
-      "/static/js/vendors.5a2176a80029d4f81fc6.js",
+      "/static/css/vendors.5cea4e3d8eccf96590ce.css",
+      "/static/js/vendors.5cea4e3d8eccf96590ce.js",
       "/static/js/pages/users/_userId_/info.bde034fd4fcd6689abfd.js"
     ],
     "pages/users": [
-      "/static/css/vendors.5a2176a80029d4f81fc6.css",
-      "/static/js/vendors.5a2176a80029d4f81fc6.js",
+      "/static/css/vendors.5cea4e3d8eccf96590ce.css",
+      "/static/js/vendors.5cea4e3d8eccf96590ce.js",
       "/static/js/bootstrap.ee5455b5f18a25638194.js",
       "/static/js/luxon.d838df54b702121e6f64.js",
       "/static/css/pages/users.459fb8fcdedfbf5756f9.css",
       "/static/js/pages/users.459fb8fcdedfbf5756f9.js"
     ],
     "main": [
-      "/static/css/vendors.5a2176a80029d4f81fc6.css",
-      "/static/js/vendors.5a2176a80029d4f81fc6.js",
+      "/static/css/vendors.5cea4e3d8eccf96590ce.css",
+      "/static/js/vendors.5cea4e3d8eccf96590ce.js",
       "/static/js/bootstrap.ee5455b5f18a25638194.js",
       "/static/css/vendors-node_modules_bootstrap-icons_font_bootstrap-icons_min_css.ca9792bc48666a9f0106.css",
       "/static/css/main.c4c3657cf42c8a92e67c.css",

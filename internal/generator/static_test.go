@@ -366,14 +366,14 @@ func TestCollisionsWithRoutes(t *testing.T) {
 	}}
 
 	got := g.collisionsWithRoutes([]string{
-		"/dist/app.css",      // no route at /dist/*  → no collision
-		"/dist/foo",          // exact match → collision
-		"/home",              // exact match → collision
-		"/users/abc",         // matches /users/_id_ → collision
-		"/users/abc/info",    // matches /users/_id_/info → collision
-		"/users/abc/x.css",   // depth 3, no matching route → no collision
-		"/api/v1/list",       // matches /api/_v_/_action_ → collision
-		"/dist/users/_id_",   // /_id_/ in static URL is literal text, not a route → no collision (no /dist/users/_id_ route)
+		"/dist/app.css",    // no route at /dist/*  → no collision
+		"/dist/foo",        // exact match → collision
+		"/home",            // exact match → collision
+		"/users/abc",       // matches /users/_id_ → collision
+		"/users/abc/info",  // matches /users/_id_/info → collision
+		"/users/abc/x.css", // depth 3, no matching route → no collision
+		"/api/v1/list",     // matches /api/_v_/_action_ → collision
+		"/dist/users/_id_", // /_id_/ in static URL is literal text, not a route → no collision (no /dist/users/_id_ route)
 	})
 	want := []string{"/api/v1/list", "/dist/foo", "/home", "/users/abc", "/users/abc/info"}
 	if len(got) != len(want) {
@@ -392,16 +392,16 @@ func TestCollisionsWithRoutes(t *testing.T) {
 
 func TestIsParamSegment(t *testing.T) {
 	cases := map[string]bool{
-		"_id_":         true,
-		"_userId_":     true,
-		"_a_":          true,
-		"users":        false,
-		"_id":          false,
-		"id_":          false,
-		"_":            false,
-		"__":           false,
-		"_a_b_":        false, // mux regex requires no inner underscore
-		"":             false,
+		"_id_":     true,
+		"_userId_": true,
+		"_a_":      true,
+		"users":    false,
+		"_id":      false,
+		"id_":      false,
+		"_":        false,
+		"__":       false,
+		"_a_b_":    false, // mux regex requires no inner underscore
+		"":         false,
 	}
 	for in, want := range cases {
 		if got := isParamSegment(in); got != want {

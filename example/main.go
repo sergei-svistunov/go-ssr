@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/sergei-svistunov/go-ssr/example/internal/model"
 	"github.com/sergei-svistunov/go-ssr/example/internal/web"
@@ -22,8 +23,9 @@ func main() {
 		log.Fatal(err)
 	}
 
+	srv := &http.Server{Addr: ":18080", Handler: handler, ReadHeaderTimeout: 10 * time.Second}
 	log.Println("Listening on :18080")
-	if err := http.ListenAndServe(":18080", handler); err != nil {
+	if err := srv.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}
 }

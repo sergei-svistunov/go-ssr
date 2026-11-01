@@ -108,6 +108,28 @@ func TestInit_RejectsADepsPackageOutsideTheModule(t *testing.T) {
 	}
 }
 
+// A deps package that climbs out of the module would be written outside the
+// project directory.
+func TestInit_RejectsADepsPackageOutsideTheProject(t *testing.T) {
+	parent := t.TempDir()
+	dir := filepath.Join(parent, "app")
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	err := boilerplate.Init(boilerplate.Options{
+		Dir: dir, PkgName: "example.com/app", DepsPackage: "example.com/app/../escape",
+	})
+	if err == nil {
+		t.Fatal("a deps package outside the project was accepted")
+	}
+	if !strings.Contains(err.Error(), "not a clean import path") {
+		t.Errorf("the error should say the import path is not clean: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(parent, "escape")); !os.IsNotExist(err) {
+		t.Errorf("Init wrote outside the project: %v", err)
+	}
+}
+
 func read(t *testing.T, path string) string {
 	t.Helper()
 	b, err := os.ReadFile(path)

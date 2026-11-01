@@ -291,7 +291,7 @@ func goEnvGOROOT() (string, error) {
 			err = errors.New("it printed nothing")
 		}
 		if err != nil {
-			goroot.dir, goroot.err = "", fmt.Errorf("GOROOT could not be found: go env GOROOT failed: %v; set the GOROOT environment variable to the Go installation, or put the go command on PATH", err)
+			goroot.dir, goroot.err = "", fmt.Errorf("GOROOT could not be found: go env GOROOT failed: %w; set the GOROOT environment variable to the Go installation, or put the go command on PATH", err)
 		}
 	})
 	return goroot.dir, goroot.err
@@ -1104,7 +1104,7 @@ func (m *tsMapper) collect(st *ast.StructType, sc *typeScope, index []int, optio
 				}
 				// encoding/json ignores the option for a type that marshals itself.
 				id, isIdent := ft.(*ast.Ident)
-				if _, basic := basicTS[m.pkg.basicKind(ft)]; basic && !(isIdent && m.pkg.marshals(id.Name)) {
+				if _, basic := basicTS[m.pkg.basicKind(ft)]; basic && (!isIdent || !m.pkg.marshals(id.Name)) {
 					ts = "string"
 					if isPtr {
 						ts = "string | null"

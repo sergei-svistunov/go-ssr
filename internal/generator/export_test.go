@@ -17,3 +17,8 @@ func SetGoEnvCommand(cmd func(ctx context.Context) *exec.Cmd) (restore func()) {
 		goroot.once, goroot.dir, goroot.err = sync.Once{}, "", nil
 	}
 }
+
+// SetWebpack makes Build run f in place of webpack.
+func (g *Generator) SetWebpack(f func(context.Context) error) {
+	g.webpack = f
+}

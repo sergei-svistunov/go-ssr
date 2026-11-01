@@ -34,8 +34,8 @@ func (d DiscardWriter) WriteHeader(int) {}
 
 var (
 	ssrHandler = ctxMiddleware{newSsrHandler()}
-	req1       = httptest.NewRequest(http.MethodGet, "/home", nil)
-	req2       = httptest.NewRequest(http.MethodGet, "/users/johndoe123/info", nil)
+	req1       = httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/home", nil)
+	req2       = httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/users/johndoe123/info", nil)
 	headers    = map[string][]string{}
 	dw         = DiscardWriter{}
 )
@@ -66,7 +66,7 @@ func TestExampleUserGuard(t *testing.T) {
 		"/users/johndoe123/info": http.StatusOK,
 	} {
 		w := httptest.NewRecorder()
-		ssrHandler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		ssrHandler.ServeHTTP(w, httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil))
 		if w.Code != want {
 			t.Errorf("GET %s = %d, want %d", path, w.Code, want)
 		}
@@ -75,7 +75,7 @@ func TestExampleUserGuard(t *testing.T) {
 
 func TestErrorPageEscapesTheError(t *testing.T) {
 	w := httptest.NewRecorder()
-	pages.WriteError(w, mux.NewRequest(httptest.NewRequest(http.MethodGet, "/", nil)), errors.New("<b>x</b>"))
+	pages.WriteError(w, mux.NewRequest(httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)), errors.New("<b>x</b>"))
 	if body := w.Body.String(); !strings.Contains(body, "&lt;b&gt;x&lt;/b&gt;") || strings.Contains(body, "<b>x</b>") {
 		t.Errorf("error page body = %q, want the error text escaped", body)
 	}

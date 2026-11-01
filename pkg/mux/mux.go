@@ -11,6 +11,7 @@ import (
 	"path"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -24,7 +25,11 @@ type Mux struct {
 	allowCrossSite func(*Request) bool
 	live           liveConns
 	liveMaxAge     time.Duration
+	maxBodyBytes   int64
 }
+
+// DefaultMaxBodyBytes is the body limit when Options.MaxBodyBytes is 0.
+const DefaultMaxBodyBytes = 10 << 20
 
 // allowsCrossSite reports whether the application exempts this request from
 // the cross-site refusal.
@@ -94,6 +99,13 @@ type Options struct {
 	// or is 'strict-dynamic'. In script-src it also refuses a scheme on its
 	// own, such as https: or data:.
 	CSPSources map[string][]string
+	// MaxBodyBytes caps the body of a POST to a page, multipart uploads
+	// included; MaxMultipartMemory of it is kept in memory and the rest goes
+	// to temporary files. A body declared longer is refused with 413 before
+	// any hook runs; one that turns out longer when read is refused with 413
+	// before any form hook runs. 0 means DefaultMaxBodyBytes; New refuses a
+	// negative value.
+	MaxBodyBytes int64
 }
 
 type ErrorHandler func(w http.ResponseWriter, r *Request, err error)
@@ -110,6 +122,12 @@ func New(routes map[string]Route, opts Options) (*Mux, error) {
 	}
 	if err := validateOriginPatterns(opts.OriginPatterns); err != nil {
 		return nil, err
+	}
+	switch {
+	case opts.MaxBodyBytes < 0:
+		return nil, errors.New("mux: MaxBodyBytes is negative")
+	case opts.MaxBodyBytes == 0:
+		opts.MaxBodyBytes = DefaultMaxBodyBytes
 	}
 	csp, err := newCSP(opts.CSPSources)
 	if err != nil {
@@ -158,6 +176,7 @@ func New(routes map[string]Route, opts Options) (*Mux, error) {
 		allowCrossSite: opts.AllowCrossSite,
 		live:           liveConns{max: opts.MaxLiveConnsPerSession},
 		liveMaxAge:     liveMaxAge,
+		maxBodyBytes:   opts.MaxBodyBytes,
 	}, nil
 }
 
@@ -188,8 +207,8 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// is known and before any of its hooks run; the CSRF cookie/token
 	// comparison in readForm stays as the second line of defence.
 	if !SafeMethod(r.Method) && muxRequest.CrossSite() && !m.allowsCrossSite(muxRequest) {
-		routedRefusals.logf("mux: %s %q refused as cross-site (Origin %q, Host %q)",
-			r.Method, r.URL.Path, r.Header.Get("Origin"), r.Host)
+		routedRefusals.logf("mux: %s %s refused as cross-site (Origin %s, Host %s)",
+			strconv.Quote(r.Method), strconv.Quote(r.URL.Path), strconv.Quote(r.Header.Get("Origin")), strconv.Quote(r.Host))
 		m.errorHandler(w, muxRequest, NewHttpError(http.StatusForbidden, "Cross-site request"))
 		return
 	}
@@ -200,6 +219,14 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Allow", "GET, HEAD, POST")
 		m.errorHandler(w, muxRequest, NewHttpError(http.StatusMethodNotAllowed, http.StatusText(http.StatusMethodNotAllowed)))
 		return
+	}
+
+	if r.Method == http.MethodPost {
+		if r.ContentLength > m.maxBodyBytes {
+			m.errorHandler(w, muxRequest, bodyTooLarge())
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, m.maxBodyBytes)
 	}
 
 	// Resolved before any hook runs, so a hook that establishes a session

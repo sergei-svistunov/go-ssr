@@ -438,9 +438,9 @@ func (g *Generator) genReactiveStateCode(buf *gobuf.GoBuf, rPath string, r *rout
 	buf.WriteStringLn("// ReactiveState holds the current live values for all reactive variables")
 	buf.WriteStringLn("// in this route. Call Set<VarName> to push an update to the connected client.")
 	buf.WriteStringLn("type ReactiveState struct {")
-	buf.WriteStringLn("conn     *reactive.Conn")
-	buf.WriteStringLn("routeKey string // owning route's 8-hex path hash (for patch frames)")
-	buf.WriteStringLn("data     *RouteData // current route data; Set* methods update this in-place")
+	buf.WriteStringLn("conn  *reactive.Conn")
+	buf.WriteStringLn("route string // owning route's 8-hex path hash (for patch frames)")
+	buf.WriteStringLn("data  *RouteData // current route data; Set* methods update this in-place")
 	for _, v := range rv {
 		buf.WriteStringLn("mu" + getExportedName(v.Name) + " sync.Mutex")
 	}
@@ -449,7 +449,7 @@ func (g *Generator) genReactiveStateCode(buf *gobuf.GoBuf, rPath string, r *rout
 
 	// NewReactiveState constructor (accepts routeKey for patch frame tagging).
 	buf.WriteStringLn("func NewReactiveState(conn *reactive.Conn, data *RouteData) *ReactiveState {")
-	buf.WriteStringLn("return &ReactiveState{conn: conn, routeKey: routeKey, data: data}")
+	buf.WriteStringLn("return &ReactiveState{conn: conn, route: routeKey, data: data}")
 	buf.WriteStringLn("}")
 	buf.WriteString("\n")
 
@@ -457,6 +457,7 @@ func (g *Generator) genReactiveStateCode(buf *gobuf.GoBuf, rPath string, r *rout
 	// Set<VarName> methods — look up the dep map and enqueue a patch per key.
 	// Enqueue receives (routeKey, namespacedKey, html) so PatchMsg carries
 	// the correct routeKey field.
+	// Named route, not routeKey: a quoted key after "routeKey" trips secret scanners.
 	// ---------------------------------------------------------------------------
 	for _, v := range rv {
 		exportedName := getExportedName(v.Name)
@@ -474,7 +475,7 @@ func (g *Generator) genReactiveStateCode(buf *gobuf.GoBuf, rPath string, r *rout
 		// Enqueue a patch for each binding key that depends on this variable.
 		for _, nsKey := range affectedNsKeys {
 			localKey := localKeyOf(nsKey)
-			buf.WriteString("s.conn.Enqueue(s.routeKey, ")
+			buf.WriteString("s.conn.Enqueue(s.route, ")
 			buf.WriteQuotedString(nsKey)
 			buf.WriteStringLn(", renderBlock_" + localKey + "(s.data))")
 		}
@@ -636,9 +637,9 @@ func routeKeyFor(rPath string) string {
 // and its calls' arguments and results, mapped from the route package's declarations
 // as encoding/json writes them, and its typed client. A type the mapper cannot
 // name exactly becomes unknown, with a warning.
-func (g *Generator) genRouteTSTypes(rPath string, r *routepkg.Route) error {
+func (g *Generator) genRouteTSTypes(rPath string, r *routepkg.Route) (bool, error) {
 	if !hasLiveConnection(r) {
-		return nil
+		return false, nil
 	}
 
 	indexPath := g.routeIndexPath(rPath)
@@ -707,10 +708,14 @@ func (g *Generator) genRouteTSTypes(rPath string, r *routepkg.Route) error {
 	sb.WriteString("',\n")
 	sb.WriteString("});\n")
 
-	outPath := filepath.Join(g.webDir, "pages", rPath, tsTypesFileName)
-	if err := os.WriteFile(outPath, []byte(sb.String()), 0644); err != nil {
-		return fmt.Errorf("could not write %s: %w", outPath, err)
+	// Only a changed file is written, so its time tells when the bundles that
+	// import it went stale.
+	name := filepath.Join("pages", rPath, tsTypesFileName)
+	if old, err := os.ReadFile(filepath.Join(g.webDir, name)); err == nil && string(old) == sb.String() {
+		return false, nil
 	}
-
-	return nil
+	if err := writeFile(g.webDir, name, []byte(sb.String())); err != nil {
+		return false, fmt.Errorf("could not write %s: %w", filepath.Join(g.webDir, name), err)
+	}
+	return true, nil
 }

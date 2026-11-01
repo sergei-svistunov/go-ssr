@@ -7,11 +7,11 @@ import (
 )
 
 type Model struct {
-	mu              sync.Mutex
-	balance         int
-	visitorsOnline  int
-	userCount       int
-	userLastSeen    map[string]int64 // login -> unix timestamp
+	mu             sync.Mutex
+	balance        int
+	visitorsOnline int
+	userCount      int
+	userLastSeen   map[string]int64 // login -> unix timestamp
 }
 
 var (

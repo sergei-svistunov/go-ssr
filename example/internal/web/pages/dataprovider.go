@@ -3,7 +3,6 @@ package pages
 import (
 	"context"
 	"fmt"
-	"math/rand"
 	"strings"
 	"time"
 
@@ -36,7 +35,7 @@ func (p *DP) Data(ctx context.Context, r *mux.Request, w mux.ResponseWriter, dat
 
 	data.Balance = p.m.Balance()
 
-	w.Header().Set("X-Custom-Header", fmt.Sprint(rand.Int63()))
+	w.Header().Set("X-Custom-Header", fmt.Sprint(model.RandomIntn(1<<31)))
 
 	return nil
 }
@@ -46,12 +45,12 @@ func (p *DP) Data(ctx context.Context, r *mux.Request, w mux.ResponseWriter, dat
 // simulating incoming transactions.
 func (p *DP) Subscribe(ctx context.Context, r *mux.Request, state *ReactiveState) error {
 	for {
-		interval := time.Duration(2000+rand.Intn(1000)) * time.Millisecond
+		interval := time.Duration(2000+model.RandomIntn(1000)) * time.Millisecond
 		select {
 		case <-ctx.Done():
 			return nil
 		case <-time.After(interval):
-			delta := 1 + rand.Intn(999) // 1–999 cents
+			delta := 1 + model.RandomIntn(999) // 1–999 cents
 			newBalance := p.m.IncBalance(delta)
 			state.SetBalance(newBalance)
 		}

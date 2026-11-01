@@ -106,8 +106,8 @@ func TestBroadcast_BurstPublishFreshestWins(t *testing.T) {
 	}
 }
 
-// 5. Concurrent churn: subscribe / publish / close.
-//    After all goroutines finish, TotalSubs() is zero.
+//  5. Concurrent churn: subscribe / publish / close.
+//     After all goroutines finish, TotalSubs() is zero.
 func TestBroadcast_ConcurrentChurn(t *testing.T) {
 	b := NewBroadcast[int]()
 

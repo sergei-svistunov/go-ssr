@@ -86,7 +86,8 @@ func Serve(w http.ResponseWriter, r *http.Request, fs embed.FS, files map[string
 		return true
 	}
 	defer gzr.Close()
-	_, _ = io.Copy(w, gzr)
+	// The catalog's Size bounds what a corrupt staged file can inflate to.
+	_, _ = io.CopyN(w, gzr, f.Size)
 	return true
 }
 

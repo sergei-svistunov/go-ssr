@@ -145,7 +145,7 @@ func (p *pageCalls) run(msg reactive.CallMsg) {
 // answer runs the Guards and the call of msg and returns the frame that
 // answers it, and the message of a Guard's refusal.
 func (p *pageCalls) answer(ctx context.Context, msg reactive.CallMsg) (frame any, refusal string) {
-	r := NewRequest(p.r.Request.WithContext(ctx))
+	r := NewRequest(p.r.WithContext(ctx))
 	r.URLParams = maps.Clone(p.r.URLParams)
 
 	states, err := guardCall(ctx, r, p.routes)

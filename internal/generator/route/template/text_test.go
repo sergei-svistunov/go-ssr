@@ -1,6 +1,7 @@
 package template
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
@@ -160,8 +161,8 @@ func TestTextParse_SyntaxError_HasFileInfo(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	syntaxErr, ok := err.(*SyntaxError)
-	if !ok {
+	var syntaxErr *SyntaxError
+	if !errors.As(err, &syntaxErr) {
 		t.Fatalf("expected *SyntaxError, got %T", err)
 	}
 	if syntaxErr.Filename != "myfile.html" {

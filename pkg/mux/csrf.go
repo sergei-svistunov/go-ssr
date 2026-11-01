@@ -9,7 +9,9 @@ import (
 	"encoding/binary"
 	"errors"
 	"log"
+	"math"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -19,18 +21,18 @@ import (
 // memory; the rest goes to temporary files.
 var MaxMultipartMemory int64 = 32 << 20
 
-// CSRFTokenName is the name of the hidden field every <ssr:form> renders.
-const CSRFTokenName = "_csrf_token_"
+// CSRFFieldName is the name of the hidden field every <ssr:form> renders.
+const CSRFFieldName = "_csrf_token_"
 
 // minCSRFKeyLen is the shortest Options.CSRFKey New accepts: the size of the
 // HMAC-SHA256 output it keys.
 const minCSRFKeyLen = 32
 
-// csrfCookieName is CSRFTokenName with the __Host- prefix. Browsers refuse to
+// csrfCookieName is CSRFFieldName with the __Host- prefix. Browsers refuse to
 // store a __Host- cookie unless it arrives over https with Path=/ and no
 // Domain, which is what stops a sibling subdomain or a plain-http page from
 // planting a cookie the double-submit check would accept.
-const csrfCookieName = "__Host-" + CSRFTokenName
+const csrfCookieName = "__Host-" + CSRFFieldName
 
 // csrfMaxAge is how long a token stays valid after it was minted. It is
 // enforced from the issued-at the token carries, not from the cookie, so
@@ -94,7 +96,11 @@ func mintToken(r *Request) (string, error) {
 	if _, err := rand.Read(raw[:csrfNonceLen]); err != nil {
 		return "", err
 	}
-	binary.BigEndian.PutUint64(raw[csrfNonceLen:], uint64(csrfNow().Unix()))
+	now := csrfNow().Unix()
+	if now < 0 {
+		return "", errors.New("mux: the clock is before 1970")
+	}
+	binary.BigEndian.PutUint64(raw[csrfNonceLen:], uint64(now))
 	copy(raw[csrfNonceLen+csrfTimeLen:], csrfMAC(r.csrfKey, raw[:csrfNonceLen+csrfTimeLen], r.CSRFSessionNow()))
 	return base64.RawURLEncoding.EncodeToString(raw), nil
 }
@@ -116,7 +122,11 @@ func tokenAge(r *Request, v, session string) (time.Duration, bool) {
 	if !hmac.Equal(mac, csrfMAC(r.csrfKey, payload, session)) {
 		return 0, false
 	}
-	age := csrfNow().Sub(time.Unix(int64(binary.BigEndian.Uint64(payload[csrfNonceLen:])), 0))
+	issued := binary.BigEndian.Uint64(payload[csrfNonceLen:])
+	if issued > math.MaxInt64 {
+		return 0, false
+	}
+	age := csrfNow().Sub(time.Unix(int64(issued), 0))
 	return age, age >= -csrfClockSkew && age <= csrfMaxAge
 }
 
@@ -130,7 +140,7 @@ func validToken(r *Request, v string) bool {
 // every request: without the Secure flag a __Host- cookie would be refused.
 func cookieName(r *Request) string {
 	if r.InsecureCookies {
-		return CSRFTokenName
+		return CSRFFieldName
 	}
 	return csrfCookieName
 }
@@ -268,13 +278,26 @@ func missingCookie(r *Request) error {
 		// per-request event, and the path is remote input on a route anyone
 		// can drive.
 		insecureCookieHint.Do(func() {
-			log.Printf("mux: CSRF cookie missing on a plain-http request (first seen: %s %q). Browsers keep the "+
+			log.Printf("mux: CSRF cookie missing on a plain-http request (first seen: %s %s). Browsers keep the "+
 				"Secure cookie only over https, or on localhost in Chrome and Firefox (not Safari); serve https, "+
 				"forward X-Forwarded-Proto from your proxy, or set mux.Options.InsecureCookies for development",
-				r.Method, r.URL.Path)
+				strconv.Quote(r.Method), strconv.Quote(r.URL.Path))
 		})
 	}
 	return NewHttpError(http.StatusBadRequest, "Missed CSRF token")
+}
+
+// bodyTooLarge answers a POST whose body is over Options.MaxBodyBytes.
+func bodyTooLarge() error {
+	return NewHttpError(http.StatusRequestEntityTooLarge, "Request body too large.")
+}
+
+// formError is the answer to a body the form parser could not read.
+func formError(err error) error {
+	if mbe := (*http.MaxBytesError)(nil); errors.As(err, &mbe) {
+		return bodyTooLarge()
+	}
+	return NewHttpError(http.StatusBadRequest, err.Error())
 }
 
 // insecureCookieHint keeps the diagnostic above to one line per process.
@@ -295,16 +318,16 @@ func readForm(r *Request) (formID string, err error) {
 	var csrfToken string
 	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
 		if err := r.ParseMultipartForm(MaxMultipartMemory); err != nil {
-			return "", NewHttpError(http.StatusBadRequest, err.Error())
+			return "", formError(err)
 		}
-		if vs := r.MultipartForm.Value[CSRFTokenName]; len(vs) > 0 {
+		if vs := r.MultipartForm.Value[CSRFFieldName]; len(vs) > 0 {
 			csrfToken = vs[0]
 		}
 	} else {
 		if err := r.ParseForm(); err != nil {
-			return "", NewHttpError(http.StatusBadRequest, err.Error())
+			return "", formError(err)
 		}
-		if vs := r.PostForm[CSRFTokenName]; len(vs) > 0 {
+		if vs := r.PostForm[CSRFFieldName]; len(vs) > 0 {
 			csrfToken = vs[0]
 		}
 	}

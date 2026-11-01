@@ -44,7 +44,7 @@ func TestAcceptsGzip(t *testing.T) {
 
 func TestServe_Miss(t *testing.T) {
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/missing", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/missing", nil)
 	if Serve(rec, req, embed.FS{}, nil) {
 		t.Fatal("expected miss to return false")
 	}
@@ -55,7 +55,7 @@ func TestServe_MethodNotAllowed(t *testing.T) {
 		"/x.css": {ContentType: "text/css", ETag: `"e"`, EmbedPath: "x", Size: 5},
 	}
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest("POST", "/x.css", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "POST", "/x.css", nil)
 	if !Serve(rec, req, embed.FS{}, files) {
 		t.Fatal("expected handled=true")
 	}
@@ -72,7 +72,7 @@ func TestServe_MethodNotAllowedBeatsIfNoneMatch(t *testing.T) {
 		"/x.css": {ContentType: "text/css", ETag: `"e"`, EmbedPath: "x", Size: 5},
 	}
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest("POST", "/x.css", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "POST", "/x.css", nil)
 	req.Header.Set("If-None-Match", `"e"`)
 	if !Serve(rec, req, embed.FS{}, files) {
 		t.Fatal("expected handled=true")
@@ -87,7 +87,7 @@ func TestServe_NotModified(t *testing.T) {
 		"/x.css": {ContentType: "text/css", ETag: `"e"`, EmbedPath: "x", Size: 5},
 	}
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/x.css", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/x.css", nil)
 	req.Header.Set("If-None-Match", `"e"`)
 	if !Serve(rec, req, embed.FS{}, files) {
 		t.Fatal("expected handled=true")
@@ -133,7 +133,7 @@ func TestServe_NotModifiedWithList(t *testing.T) {
 		"/x.css": {ContentType: "text/css", ETag: `"e"`, EmbedPath: "x", Size: 5},
 	}
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/x.css", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/x.css", nil)
 	req.Header.Set("If-None-Match", `"a", "e", "b"`)
 	if !Serve(rec, req, embed.FS{}, files) {
 		t.Fatal("expected handled=true")
@@ -148,7 +148,7 @@ func TestServe_NotModifiedWithWildcard(t *testing.T) {
 		"/x.css": {ContentType: "text/css", ETag: `"e"`, EmbedPath: "x", Size: 5},
 	}
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/x.css", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/x.css", nil)
 	req.Header.Set("If-None-Match", "*")
 	if !Serve(rec, req, embed.FS{}, files) {
 		t.Fatal("expected handled=true")
@@ -163,7 +163,7 @@ func TestServe_CompressedPassthrough(t *testing.T) {
 		"/c.txt": {ContentType: "text/plain", ETag: `"e"`, EmbedPath: "testdata/comp.txt.gz", Compressed: true, Size: 16, StoredSize: 36},
 	}
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/c.txt", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/c.txt", nil)
 	req.Header.Set("Accept-Encoding", "gzip")
 	if !Serve(rec, req, testFS, files) {
 		t.Fatal("expected handled=true")
@@ -195,7 +195,7 @@ func TestServe_CompressedDecompressForNonGzipClient(t *testing.T) {
 		"/c.txt": {ContentType: "text/plain", ETag: `"e"`, EmbedPath: "testdata/comp.txt.gz", Compressed: true, Size: 16, StoredSize: 36},
 	}
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/c.txt", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/c.txt", nil)
 	if !Serve(rec, req, testFS, files) {
 		t.Fatal("expected handled=true")
 	}
@@ -210,12 +210,26 @@ func TestServe_CompressedDecompressForNonGzipClient(t *testing.T) {
 	}
 }
 
+// A staged file never inflates past the size its catalog entry declares.
+func TestServe_DecompressStopsAtSize(t *testing.T) {
+	files := map[string]File{
+		"/c.txt": {ContentType: "text/plain", ETag: `"e"`, EmbedPath: "testdata/comp.txt.gz", Compressed: true, Size: 5, StoredSize: 36},
+	}
+	rec := httptest.NewRecorder()
+	if !Serve(rec, httptest.NewRequestWithContext(t.Context(), "GET", "/c.txt", nil), testFS, files) {
+		t.Fatal("expected handled=true")
+	}
+	if rec.Body.String() != "hello" {
+		t.Fatalf("body = %q, want the first 5 bytes", rec.Body.String())
+	}
+}
+
 func TestServe_HeadOnCompressed(t *testing.T) {
 	files := map[string]File{
 		"/c.txt": {ContentType: "text/plain", ETag: `"e"`, EmbedPath: "testdata/comp.txt.gz", Compressed: true, Size: 16, StoredSize: 36},
 	}
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest("HEAD", "/c.txt", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "HEAD", "/c.txt", nil)
 	req.Header.Set("Accept-Encoding", "gzip")
 	if !Serve(rec, req, testFS, files) {
 		t.Fatal("expected handled=true")
@@ -233,7 +247,7 @@ func TestServe_PlainGet(t *testing.T) {
 		"/p.txt": {ContentType: "text/plain", ETag: `"e"`, EmbedPath: "testdata/plain.txt", Size: 11},
 	}
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/p.txt", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/p.txt", nil)
 	if !Serve(rec, req, testFS, files) {
 		t.Fatal("expected handled=true")
 	}
@@ -250,7 +264,7 @@ func TestServe_EmptyFileSetsContentLengthZero(t *testing.T) {
 		"/e.txt": {ContentType: "text/plain", ETag: `"e"`, EmbedPath: "testdata/empty.txt", Size: 0},
 	}
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/e.txt", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/e.txt", nil)
 	if !Serve(rec, req, testFS, files) {
 		t.Fatal("expected handled=true")
 	}
@@ -268,7 +282,7 @@ func TestStaticHeaders(t *testing.T) {
 	}
 	for _, inm := range []string{"", `"e"`} {
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest("GET", "/p.txt", nil)
+		req := httptest.NewRequestWithContext(t.Context(), "GET", "/p.txt", nil)
 		req.Header.Set("If-None-Match", inm)
 		Serve(rec, req, testFS, files)
 		if got := rec.Header().Get("X-Content-Type-Options"); got != "nosniff" {

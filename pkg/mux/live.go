@@ -6,6 +6,7 @@ import (
 	"log"
 	"maps"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -76,8 +77,8 @@ func (m *Mux) serveLive(w http.ResponseWriter, hr *http.Request, page string) {
 		handshake := NewRequest(hr)
 		handshake.URLParams = r.URLParams
 		if !m.allowsCrossSite(handshake) {
-			handshakeRefusals.logf("mux: live connection to %q refused as cross-site (Origin %q, Host %q)",
-				hr.URL.Path, hr.Header.Get("Origin"), hr.Host)
+			handshakeRefusals.logf("mux: live connection to %s refused as cross-site (Origin %s, Host %s)",
+				strconv.Quote(hr.URL.Path), strconv.Quote(hr.Header.Get("Origin")), strconv.Quote(hr.Host))
 			m.errorHandler(w, r, NewHttpError(http.StatusForbidden, "Cross-site live connection"))
 			return
 		}
@@ -140,7 +141,7 @@ func (m *Mux) serveLive(w http.ResponseWriter, hr *http.Request, page string) {
 	// check, which knows nothing of OriginPatterns, is skipped.
 	conn, err := reactive.Accept(w, hr.WithContext(wsorigin.Mark(hr.Context())))
 	if err != nil {
-		log.Printf("mux: live connection to %q not opened: %v", hr.URL.Path, err)
+		log.Printf("mux: live connection to %s not opened: %v", strconv.Quote(hr.URL.Path), err)
 		return
 	}
 	runLive(r, conn, routes, lives, routeKey, bindings, m.liveMaxAge, release)

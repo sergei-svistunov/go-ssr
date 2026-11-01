@@ -22,8 +22,10 @@ func ptr[T any](v T) *T { return &v }
 // assetStepName labels the one step of project creation that needs Node.
 const assetStepName = "npm install and webpack"
 
-// registerTools adds every tool to the server.
-func registerTools(s *mcp.Server) {
+// registerTools adds every tool to the server. Applications started through
+// gossr_run outlive the call that started them and are stopped when ctx is
+// cancelled.
+func registerTools(ctx context.Context, s *mcp.Server) {
 	readOnly := &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: ptr(false)}
 	writes := &mcp.ToolAnnotations{IdempotentHint: true, DestructiveHint: ptr(false), OpenWorldHint: ptr(false)}
 
@@ -103,7 +105,7 @@ func registerTools(s *mcp.Server) {
 			"Generation only writes and formats Go code, so this is how to find out whether it compiles and serves. " +
 			"The application keeps running after the call returns; use gossr_logs to follow it and gossr_stop to end it.",
 		Annotations: &mcp.ToolAnnotations{DestructiveHint: ptr(false), OpenWorldHint: ptr(true)},
-	}, handleRun)
+	}, runHandler(ctx))
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:  "gossr_logs",
@@ -192,7 +194,7 @@ func handleSearchDocs(_ context.Context, _ *mcp.CallToolRequest, in searchDocsIn
 // Project creation
 // ---------------------------------------------------------------------------
 
-func handleInit(_ context.Context, _ *mcp.CallToolRequest, in initInput) (*mcp.CallToolResult, initOutput, error) {
+func handleInit(ctx context.Context, _ *mcp.CallToolRequest, in initInput) (*mcp.CallToolResult, initOutput, error) {
 	if strings.TrimSpace(in.Dir) == "" {
 		return nil, initOutput{}, errors.New("dir is required")
 	}
@@ -225,7 +227,7 @@ func handleInit(_ context.Context, _ *mcp.CallToolRequest, in initInput) (*mcp.C
 		return nil, initOutput{}, err
 	}
 
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return nil, initOutput{}, err
 	}
 	if err := boilerplate.Init(opts); err != nil {
@@ -248,10 +250,10 @@ func handleInit(_ context.Context, _ *mcp.CallToolRequest, in initInput) (*mcp.C
 		run      func() error
 		required bool
 	}{
-		{assetStepName, p.gen.Webpack, false},
+		{assetStepName, func() error { return p.gen.Webpack(ctx) }, false},
 		{"analyze templates", p.gen.Analyze, true},
 		{"generate code", p.gen.Generate, true},
-		{"go mod tidy", p.gen.GoModTidy, true},
+		{"go mod tidy", func() error { return p.gen.GoModTidy(ctx) }, true},
 	}
 
 	out.OK = true
@@ -325,7 +327,7 @@ func assetBuildIsTheOnlyFailure(steps []step) bool {
 // Route scaffolding
 // ---------------------------------------------------------------------------
 
-func handleScaffoldRoute(_ context.Context, _ *mcp.CallToolRequest, in scaffoldRouteInput) (*mcp.CallToolResult, scaffoldRouteOutput, error) {
+func handleScaffoldRoute(ctx context.Context, _ *mcp.CallToolRequest, in scaffoldRouteInput) (*mcp.CallToolResult, scaffoldRouteOutput, error) {
 	canonical, relative, err := cleanRoutePath(in.RoutePath)
 	if err != nil {
 		return nil, scaffoldRouteOutput{}, err
@@ -351,7 +353,13 @@ func handleScaffoldRoute(_ context.Context, _ *mcp.CallToolRequest, in scaffoldR
 		return nil, scaffoldRouteOutput{}, fmt.Errorf("route %s already exists at %s; edit the template instead", canonical, p.rel(indexPath))
 	}
 
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	web, err := os.OpenRoot(p.cfg.WebDir)
+	if err != nil {
+		return nil, scaffoldRouteOutput{}, err
+	}
+	defer web.Close()
+	routeRel := filepath.Join("pages", filepath.FromSlash(relative))
+	if err := web.MkdirAll(routeRel, 0o755); err != nil {
 		return nil, scaffoldRouteOutput{}, err
 	}
 
@@ -371,7 +379,7 @@ func handleScaffoldRoute(_ context.Context, _ *mcp.CallToolRequest, in scaffoldR
 		if _, err := os.Stat(path); err == nil {
 			continue // never clobber a file the caller already has
 		}
-		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		if err := web.WriteFile(filepath.Join(routeRel, filepath.Base(path)), []byte(content), 0o644); err != nil {
 			return nil, out, err
 		}
 		out.Created = append(out.Created, p.rel(path))
@@ -379,7 +387,7 @@ func handleScaffoldRoute(_ context.Context, _ *mcp.CallToolRequest, in scaffoldR
 	sortStrings(out.Created)
 
 	// Regenerating is what produces the dataprovider.go stub for the new route.
-	diags, genErr := p.generate(policy)
+	diags, genErr := p.generate(ctx, policy)
 	if genErr != nil {
 		// The template is already on disk. Returning a bare error would drop the
 		// structured result along with it, and the caller's natural retry would
@@ -454,7 +462,7 @@ func (p *project) routeHasParent(canonical string) bool {
 // Generate, validate, inspect, build
 // ---------------------------------------------------------------------------
 
-func handleGenerate(_ context.Context, _ *mcp.CallToolRequest, in generateInput) (*mcp.CallToolResult, generateOutput, error) {
+func handleGenerate(ctx context.Context, _ *mcp.CallToolRequest, in generateInput) (*mcp.CallToolResult, generateOutput, error) {
 	p, err := openProject(in.ProjectDir, in.Prod)
 	if err != nil {
 		return nil, generateOutput{}, err
@@ -469,7 +477,7 @@ func handleGenerate(_ context.Context, _ *mcp.CallToolRequest, in generateInput)
 
 	stubsBefore := p.dataProviderPaths()
 
-	diags, err := p.generate(policy)
+	diags, err := p.generate(ctx, policy)
 	if err != nil {
 		return nil, out, err
 	}
@@ -656,14 +664,14 @@ func diagnosticsFor(diags []generator.Diagnostic, routePath string) []generator.
 	return own
 }
 
-func handleWebpack(_ context.Context, _ *mcp.CallToolRequest, in webpackInput) (*mcp.CallToolResult, webpackOutput, error) {
+func handleWebpack(ctx context.Context, _ *mcp.CallToolRequest, in webpackInput) (*mcp.CallToolResult, webpackOutput, error) {
 	p, err := openProject(in.ProjectDir, in.Prod)
 	if err != nil {
 		return nil, webpackOutput{}, err
 	}
 
 	out := webpackOutput{ProjectDir: p.cfg.Dir, Prod: in.Prod}
-	err = p.gen.Webpack()
+	err = p.gen.Webpack(ctx)
 	out.OK = err == nil
 	out.Output = p.output()
 
@@ -688,7 +696,15 @@ func handleWebpack(_ context.Context, _ *mcp.CallToolRequest, in webpackInput) (
 // Running the application
 // ---------------------------------------------------------------------------
 
-func handleRun(_ context.Context, _ *mcp.CallToolRequest, in runInput) (*mcp.CallToolResult, runOutput, error) {
+// runHandler serves gossr_run. The application runs under appCtx, not the
+// call's context, which ends when the call returns.
+func runHandler(appCtx context.Context) mcp.ToolHandlerFor[runInput, runOutput] {
+	return func(ctx context.Context, _ *mcp.CallToolRequest, in runInput) (*mcp.CallToolResult, runOutput, error) {
+		return handleRun(ctx, appCtx, in)
+	}
+}
+
+func handleRun(ctx, appCtx context.Context, in runInput) (*mcp.CallToolResult, runOutput, error) {
 	p, err := openProject(in.ProjectDir, false)
 	if err != nil {
 		return nil, runOutput{}, err
@@ -699,11 +715,11 @@ func handleRun(_ context.Context, _ *mcp.CallToolRequest, in runInput) (*mcp.Cal
 		wait = min(time.Duration(in.WaitSeconds)*time.Second, maxWait)
 	}
 
-	a, err := startApp(p)
+	a, err := startApp(appCtx, p)
 	if err != nil {
 		return nil, runOutput{ProjectDir: p.cfg.Dir}, err
 	}
-	waitReady(a, wait)
+	waitReady(ctx, a, wait)
 
 	running, code, _ := a.state()
 	out := runOutput{

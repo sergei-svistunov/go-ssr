@@ -1,6 +1,7 @@
 package generator
 
 import (
+	"context"
 	"fmt"
 	"os/exec"
 )
@@ -8,8 +9,8 @@ import (
 // runCommand runs an external tool with the generator's configured streams.
 // Subprocesses inherit whatever stdin the caller configured, which is nothing
 // unless it opted in — a subprocess reading a protocol stream would break it.
-func (g *Generator) runCommand(dir, name string, args ...string) error {
-	cmd := exec.Command(name, args...)
+func (g *Generator) runCommand(ctx context.Context, dir, name string, args ...string) error {
+	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = dir
 	cmd.Stdin = g.in
 	cmd.Stdout = g.out
@@ -22,6 +23,6 @@ func (g *Generator) runCommand(dir, name string, args ...string) error {
 }
 
 // GoModTidy resolves the module requirements of a freshly scaffolded project.
-func (g *Generator) GoModTidy() error {
-	return g.runCommand(g.dir, "go", "mod", "tidy")
+func (g *Generator) GoModTidy(ctx context.Context) error {
+	return g.runCommand(ctx, g.dir, "go", "mod", "tidy")
 }

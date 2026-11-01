@@ -3,7 +3,6 @@ package home
 import (
 	"context"
 	"log"
-	"math/rand"
 	"time"
 
 	"github.com/sergei-svistunov/go-ssr/example/internal/model"
@@ -47,7 +46,8 @@ func (p *DP) Data(ctx context.Context, r *mux.Request, w mux.ResponseWriter, dat
 	return nil
 }
 
-// Subscribe randomly bumps the visitors online count every 4 seconds.
+// Subscribe moves the visitors online count to the next badge band every 4
+// seconds, so the count and its badge class change on every tick.
 func (p *DP) Subscribe(ctx context.Context, r *mux.Request, state *ReactiveState) error {
 	ticker := time.NewTicker(4 * time.Second)
 	defer ticker.Stop()
@@ -56,12 +56,26 @@ func (p *DP) Subscribe(ctx context.Context, r *mux.Request, state *ReactiveState
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
-			n := 10 + rand.Intn(491) // 10–500
+			n := nextVisitorsOnline(p.m.VisitorsOnline())
 			p.m.SetVisitorsOnline(n)
 			state.SetVisitorsOnline(n)
 			state.SetVisitorsBadgeClass(visitorsBadgeClassFor(n))
 		}
 	}
+}
+
+// visitorsSteps holds one count per badge band, in the order the count cycles
+// through them.
+var visitorsSteps = []int{25, 120, 350}
+
+// nextVisitorsOnline returns the count of the band after the one n is in.
+func nextVisitorsOnline(n int) int {
+	for i, s := range visitorsSteps {
+		if visitorsBadgeClassFor(s) == visitorsBadgeClassFor(n) {
+			return visitorsSteps[(i+1)%len(visitorsSteps)]
+		}
+	}
+	return visitorsSteps[0]
 }
 
 // visitorsBadgeClassFor maps the visitor count to one of the badge classes

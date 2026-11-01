@@ -75,7 +75,12 @@ func InitAt(dir string, cfg Config) error {
 		cfg.DepsType = "Deps"
 	}
 
-	f, err := os.OpenFile(filepath.Join(dir, FileName), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	f, err := root.OpenFile(FileName, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
 	if err != nil {
 		return err
 	}

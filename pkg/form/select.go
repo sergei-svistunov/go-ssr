@@ -12,10 +12,10 @@ type Select[T ElementValueType] struct {
 func (e *Select[T]) SetOptions(o []SelectOptionElement[T]) { e.options = o }
 func (e *Select[T]) GetOptions() []SelectOptionElement[T]  { return e.options }
 func (e *Select[T]) SetError(err string)                   { e.error = err }
-func (e *Select[T]) HasError() bool      { return e.error != "" }
-func (e *Select[T]) GetError() string    { return e.error }
-func (e *Select[T]) GetValue() T         { return e.value }
-func (e *Select[T]) IsNotNull() bool     { return e.notNull }
+func (e *Select[T]) HasError() bool                        { return e.error != "" }
+func (e *Select[T]) GetError() string                      { return e.error }
+func (e *Select[T]) GetValue() T                           { return e.value }
+func (e *Select[T]) IsNotNull() bool                       { return e.notNull }
 func (e *Select[T]) SetValue(v T) {
 	e.value = v
 	e.notNull = true
@@ -54,11 +54,11 @@ type SelectMultiple[T ElementValueType] struct {
 func (e *SelectMultiple[T]) SetOptions(o []SelectOptionElement[T]) { e.options = o }
 func (e *SelectMultiple[T]) GetOptions() []SelectOptionElement[T]  { return e.options }
 func (e *SelectMultiple[T]) SetError(err string)                   { e.error = err }
-func (e *SelectMultiple[T]) HasError() bool            { return e.error != "" }
-func (e *SelectMultiple[T]) GetError() string          { return e.error }
-func (e *SelectMultiple[T]) GetValue() map[T]struct{}  { return e.value }
-func (e *SelectMultiple[T]) IsNotNull() bool           { return e.value != nil }
-func (e *SelectMultiple[T]) SetValue(v map[T]struct{}) { e.value = v }
+func (e *SelectMultiple[T]) HasError() bool                        { return e.error != "" }
+func (e *SelectMultiple[T]) GetError() string                      { return e.error }
+func (e *SelectMultiple[T]) GetValue() map[T]struct{}              { return e.value }
+func (e *SelectMultiple[T]) IsNotNull() bool                       { return e.value != nil }
+func (e *SelectMultiple[T]) SetValue(v map[T]struct{})             { e.value = v }
 
 func (e *SelectMultiple[T]) Process(r *mux.Request, name string, isMultipart, isRequired bool) {
 	var vs []string

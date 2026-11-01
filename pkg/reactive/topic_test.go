@@ -100,8 +100,8 @@ func TestTopic_MultipleSubsSameKey(t *testing.T) {
 	}
 }
 
-// 4. Burst publish without a draining reader does not block; freshest value wins.
-//    runtime.NumGoroutine() must not balloon.
+//  4. Burst publish without a draining reader does not block; freshest value wins.
+//     runtime.NumGoroutine() must not balloon.
 func TestTopic_BurstPublishFreshestWins(t *testing.T) {
 	tp := NewTopic[uint32, int]()
 	sub := tp.Subscribe(1)
@@ -136,8 +136,8 @@ func TestTopic_BurstPublishFreshestWins(t *testing.T) {
 	}
 }
 
-// 5. Concurrent churn: subscribe / publish / close on overlapping keys.
-//    After all goroutines finish, Len() and TotalSubs() are zero.
+//  5. Concurrent churn: subscribe / publish / close on overlapping keys.
+//     After all goroutines finish, Len() and TotalSubs() are zero.
 func TestTopic_ConcurrentChurn(t *testing.T) {
 	tp := NewTopic[uint32, int]()
 

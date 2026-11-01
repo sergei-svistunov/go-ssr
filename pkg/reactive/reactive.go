@@ -320,7 +320,7 @@ func (c *Conn) sendWithTimeout(v any) error {
 	}
 
 	if errors.Is(err, context.DeadlineExceeded) {
-		c.ws.Close(websocket.StatusPolicyViolation, "slow client")
+		_ = c.ws.Close(websocket.StatusPolicyViolation, "slow client")
 		c.cancel()
 		return fmt.Errorf("reactive: slow client: send timed out after %s", slowClientTimeout)
 	}
@@ -338,14 +338,14 @@ func (c *Conn) Ctx() context.Context {
 // CloseWithError sends a WS close frame with the given status code and reason,
 // then cancels the connection context.
 func (c *Conn) CloseWithError(code websocket.StatusCode, reason string) {
-	c.ws.Close(code, reason)
+	_ = c.ws.Close(code, reason)
 	c.cancel()
 }
 
 // CloseNow closes the connection without a close frame and cancels the
 // connection context.
 func (c *Conn) CloseNow() {
-	c.ws.CloseNow()
+	_ = c.ws.CloseNow()
 	c.cancel()
 }
 
@@ -436,41 +436,35 @@ func ParseValue[T any](s string) (T, error) {
 		}
 		result = b
 	case int:
-		var n int64
-		n, err = parseInt(s, 0)
-		result = int(n)
+		n, e := strconv.ParseInt(s, 10, 0)
+		result, err = int(n), intErr(s, e)
 	case int8:
-		var n int64
-		n, err = parseInt(s, 8)
-		result = int8(n)
+		n, e := strconv.ParseInt(s, 10, 8)
+		result, err = int8(n), intErr(s, e)
 	case int16:
-		var n int64
-		n, err = parseInt(s, 16)
-		result = int16(n)
+		n, e := strconv.ParseInt(s, 10, 16)
+		result, err = int16(n), intErr(s, e)
 	case int32:
-		var n int64
-		n, err = parseInt(s, 32)
-		result = int32(n)
+		n, e := strconv.ParseInt(s, 10, 32)
+		result, err = int32(n), intErr(s, e)
 	case int64:
-		result, err = parseInt(s, 64)
+		n, e := strconv.ParseInt(s, 10, 64)
+		result, err = n, intErr(s, e)
 	case uint:
-		var n uint64
-		n, err = parseUint(s, 0)
-		result = uint(n)
+		n, e := strconv.ParseUint(s, 10, 0)
+		result, err = uint(n), uintErr(s, e)
 	case uint8:
-		var n uint64
-		n, err = parseUint(s, 8)
-		result = uint8(n)
+		n, e := strconv.ParseUint(s, 10, 8)
+		result, err = uint8(n), uintErr(s, e)
 	case uint16:
-		var n uint64
-		n, err = parseUint(s, 16)
-		result = uint16(n)
+		n, e := strconv.ParseUint(s, 10, 16)
+		result, err = uint16(n), uintErr(s, e)
 	case uint32:
-		var n uint64
-		n, err = parseUint(s, 32)
-		result = uint32(n)
+		n, e := strconv.ParseUint(s, 10, 32)
+		result, err = uint32(n), uintErr(s, e)
 	case uint64:
-		result, err = parseUint(s, 64)
+		n, e := strconv.ParseUint(s, 10, 64)
+		result, err = n, uintErr(s, e)
 	case float32:
 		var f float64
 		f, err = parseFloat(s, 32)
@@ -526,20 +520,18 @@ func Accept(w http.ResponseWriter, r *http.Request) (*Conn, error) {
 // Internal parse helpers
 // ----------------------------------------------------------------------------
 
-func parseInt(s string, bits int) (int64, error) {
-	n, err := strconv.ParseInt(s, 10, bits)
+func intErr(s string, err error) error {
 	if err != nil {
-		return 0, fmt.Errorf("cannot parse %q as integer: %w", s, err)
+		return fmt.Errorf("cannot parse %q as integer: %w", s, err)
 	}
-	return n, nil
+	return nil
 }
 
-func parseUint(s string, bits int) (uint64, error) {
-	n, err := strconv.ParseUint(s, 10, bits)
+func uintErr(s string, err error) error {
 	if err != nil {
-		return 0, fmt.Errorf("cannot parse %q as unsigned integer: %w", s, err)
+		return fmt.Errorf("cannot parse %q as unsigned integer: %w", s, err)
 	}
-	return n, nil
+	return nil
 }
 
 func parseFloat(s string, bits int) (float64, error) {

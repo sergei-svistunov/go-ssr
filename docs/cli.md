@@ -15,7 +15,7 @@ directory containing it as the project root.
 
 | Flag | Effect |
 |---|---|
-| *(none)* | run webpack, analyze the templates, write the generated Go and TypeScript files |
+| *(none)* | analyze the templates, write each route's `__ssr_gen__.ts`, run webpack, then write the generated Go files |
 | `-init` | scaffold a new project in the working directory, which must be empty, then generate and run `go mod tidy` |
 | `-pkg-name <module>` | module path for `-init`; defaults to `gossr/app` |
 | `-watch` | stay running, rebuild on change, restart the application process |
@@ -41,8 +41,9 @@ go-ssr -prod && go build -o myapp .
 
 ## Watch mode
 
-`-watch` debounces changes and picks work by file type: `.html` regenerates the SSR code, `.ts` and `.scss`
-re-run webpack, `.go` rebuilds and restarts the application. The application is started with the arguments in
+`-watch` debounces changes and picks work by file type: `.html` regenerates the SSR code, and re-runs webpack
+when a route's `__ssr_gen__.ts` changes; `.ts` and `.scss` re-run webpack; `.go` rebuilds and restarts the
+application. The application is started with the arguments in
 `goRunArgs` and the shell's environment plus `env` from `gossr.yaml`; the scaffolded app needs `CSRF_KEY`
 there (`quickstart`).
 

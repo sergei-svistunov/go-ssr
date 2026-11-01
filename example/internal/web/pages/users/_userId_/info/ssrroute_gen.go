@@ -62,13 +62,13 @@ func renderBlock_lastSeen(data *RouteData) string {
 // in this route. Call Set<VarName> to push an update to the connected client.
 type ReactiveState struct {
 	conn       *reactive.Conn
-	routeKey   string     // owning route's 8-hex path hash (for patch frames)
+	route      string     // owning route's 8-hex path hash (for patch frames)
 	data       *RouteData // current route data; Set* methods update this in-place
 	muLastSeen sync.Mutex
 }
 
 func NewReactiveState(conn *reactive.Conn, data *RouteData) *ReactiveState {
-	return &ReactiveState{conn: conn, routeKey: routeKey, data: data}
+	return &ReactiveState{conn: conn, route: routeKey, data: data}
 }
 
 // SetLastSeen pushes a new value for the lastSeen binding.
@@ -80,7 +80,7 @@ func (s *ReactiveState) SetLastSeen(v string) {
 	s.muLastSeen.Lock()
 	s.data.LastSeen = v
 	s.muLastSeen.Unlock()
-	s.conn.Enqueue(s.routeKey, "2b2f214e.lastSeen", renderBlock_lastSeen(s.data))
+	s.conn.Enqueue(s.route, "2b2f214e.lastSeen", renderBlock_lastSeen(s.data))
 }
 
 // Snapshot returns the current rendered values for all reactive binding sites.
@@ -113,8 +113,8 @@ func (rt *ssrRoute) Layout() bool { return false }
 func (rt *ssrRoute) NewState() mux.RouteState {
 	s := &ssrState{dp: rt.dp}
 	s.SetAssets([]string{
-		"<link href=\"/static/css/vendors.5a2176a80029d4f81fc6.css\" rel=\"stylesheet\">",
-		"<script defer=\"defer\" src=\"/static/js/vendors.5a2176a80029d4f81fc6.js\"></script>",
+		"<link href=\"/static/css/vendors.5cea4e3d8eccf96590ce.css\" rel=\"stylesheet\">",
+		"<script defer=\"defer\" src=\"/static/js/vendors.5cea4e3d8eccf96590ce.js\"></script>",
 		"<script defer=\"defer\" src=\"/static/js/pages/users/_userId_/info.bde034fd4fcd6689abfd.js\"></script>",
 	})
 	return s

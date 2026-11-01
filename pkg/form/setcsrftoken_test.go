@@ -46,7 +46,7 @@ func TestSetCSRFToken_FillsEveryForm(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil))
+	m.ServeHTTP(httptest.NewRecorder(), httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil))
 
 	w := httptest.NewRecorder()
 	var leaf, layout BaseFormValues
@@ -64,7 +64,7 @@ func TestSetCSRFToken_FillsEveryForm(t *testing.T) {
 
 func TestSetCSRFToken_FailsWithoutAMux(t *testing.T) {
 	var f BaseFormValues
-	r := mux.NewRequest(httptest.NewRequest(http.MethodGet, "/", nil))
+	r := mux.NewRequest(httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil))
 	if err := SetCSRFToken(r, httptest.NewRecorder(), &f); err == nil || f.GetCSRFToken() != "" {
 		t.Errorf("SetCSRFToken without a mux: err %v, token %q; want an error and no token", err, f.GetCSRFToken())
 	}

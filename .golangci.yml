@@ -1,0 +1,39 @@
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - bodyclose
+    - errorlint
+    - gosec
+    - misspell
+    - noctx
+    - unconvert
+  exclusions:
+    generated: strict
+    presets:
+      - std-error-handling
+    rules:
+      - path: _test\.go
+        linters: [gosec]
+      # The generator, its watch mode and the MCP server run npx, npm and go on the project by design.
+      - path: ^internal/(generator|mcp)/
+        text: "G204"
+        linters: [gosec]
+      # The generator reads the project's templates, assets and config by design.
+      - path: ^internal/(config|generator)/
+        text: "G304"
+        linters: [gosec]
+      # Secure is dropped only when the app sets InsecureCookies for development over plain HTTP.
+      - path: ^pkg/mux/csrf\.go$
+        text: "G124"
+        linters: [gosec]
+      # The mux caps every page POST body with http.MaxBytesReader before parsing; gosec cannot see the cap.
+      - path: ^pkg/mux/csrf\.go$
+        text: "G120"
+        linters: [gosec]
+
+formatters:
+  enable:
+    - gofmt
+    - goimports

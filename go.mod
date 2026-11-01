@@ -1,14 +1,14 @@
 module github.com/sergei-svistunov/go-ssr
 
-go 1.25.0
+go 1.26.0
 
 require (
 	github.com/coder/websocket v1.8.14
 	github.com/fsnotify/fsnotify v1.7.0
 	github.com/google/jsonschema-go v0.4.3
 	github.com/modelcontextprotocol/go-sdk v1.7.0
-	golang.org/x/net v0.29.0
-	golang.org/x/sys v0.41.0
+	golang.org/x/net v0.62.0
+	golang.org/x/sys v0.49.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 

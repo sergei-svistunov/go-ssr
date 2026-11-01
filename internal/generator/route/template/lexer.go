@@ -65,7 +65,7 @@ var reTokens = []struct {
 	{regexp.MustCompile(`^(?i)IN(?:\s|$)`), IN},
 	{regexp.MustCompile(`^"[^\\"]*(?:\\.[^\\"]*)*"`), STRING},
 	{regexp.MustCompile("^`[^`]*(?:\\.[^`]*)*`"), STRING},
-	{regexp.MustCompile("^'[^']*(?:\\.[^']*)*'"), STRING},
+	{regexp.MustCompile(`^'[^']*(?:\.[^']*)*'`), STRING},
 	{regexp.MustCompile(`^-?\d+(?:[.,]\d+)?`), NUMBER},
 	{regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*`), IDENTIFIER},
 }
@@ -112,7 +112,7 @@ func (x *exprLex) Lex(yylval *yySymType) int {
 				if m := token.re.FindString(x.text); m != "" {
 					x.text = x.text[len(m):]
 
-					yylval.string = string(m)
+					yylval.string = m
 
 					if YyLexDebug {
 						fmt.Println("RE TOKEN ", tokenName(token.value), yylval.string)
@@ -182,7 +182,7 @@ func (x *exprLex) Lex(yylval *yySymType) int {
 
 func bn(lexer yyLexer) node.BaseNode {
 	x := lexer.(*exprLex)
-	return node.BaseNode{x.filename, x.curLine}
+	return node.BaseNode{File: x.filename, Line: x.curLine}
 }
 
 func tokenName(c int) string {

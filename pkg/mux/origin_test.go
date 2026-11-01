@@ -41,7 +41,7 @@ func TestCrossSite(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			r := httptest.NewRequest(http.MethodPost, "/contact", nil)
+			r := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/contact", nil)
 			r.Host = tc.host
 			for k, v := range tc.headers {
 				r.Header.Set(k, v)
@@ -72,7 +72,7 @@ func TestCrossSite_SchemeAware(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			r := httptest.NewRequest(http.MethodPost, "/contact", nil)
+			r := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/contact", nil)
 			r.Host = tc.host
 			r.Header.Set("Origin", tc.origin)
 			if tc.tls {
@@ -97,7 +97,7 @@ func TestInvalidOriginPatternIsAnError(t *testing.T) {
 
 func TestNew_AcceptsEscapedIPv6Pattern(t *testing.T) {
 	m := newMux(map[string]Route{}, Options{OriginPatterns: []string{`\[::1\]:*`}})
-	r := httptest.NewRequest(http.MethodPost, "/", nil)
+	r := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/", nil)
 	r.Host = "app.example"
 	r.Header.Set("Sec-Fetch-Site", "cross-site")
 	r.Header.Set("Origin", "http://[::1]:5173")
@@ -107,7 +107,7 @@ func TestNew_AcceptsEscapedIPv6Pattern(t *testing.T) {
 }
 
 func TestRequest_CrossSiteUsesOwnPatterns(t *testing.T) {
-	r := NewRequest(httptest.NewRequest(http.MethodPost, "/contact", nil))
+	r := NewRequest(httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/contact", nil))
 	r.Host = "app.example"
 	r.Header.Set("Origin", "https://dev.example")
 	if !r.CrossSite() {
@@ -122,7 +122,7 @@ func TestRequest_CrossSiteUsesOwnPatterns(t *testing.T) {
 func TestCrossSiteStrict_RefusesOpaqueOrigin(t *testing.T) {
 	// A handshake has no token behind it, and a browser always sends a real
 	// Origin on one; "null" is a sandboxed iframe or a data: document.
-	r := httptest.NewRequest(http.MethodGet, "/live/__ws", nil)
+	r := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/live/__ws", nil)
 	r.Host = "app.example"
 	r.Header.Set("Origin", "null")
 	if CrossSite(r, nil) {
@@ -134,7 +134,7 @@ func TestCrossSiteStrict_RefusesOpaqueOrigin(t *testing.T) {
 }
 
 func TestCrossSiteStrict_RefusesOpaqueOriginEvenIfBrowserSaysSameOrigin(t *testing.T) {
-	r := httptest.NewRequest(http.MethodGet, "/live/__ws", nil)
+	r := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/live/__ws", nil)
 	r.Host = "app.example"
 	r.Header.Set("Origin", "null")
 	r.Header.Set("Sec-Fetch-Site", "same-origin")
@@ -158,7 +158,7 @@ func TestCrossSiteStrict_MatchesCrossSiteOtherwise(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			r := httptest.NewRequest(http.MethodGet, "/live/__ws", nil)
+			r := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/live/__ws", nil)
 			r.Host = "app.example"
 			for k, v := range tc.headers {
 				r.Header.Set(k, v)
@@ -171,16 +171,16 @@ func TestCrossSiteStrict_MatchesCrossSiteOtherwise(t *testing.T) {
 }
 
 func TestSecureRequest(t *testing.T) {
-	plain := httptest.NewRequest(http.MethodGet, "/", nil)
+	plain := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
 	if SecureRequest(plain) {
 		t.Error("a plain http request is not secure")
 	}
-	proxied := httptest.NewRequest(http.MethodGet, "/", nil)
+	proxied := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
 	proxied.Header.Set("X-Forwarded-Proto", "https")
 	if !SecureRequest(proxied) {
 		t.Error("X-Forwarded-Proto: https means the browser used TLS")
 	}
-	direct := httptest.NewRequest(http.MethodGet, "/", nil)
+	direct := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
 	direct.TLS = &tls.ConnectionState{}
 	if !SecureRequest(direct) {
 		t.Error("a TLS connection is secure")
@@ -228,14 +228,14 @@ func TestSafeMethod(t *testing.T) {
 func TestSecureRequest_ForwardedProtoList(t *testing.T) {
 	// Chained proxies append: "https, http".
 	for _, v := range []string{"https", "https, http", " HTTPS ,http", "https,http"} {
-		r := httptest.NewRequest(http.MethodGet, "/", nil)
+		r := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
 		r.Header.Set("X-Forwarded-Proto", v)
 		if !SecureRequest(r) {
 			t.Errorf("X-Forwarded-Proto %q should count as secure", v)
 		}
 	}
 	for _, v := range []string{"http", "http, https", ""} {
-		r := httptest.NewRequest(http.MethodGet, "/", nil)
+		r := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
 		r.Header.Set("X-Forwarded-Proto", v)
 		if SecureRequest(r) {
 			t.Errorf("X-Forwarded-Proto %q should not count as secure", v)
@@ -251,7 +251,7 @@ func TestCrossSite_ListedHttpOriginIsHonouredOnATLSRequest(t *testing.T) {
 		{"Origin": "http://dev.example:3000"},                                 // no Fetch Metadata
 		{"Origin": "http://dev.example:3000", "Sec-Fetch-Site": "cross-site"}, // with it
 	} {
-		r := httptest.NewRequest(http.MethodPost, "/contact", nil)
+		r := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/contact", nil)
 		r.Host = "app.example"
 		r.TLS = &tls.ConnectionState{}
 		for k, v := range headers {
@@ -264,7 +264,7 @@ func TestCrossSite_ListedHttpOriginIsHonouredOnATLSRequest(t *testing.T) {
 }
 
 func TestCrossSite_UnlistedHttpOriginStillRefusedOnATLSRequest(t *testing.T) {
-	r := httptest.NewRequest(http.MethodPost, "/contact", nil)
+	r := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/contact", nil)
 	r.Host = "app.example"
 	r.TLS = &tls.ConnectionState{}
 	r.Header.Set("Origin", "http://app.example")

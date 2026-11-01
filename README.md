@@ -90,7 +90,7 @@ BenchmarkSsrHandlerDeep-16      	  164113	      7131 ns/op
 
 ## Installation
 
-Requires Go 1.25 or newer, plus Node.js and npm for the asset pipeline. go-ssr 0.7.0 works with gossr-runtime
+Requires Go 1.26 or newer, plus Node.js and npm for the asset pipeline. go-ssr 0.7.0 works with gossr-runtime
 0.2.0, and gossr-runtime 0.2.0 with go-ssr 0.7.0; nothing checks the pairing at run time, so install them
 together.
 

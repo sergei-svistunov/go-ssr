@@ -2,6 +2,8 @@ package mux
 
 import (
 	"encoding/base64"
+	"encoding/binary"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,7 +15,7 @@ import (
 // *Request the route saw.
 func requestVia(t *testing.T, opts Options, method, path string, cookies ...*http.Cookie) *Request {
 	t.Helper()
-	req := httptest.NewRequest(method, path, nil)
+	req := httptest.NewRequestWithContext(t.Context(), method, path, nil)
 	for _, c := range cookies {
 		req.AddCookie(c)
 	}
@@ -85,8 +87,8 @@ func TestSign_TamperedTokenIsRejected(t *testing.T) {
 // postSigned builds a POST through a mux with opts, carrying the field and cookies.
 func postSigned(t *testing.T, opts Options, field string, cookies ...*http.Cookie) *Request {
 	t.Helper()
-	body := "name=x&" + CSRFTokenName + "=" + field
-	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+	body := "name=x&" + CSRFFieldName + "=" + field
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	for _, c := range cookies {
 		req.AddCookie(c)
@@ -149,6 +151,24 @@ func TestSign_FutureDatedTokenIsRejected(t *testing.T) {
 
 	if _, err := readForm(postSigned(t, Options{}, "contact:"+tok, set)); err == nil {
 		t.Error("a token dated in the future was accepted")
+	}
+}
+
+func TestSign_TokenDatedPastInt64IsRejected(t *testing.T) {
+	r := requestVia(t, Options{}, http.MethodGet, "/")
+	raw := make([]byte, csrfTokenLen)
+	binary.BigEndian.PutUint64(raw[csrfNonceLen:], math.MaxUint64)
+	copy(raw[csrfNonceLen+csrfTimeLen:], csrfMAC(r.csrfKey, raw[:csrfNonceLen+csrfTimeLen], r.CSRFSession()))
+	if _, ok := tokenAge(r, base64.RawURLEncoding.EncodeToString(raw), r.CSRFSession()); ok {
+		t.Error("a token dated past the int64 range was accepted")
+	}
+}
+
+func TestSign_ClockBefore1970MintsNoToken(t *testing.T) {
+	csrfNow = func() time.Time { return time.Unix(-1, 0) }
+	t.Cleanup(func() { csrfNow = time.Now })
+	if tok, err := mintToken(requestVia(t, Options{}, http.MethodGet, "/")); err == nil {
+		t.Errorf("minted %q", tok)
 	}
 }
 

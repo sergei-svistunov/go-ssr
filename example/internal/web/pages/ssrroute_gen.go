@@ -95,13 +95,13 @@ func renderBlock_204dbd9686f3fa04(data *RouteData) string {
 // in this route. Call Set<VarName> to push an update to the connected client.
 type ReactiveState struct {
 	conn      *reactive.Conn
-	routeKey  string     // owning route's 8-hex path hash (for patch frames)
+	route     string     // owning route's 8-hex path hash (for patch frames)
 	data      *RouteData // current route data; Set* methods update this in-place
 	muBalance sync.Mutex
 }
 
 func NewReactiveState(conn *reactive.Conn, data *RouteData) *ReactiveState {
-	return &ReactiveState{conn: conn, routeKey: routeKey, data: data}
+	return &ReactiveState{conn: conn, route: routeKey, data: data}
 }
 
 // SetBalance pushes a new value for the balance binding.
@@ -113,9 +113,9 @@ func (s *ReactiveState) SetBalance(v int) {
 	s.muBalance.Lock()
 	s.data.Balance = v
 	s.muBalance.Unlock()
-	s.conn.Enqueue(s.routeKey, "8a5edab2.1652272a62d338e4", renderBlock_1652272a62d338e4(s.data))
-	s.conn.Enqueue(s.routeKey, "8a5edab2.1aecffd7a29f4e49", renderBlock_1aecffd7a29f4e49(s.data))
-	s.conn.Enqueue(s.routeKey, "8a5edab2.204dbd9686f3fa04", renderBlock_204dbd9686f3fa04(s.data))
+	s.conn.Enqueue(s.route, "8a5edab2.1652272a62d338e4", renderBlock_1652272a62d338e4(s.data))
+	s.conn.Enqueue(s.route, "8a5edab2.1aecffd7a29f4e49", renderBlock_1aecffd7a29f4e49(s.data))
+	s.conn.Enqueue(s.route, "8a5edab2.204dbd9686f3fa04", renderBlock_204dbd9686f3fa04(s.data))
 }
 
 // Snapshot returns the current rendered values for all reactive binding sites.
@@ -150,8 +150,8 @@ func (rt *ssrRoute) Layout() bool { return true }
 func (rt *ssrRoute) NewState() mux.RouteState {
 	s := &ssrState{dp: rt.dp}
 	s.SetAssets([]string{
-		"<link href=\"/static/css/vendors.5a2176a80029d4f81fc6.css\" rel=\"stylesheet\">",
-		"<script defer=\"defer\" src=\"/static/js/vendors.5a2176a80029d4f81fc6.js\"></script>",
+		"<link href=\"/static/css/vendors.5cea4e3d8eccf96590ce.css\" rel=\"stylesheet\">",
+		"<script defer=\"defer\" src=\"/static/js/vendors.5cea4e3d8eccf96590ce.js\"></script>",
 		"<script defer=\"defer\" src=\"/static/js/bootstrap.ee5455b5f18a25638194.js\"></script>",
 		"<link href=\"/static/css/vendors-node_modules_bootstrap-icons_font_bootstrap-icons_min_css.ca9792bc48666a9f0106.css\" rel=\"stylesheet\">",
 		"<link href=\"/static/css/main.c4c3657cf42c8a92e67c.css\" rel=\"stylesheet\">",

@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/url"
@@ -139,8 +140,9 @@ func lookupApp(dir string) *app {
 
 // startApp runs the project's application in the background. It refuses to
 // start a second one for the same project: two servers on one port is a
-// confusing failure, and the caller almost always meant to restart.
-func startApp(p *project) (*app, error) {
+// confusing failure, and the caller almost always meant to restart. Cancelling
+// ctx stops the application's whole process group.
+func startApp(ctx context.Context, p *project) (*app, error) {
 	appsMu.Lock()
 	defer appsMu.Unlock()
 
@@ -150,7 +152,7 @@ func startApp(p *project) (*app, error) {
 	}
 
 	args := append([]string{"run"}, strings.Fields(p.cfg.GoRunArgs)...)
-	cmd := exec.Command("go", args...)
+	cmd := exec.CommandContext(ctx, "go", args...)
 	cmd.Dir = p.cfg.Dir
 	// The application must never be given the stream the protocol runs on.
 	cmd.Stdin = nil
@@ -161,6 +163,7 @@ func startApp(p *project) (*app, error) {
 		cmd.Env = append(cmd.Env, k+"="+v)
 	}
 	setProcessGroup(cmd)
+	cmd.Cancel = func() error { return terminateGroup(cmd) }
 
 	a := &app{
 		dir:     p.cfg.Dir,
@@ -200,11 +203,12 @@ var reURL = regexp.MustCompile(`https?://[^\s"'<>)]+`)
 // waitReady blocks until the application is answering on the address it
 // printed, until it exits, or until wait elapses. An application that never
 // prints a URL is not a failure — it is just one this cannot confirm.
-func waitReady(a *app, wait time.Duration) {
-	deadline := time.Now().Add(wait)
+func waitReady(ctx context.Context, a *app, wait time.Duration) {
+	ctx, cancel := context.WithTimeout(ctx, wait)
+	defer cancel()
 
 	for {
-		if u := probeURL(a.log.all()); u != "" {
+		if u := probeURL(ctx, a.log.all()); u != "" {
 			a.mu.Lock()
 			a.url = u
 			a.mu.Unlock()
@@ -214,17 +218,15 @@ func waitReady(a *app, wait time.Duration) {
 		select {
 		case <-a.done:
 			return
-		case <-time.After(100 * time.Millisecond):
-		}
-
-		if time.Now().After(deadline) {
+		case <-ctx.Done():
 			return
+		case <-time.After(100 * time.Millisecond):
 		}
 	}
 }
 
 // probeURL returns the first address in the output that accepts a connection.
-func probeURL(out string) string {
+func probeURL(ctx context.Context, out string) string {
 	for _, raw := range reURL.FindAllString(out, 4) {
 		u, err := url.Parse(strings.TrimRight(raw, ".,;"))
 		if err != nil || u.Host == "" {
@@ -240,7 +242,8 @@ func probeURL(out string) string {
 			port = map[string]string{"http": "80", "https": "443"}[u.Scheme]
 		}
 
-		conn, err := net.DialTimeout("tcp", net.JoinHostPort(host, port), 300*time.Millisecond)
+		d := net.Dialer{Timeout: 300 * time.Millisecond}
+		conn, err := d.DialContext(ctx, "tcp", net.JoinHostPort(host, port))
 		if err != nil {
 			continue
 		}

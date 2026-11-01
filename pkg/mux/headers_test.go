@@ -27,8 +27,8 @@ func wantSecurityHeaders(t *testing.T, h http.Header, csp string) {
 	}
 }
 
-func hostRequest(method, path, host string) *http.Request {
-	r := httptest.NewRequest(method, path, nil)
+func hostRequest(t *testing.T, method, path, host string) *http.Request {
+	r := httptest.NewRequestWithContext(t.Context(), method, path, nil)
 	r.Host = host
 	return r
 }
@@ -46,7 +46,7 @@ func TestSecurityHeaders(t *testing.T) {
 		r["/notes"].header = hooked
 		r["/notes"].fail = map[string]error{"data": NewHttpError(http.StatusForbidden, "Forbidden")}
 	})
-	handshake := hostRequest(http.MethodGet, "/home/__ws", "example.test")
+	handshake := hostRequest(t, http.MethodGet, "/home/__ws", "example.test")
 	handshake.Header.Set("Connection", "Upgrade")
 	handshake.Header.Set("Upgrade", "websocket")
 	handshake.Header.Set("Origin", "https://evil.test")
@@ -55,10 +55,10 @@ func TestSecurityHeaders(t *testing.T) {
 		req    *http.Request
 		status int
 	}{
-		"page":              {hostRequest(http.MethodGet, "/home", "example.test"), http.StatusOK},
-		"error":             {hostRequest(http.MethodGet, "/missing", "example.test"), http.StatusNotFound},
-		"error after hook":  {hostRequest(http.MethodGet, "/notes", "example.test"), http.StatusForbidden},
-		"redirect":          {hostRequest(http.MethodGet, "/", "example.test"), http.StatusFound},
+		"page":              {hostRequest(t, http.MethodGet, "/home", "example.test"), http.StatusOK},
+		"error":             {hostRequest(t, http.MethodGet, "/missing", "example.test"), http.StatusNotFound},
+		"error after hook":  {hostRequest(t, http.MethodGet, "/notes", "example.test"), http.StatusForbidden},
+		"redirect":          {hostRequest(t, http.MethodGet, "/", "example.test"), http.StatusFound},
 		"refused handshake": {handshake, http.StatusForbidden},
 	} {
 		for _, secure := range []bool{false, true} {
@@ -81,7 +81,7 @@ func TestCSPHostIsNotEchoed(t *testing.T) {
 	m, _ := site(t, nil)
 	bare := strings.Replace(testCSP, " ws://example.test", "", 1)
 	for _, host := range []string{"evil.test; script-src *", "a b", "evil.test,x", `"x"`, "[abc]"} {
-		csp := serve(m, hostRequest(http.MethodGet, "/home", host)).Header().Get("Content-Security-Policy")
+		csp := serve(m, hostRequest(t, http.MethodGet, "/home", host)).Header().Get("Content-Security-Policy")
 		if csp != bare {
 			t.Errorf("Host %q: CSP %q, want %q", host, csp, bare)
 		}
@@ -90,7 +90,7 @@ func TestCSPHostIsNotEchoed(t *testing.T) {
 		}
 	}
 
-	csp := serve(m, hostRequest(http.MethodGet, "/home", "[::1]:8080")).Header().Get("Content-Security-Policy")
+	csp := serve(m, hostRequest(t, http.MethodGet, "/home", "[::1]:8080")).Header().Get("Content-Security-Policy")
 	if !strings.Contains(csp, "; connect-src 'self' ws://[::1]:8080; ") {
 		t.Errorf("Host [::1]:8080: CSP %q", csp)
 	}
@@ -103,7 +103,7 @@ func TestCSPSources(t *testing.T) {
 		"media-src":   {"blob:"},
 		"worker-src":  {"'self'"},
 	}})
-	csp := serve(m, hostRequest(http.MethodGet, "/", "example.test")).Header().Get("Content-Security-Policy")
+	csp := serve(m, hostRequest(t, http.MethodGet, "/", "example.test")).Header().Get("Content-Security-Policy")
 	for _, want := range []string{
 		"; img-src 'self' data: https://img.example https://*.cdn.example img.example:*; ",
 		"; connect-src 'self' ws://example.test https://api.example; ",

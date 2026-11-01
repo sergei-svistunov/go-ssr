@@ -39,7 +39,7 @@ func TestHTMLConstRejectsVariables(t *testing.T) {
 	build := func(body string) (string, error) {
 		dir := t.TempDir()
 		files := map[string]string{
-			"go.mod": "module probe\n\ngo 1.25.0\n\nrequire github.com/sergei-svistunov/go-ssr v0.0.0\n\n" +
+			"go.mod": "module probe\n\n" + goLine(t, root) + "\n\nrequire github.com/sergei-svistunov/go-ssr v0.0.0\n\n" +
 				"replace github.com/sergei-svistunov/go-ssr => " + root + "\n",
 			"go.sum":  string(sum),
 			"main.go": "package main\n\nimport \"github.com/sergei-svistunov/go-ssr/pkg/render\"\n\nfunc main() {\n" + body + "\n}\n",
@@ -56,6 +56,9 @@ func TestHTMLConstRejectsVariables(t *testing.T) {
 		return string(out), err
 	}
 	if out, err := build(`_ = render.HTMLConst("<b>x</b>")`); err != nil {
+		if strings.Contains(out, "GOPROXY=off") {
+			t.Skip("the module cache lacks a dependency and the probe builds offline: run go mod download")
+		}
 		t.Fatalf("a constant does not compile: %v\n%s", err, out)
 	}
 	out, err := build("markup := \"<b>x</b>\"\n_ = render.HTMLConst(markup)")
@@ -65,6 +68,22 @@ func TestHTMLConstRejectsVariables(t *testing.T) {
 	if !strings.Contains(out, "stringConstant") {
 		t.Fatalf("unexpected build output:\n%s", out)
 	}
+}
+
+// goLine returns the go directive of the go.mod in root.
+func goLine(t *testing.T, root string) string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(root, "go.mod"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.HasPrefix(line, "go ") {
+			return line
+		}
+	}
+	t.Fatal("go.mod has no go directive")
+	return ""
 }
 
 // decodeLive decodes a value the page sends for a live variable of type T, as live writes do.

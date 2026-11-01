@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -31,7 +32,7 @@ func AssetsFromDir(p string) (*Assets, error) {
 	}
 
 	if err := json.NewDecoder(f).Decode(&assetsData); err != nil {
-		return nil, fmt.Errorf("error decoding webpack-stats.json: %v", err)
+		return nil, fmt.Errorf("error decoding webpack-assets.json: %w", err)
 	}
 
 	assets := make(map[string][]string)
@@ -42,11 +43,7 @@ func AssetsFromDir(p string) (*Assets, error) {
 			epId = strings.TrimPrefix(epId, "pages")
 		}
 
-		epAssets := make([]string, len(entryPoint))
-		for i, asset := range entryPoint {
-			epAssets[i] = asset
-		}
-		assets[epId] = epAssets
+		assets[epId] = slices.Clone(entryPoint)
 	}
 
 	return &Assets{assetsData.OutputPath, assets, assetsData.Images}, nil

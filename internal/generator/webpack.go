@@ -1,6 +1,7 @@
 package generator
 
 import (
+	"context"
 	"fmt"
 	"io/fs"
 	"os"
@@ -8,13 +9,13 @@ import (
 	"time"
 )
 
-func (g *Generator) Webpack() error {
+func (g *Generator) Webpack(ctx context.Context) error {
 	needUpdateNpmModules, err := g.needUpdateNpmModules()
 	if err != nil {
 		return err
 	}
 	if needUpdateNpmModules {
-		if err := g.installNpmModules(); err != nil {
+		if err := g.installNpmModules(ctx); err != nil {
 			return err
 		}
 	}
@@ -25,11 +26,11 @@ func (g *Generator) Webpack() error {
 	}
 
 	_, _ = fmt.Fprintln(g.errOut, "Building static...")
-	return g.runCommand(g.webDir, "npx", "webpack", "--mode", mode)
+	return g.runCommand(ctx, g.webDir, "npx", "webpack", "--mode", mode)
 }
 
-func (g *Generator) installNpmModules() error {
-	return g.runCommand(g.webDir, "npm", "install")
+func (g *Generator) installNpmModules(ctx context.Context) error {
+	return g.runCommand(ctx, g.webDir, "npm", "install")
 }
 
 func (g *Generator) needUpdateNpmModules() (bool, error) {
@@ -146,12 +147,6 @@ func newerSourceThan(dir string, t time.Time, skipDirs map[string]bool) (string,
 			return nil
 		}
 		if !assetSourceExtensions[filepath.Ext(p)] {
-			return nil
-		}
-		// The generator rewrites its own TypeScript on every run, after this
-		// check has already read the timestamps. Counting it as a source would
-		// make the assets permanently stale and force a webpack run every time.
-		if d.Name() == tsTypesFileName {
 			return nil
 		}
 		info, err := d.Info()

@@ -1,0 +1,6 @@
+# Generated binding keys in past commits that read as generic API keys.
+3e0b4daeded69e3978983a0d75ab91029a4190dd:example/internal/web/pages/ssrroute_gen.go:generic-api-key:116
+3e0b4daeded69e3978983a0d75ab91029a4190dd:example/internal/web/pages/ssrroute_gen.go:generic-api-key:117
+3e0b4daeded69e3978983a0d75ab91029a4190dd:example/internal/web/pages/ssrroute_gen.go:generic-api-key:118
+12d8ad2e0b3ff66e127c1d93466d5da512dd1f57:example/internal/web/pages/home/ssrroute_gen.go:generic-api-key:118
+12d8ad2e0b3ff66e127c1d93466d5da512dd1f57:example/internal/web/pages/home/ssrroute_gen.go:generic-api-key:130

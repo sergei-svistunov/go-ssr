@@ -310,6 +310,8 @@ func urlEscapers(file string, line int, tag, name string, values []node.Node) er
 type scannedAttr struct {
 	name   string
 	quoted bool
+	// dup marks a name the tag already has; the tokenizer skips such an attribute.
+	dup bool
 }
 
 func isHTMLSpace(c byte) bool { return c == ' ' || c == '\t' || c == '\n' || c == '\f' || c == '\r' }
@@ -325,8 +327,8 @@ func asciiLower(b []byte) string {
 }
 
 // scanAttrs lists the attributes of the start tag raw in source order, reading them as the
-// x/net/html tokenizer does, so that the list lines up with what Tokenizer.TagAttr returns
-// and tells whether each value was quoted.
+// x/net/html tokenizer does, so that the list without its dup entries lines up with what
+// Tokenizer.TagAttr returns and tells whether each value was quoted.
 func scanAttrs(raw []byte) []scannedAttr {
 	n := len(raw)
 	skipSpace := func(i int) int {
@@ -340,6 +342,7 @@ func scanAttrs(raw []byte) []scannedAttr {
 		i++
 	}
 	var attrs []scannedAttr
+	seen := map[string]bool{}
 	for {
 		for i < n && (isHTMLSpace(raw[i]) || raw[i] == '/') {
 			i++
@@ -369,6 +372,8 @@ func scanAttrs(raw []byte) []scannedAttr {
 			}
 			i = j
 		}
+		a.dup = seen[a.name]
+		seen[a.name] = true
 		attrs = append(attrs, a)
 	}
 }

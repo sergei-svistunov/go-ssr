@@ -89,6 +89,7 @@ if err != nil {
 |---|---|---|
 | `CSRFKey` | required | signs CSRF tokens; at least 32 bytes, the same on every instance. Empty or shorter is an error |
 | `CSRFSession` | nil | returns the session a request belongs to, so a token is bound to it; also keys `MaxLiveConnsPerSession` |
+| `MaxBodyBytes` | 0, meaning 10 MiB | largest body of a POST to a page, multipart included; a larger one is refused with 413. Negative is an error |
 | `MaxLiveConnsPerSession` | 0, no limit | live connections open at once per session; a handshake beyond it is refused with 429. A request without a session is not counted |
 | `CSPSources` | none | sources added to directives of the Content-Security-Policy, after the defaults; an unknown directive or a weakening source is an error |
 | `OriginPatterns` | none | other origins allowed to post forms and open live connections |

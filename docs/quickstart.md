@@ -4,7 +4,7 @@ Everything needed to get from an empty directory to a running GoSSR app.
 
 ## Requirements
 
-- Go 1.25 or newer, for both the `go-ssr` tool and the application it generates.
+- Go 1.26 or newer, for both the `go-ssr` tool and the application it generates.
 - Node.js and npm, used for the asset pipeline (webpack, TypeScript, Sass).
 
 ## Install the tool

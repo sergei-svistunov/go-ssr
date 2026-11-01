@@ -1,10 +1,13 @@
 package generator_test
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/sergei-svistunov/go-ssr/internal/config"
@@ -88,20 +91,22 @@ func buildFixture(t *testing.T, dir string) string {
 	}
 
 	g := generator.New(&config.Config{Dir: app, WebDir: filepath.Join(app, "web"), WebPackage: "example.com/app/web"})
+	var diag bytes.Buffer
+	g.SetOutput(nil, io.Discard, &diag)
 	if err := g.Analyze(); err != nil {
-		t.Fatalf("Analyze: %v", err)
+		t.Fatalf("Analyze: %v\n%s", err, diag.String())
 	}
 	if err := g.Generate(); err != nil {
-		t.Fatalf("Generate: %v", err)
+		t.Fatalf("Generate: %v\n%s", err, diag.String())
 	}
 
-	goMod := fmt.Sprintf("module example.com/app\n\ngo 1.25.0\n\nrequire github.com/sergei-svistunov/go-ssr v0.0.0\n\nreplace github.com/sergei-svistunov/go-ssr => %s\n", repoRoot)
+	goMod := fmt.Sprintf("module example.com/app\n\n%s\n\nrequire github.com/sergei-svistunov/go-ssr v0.0.0\n\nreplace github.com/sergei-svistunov/go-ssr => %s\n", goLine(t, repoRoot), repoRoot)
 	if err := os.WriteFile(filepath.Join(app, "go.mod"), []byte(goMod), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	bin := filepath.Join(app, "app.test")
 	for _, args := range [][]string{{"mod", "tidy"}, {"test", "-c", "-o", bin, "."}} {
-		cmd := exec.Command("go", args...)
+		cmd := exec.CommandContext(t.Context(), "go", args...)
 		cmd.Dir = app
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("go %v:\n%s", args, out)
@@ -110,10 +115,26 @@ func buildFixture(t *testing.T, dir string) string {
 	return bin
 }
 
+// goLine returns the go directive of the go.mod in root.
+func goLine(t *testing.T, root string) string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(root, "go.mod"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.HasPrefix(line, "go ") {
+			return line
+		}
+	}
+	t.Fatal("go.mod has no go directive")
+	return ""
+}
+
 // runFixture runs a binary from buildFixture with args.
 func runFixture(t *testing.T, bin string, args ...string) {
 	t.Helper()
-	if out, err := exec.Command(bin, args...).CombinedOutput(); err != nil {
+	if out, err := exec.CommandContext(t.Context(), bin, args...).CombinedOutput(); err != nil {
 		t.Fatalf("%v:\n%s", args, out)
 	}
 }

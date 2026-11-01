@@ -3,7 +3,7 @@ package generator
 import (
 	"bytes"
 	"compress/gzip"
-	"crypto/md5"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -12,7 +12,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
 
@@ -22,6 +21,8 @@ import (
 const (
 	staticEmbedDirName = "static_embed"
 	staticGenFileName  = "ssrstaticfiles_gen.go"
+	manifestName       = ".etags.json"
+	manifestTmp        = ".etags.json.tmp"
 )
 
 // Skip gzipping for already-compressed formats. Gzip on these costs binary size
@@ -70,7 +71,7 @@ type manifestEntry struct {
 // embedded so the caller can decide whether to wire up the static handler.
 //
 // Caching: an .etags.json manifest in the staging dir tracks per-file mtime
-// AND an MD5 of the source bytes. The fast path skips re-staging when both
+// AND a SHA-256 of the source bytes. The fast path skips re-staging when both
 // match. Hashing the source is needed because mtime alone is not reliable —
 // git checkout, rsync -a, tar -p, unzip -X and Docker COPY all preserve
 // mtimes, so an unchanged mtime does not guarantee unchanged content.
@@ -91,30 +92,30 @@ func (g *Generator) genStaticFiles() (bool, []string, error) {
 		return false, nil, nil
 	}
 
-	if err := os.MkdirAll(embDir, 0755); err != nil {
+	emb, err := openStaging(pagesDir)
+	if err != nil {
 		return false, nil, fmt.Errorf("could not create static embed dir: %w", err)
 	}
+	defer emb.Close()
 
-	manifest := loadManifest(filepath.Join(embDir, ".etags.json"))
+	manifest := loadManifest(filepath.Join(embDir, manifestName))
 	newManifest := make(map[string]manifestEntry)
 	entries := make([]staticFileEntry, 0, 64)
 
 	urlPrefix := "/" + strings.Trim(filepath.ToSlash(g.assets.outputPath), "/") + "/"
 
-	if err := filepath.WalkDir(srcDir, func(p string, d fs.DirEntry, err error) error {
+	src, err := os.OpenRoot(srcDir)
+	if err != nil {
+		return false, nil, fmt.Errorf("could not open static dir: %w", err)
+	}
+	defer src.Close()
+
+	if err := fs.WalkDir(src.FS(), ".", func(rel string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if d.IsDir() {
 			return nil
-		}
-
-		rel, err := filepath.Rel(srcDir, p)
-		if err != nil {
-			return err
-		}
-		if runtime.GOOS == "windows" {
-			rel = strings.ReplaceAll(rel, "\\", "/")
 		}
 
 		ext := strings.ToLower(path.Ext(rel))
@@ -125,7 +126,7 @@ func (g *Generator) genStaticFiles() (bool, []string, error) {
 		}
 		dstPath := filepath.Join(embDir, filepath.FromSlash(dstRel))
 
-		srcInfo, err := os.Stat(p)
+		srcInfo, err := src.Stat(filepath.FromSlash(rel))
 		if err != nil {
 			return err
 		}
@@ -138,11 +139,11 @@ func (g *Generator) genStaticFiles() (bool, []string, error) {
 
 		urlKey := urlPrefix + rel
 
-		raw, err := os.ReadFile(p)
+		raw, err := src.ReadFile(filepath.FromSlash(rel))
 		if err != nil {
 			return err
 		}
-		srcSum := md5.Sum(raw)
+		srcSum := sha256.Sum256(raw)
 		srcHash := hex.EncodeToString(srcSum[:])
 
 		if cached, ok := manifest[dstRel]; ok && cached.SrcHash == srcHash && fileExists(dstPath) {
@@ -179,14 +180,14 @@ func (g *Generator) genStaticFiles() (bool, []string, error) {
 			stored = raw
 		}
 
-		if err := os.MkdirAll(filepath.Dir(dstPath), 0755); err != nil {
+		if err := emb.MkdirAll(filepath.Dir(filepath.FromSlash(dstRel)), 0o755); err != nil {
 			return err
 		}
-		if err := os.WriteFile(dstPath, stored, 0644); err != nil {
+		if err := emb.WriteFile(filepath.FromSlash(dstRel), stored, 0o644); err != nil {
 			return err
 		}
 
-		sum := md5.Sum(stored)
+		sum := sha256.Sum256(stored)
 		etag := `"` + hex.EncodeToString(sum[:8]) + `"`
 
 		size := int64(len(raw))
@@ -215,11 +216,11 @@ func (g *Generator) genStaticFiles() (bool, []string, error) {
 		return false, nil, fmt.Errorf("could not walk static dir: %w", err)
 	}
 
-	if err := pruneStaging(embDir, newManifest); err != nil {
+	if err := pruneStaging(emb, newManifest); err != nil {
 		return false, nil, fmt.Errorf("could not prune static embed dir: %w", err)
 	}
 
-	if err := saveManifest(filepath.Join(embDir, ".etags.json"), newManifest); err != nil {
+	if err := saveManifest(emb, newManifest); err != nil {
 		return false, nil, fmt.Errorf("could not write static embed manifest: %w", err)
 	}
 
@@ -235,13 +236,13 @@ func (g *Generator) genStaticFiles() (bool, []string, error) {
 		urlKeys[i] = e.URLKey
 	}
 
-	if err := writeStaticGo(outFile, entries); err != nil {
+	if err := writeStaticGo(pagesDir, entries); err != nil {
 		return false, nil, err
 	}
 	return true, urlKeys, nil
 }
 
-func writeStaticGo(outFile string, entries []staticFileEntry) error {
+func writeStaticGo(pagesDir string, entries []staticFileEntry) error {
 	buf := gobuf.New()
 	buf.WriteStringLn(goFileHeader)
 	buf.WriteStringLn("package pages")
@@ -280,7 +281,20 @@ func writeStaticGo(outFile string, entries []staticFileEntry) error {
 	if err != nil {
 		return fmt.Errorf("could not format %s: %w\n%s", staticGenFileName, err, buf.String())
 	}
-	return os.WriteFile(outFile, formatted, 0644)
+	return writeFile(pagesDir, staticGenFileName, formatted)
+}
+
+// openStaging creates the staging dir in pagesDir and opens it as a root.
+func openStaging(pagesDir string) (*os.Root, error) {
+	pages, err := os.OpenRoot(pagesDir)
+	if err != nil {
+		return nil, err
+	}
+	defer pages.Close()
+	if err := pages.MkdirAll(staticEmbedDirName, 0o755); err != nil {
+		return nil, err
+	}
+	return pages.OpenRoot(staticEmbedDirName)
 }
 
 func loadManifest(p string) map[string]manifestEntry {
@@ -295,48 +309,38 @@ func loadManifest(p string) map[string]manifestEntry {
 	return m
 }
 
-func saveManifest(p string, m map[string]manifestEntry) error {
+func saveManifest(emb *os.Root, m map[string]manifestEntry) error {
 	data, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		return err
 	}
-	tmp := p + ".tmp"
-	if err := os.WriteFile(tmp, data, 0644); err != nil {
+	if err := emb.WriteFile(manifestTmp, data, 0o644); err != nil {
 		return err
 	}
-	return os.Rename(tmp, p)
+	return emb.Rename(manifestTmp, manifestName)
 }
 
-func pruneStaging(embDir string, keep map[string]manifestEntry) error {
-	manifestName := ".etags.json"
-	manifestTmp := ".etags.json.tmp"
+// pruneStaging removes the files of emb that keep does not list, then the
+// folders that leaves empty.
+func pruneStaging(emb *os.Root, keep map[string]manifestEntry) error {
 	dirs := make([]string, 0)
-	if err := filepath.WalkDir(embDir, func(p string, d fs.DirEntry, err error) error {
+	if err := fs.WalkDir(emb.FS(), ".", func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if d.IsDir() {
-			if p != embDir {
+			if p != "." {
 				dirs = append(dirs, p)
 			}
 			return nil
 		}
-		rel, err := filepath.Rel(embDir, p)
-		if err != nil {
-			return err
-		}
-		base := filepath.Base(p)
-		if base == manifestName || base == manifestTmp {
+		if p == manifestName || p == manifestTmp {
 			return nil
 		}
-		key := rel
-		if runtime.GOOS == "windows" {
-			key = strings.ReplaceAll(key, "\\", "/")
-		}
-		if _, ok := keep[key]; ok {
+		if _, ok := keep[p]; ok {
 			return nil
 		}
-		return os.Remove(p)
+		return emb.Remove(filepath.FromSlash(p))
 	}); err != nil {
 		return err
 	}
@@ -344,7 +348,7 @@ func pruneStaging(embDir string, keep map[string]manifestEntry) error {
 	// descending by length so children are visited before parents.
 	sort.Slice(dirs, func(i, j int) bool { return len(dirs[i]) > len(dirs[j]) })
 	for _, d := range dirs {
-		_ = os.Remove(d) // ignore ENOTEMPTY
+		_ = emb.Remove(filepath.FromSlash(d)) // ignore ENOTEMPTY
 	}
 	return nil
 }

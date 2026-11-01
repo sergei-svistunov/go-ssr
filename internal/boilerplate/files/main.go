@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"<PKG_NAME>/<WEB_DIR>"
 )
@@ -22,8 +23,9 @@ func main() {
 		log.Fatal(err)
 	}
 
+	srv := &http.Server{Addr: ":8080", Handler: handler, ReadHeaderTimeout: 10 * time.Second}
 	log.Print("Server listens on http://localhost:8080/")
-	if err := http.ListenAndServe(":8080", handler); err != nil {
+	if err := srv.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}
 }

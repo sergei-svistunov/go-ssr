@@ -8,5 +8,5 @@ const (
 	MultipartFormData = "multipart/form-data"
 
 	// CSRFTokenName is the name of the hidden field every <ssr:form> renders.
-	CSRFTokenName = mux.CSRFTokenName
+	CSRFTokenName = mux.CSRFFieldName
 )

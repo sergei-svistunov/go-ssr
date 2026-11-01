@@ -64,7 +64,7 @@ func newCSP(sources map[string][]string) (*cspPolicy, error) {
 		}
 		for _, s := range list {
 			if err := checkCSPSource(name, s); err != nil {
-				return nil, fmt.Errorf("mux: CSPSources: %s source %q %v", name, s, err)
+				return nil, fmt.Errorf("mux: CSPSources: %s source %q %w", name, s, err)
 			}
 		}
 	}

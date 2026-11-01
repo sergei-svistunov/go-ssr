@@ -185,15 +185,33 @@ func liveSite(t *testing.T, opts Options, change func(map[string]*liveFake), wra
 }
 
 // dialLive opens the live connection at path with the given headers.
-func dialLive(t *testing.T, srv *httptest.Server, path string, header http.Header) (*websocket.Conn, *http.Response, error) {
+func dialLive(t *testing.T, srv *httptest.Server, path string, header http.Header) (*websocket.Conn, *refusal, error) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	c, resp, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(srv.URL, "http")+path, &websocket.DialOptions{HTTPHeader: header})
 	if c != nil {
-		t.Cleanup(func() { c.CloseNow() })
+		t.Cleanup(func() { _ = c.CloseNow() })
 	}
-	return c, resp, err
+	return c, refusalOf(resp), err
+}
+
+// refusal is the status and header of the response to a dial.
+type refusal struct {
+	StatusCode int
+	Header     http.Header
+}
+
+// refusalOf reads resp, which is nil when the dial got no response, and
+// closes its body.
+func refusalOf(resp *http.Response) *refusal {
+	if resp == nil {
+		return nil
+	}
+	if resp.Body != nil {
+		_ = resp.Body.Close()
+	}
+	return &refusal{StatusCode: resp.StatusCode, Header: resp.Header}
 }
 
 // mustDial opens the live connection at path and fails the test if it is
@@ -209,7 +227,7 @@ func mustDial(t *testing.T, srv *httptest.Server, path string, header http.Heade
 
 // wantRefused checks that dialling path is refused with status before the
 // upgrade.
-func wantRefused(t *testing.T, srv *httptest.Server, path string, header http.Header, status int) *http.Response {
+func wantRefused(t *testing.T, srv *httptest.Server, path string, header http.Header, status int) *refusal {
 	t.Helper()
 	c, resp, err := dialLive(t, srv, path, header)
 	if err == nil || c != nil {
@@ -499,16 +517,17 @@ func TestLiveAcceptsTheHostWithItsDefaultPort(t *testing.T) {
 		Host:       "app.example:443",
 		HTTPHeader: http.Header{"Origin": {"https://app.example"}},
 	})
+	r := refusalOf(resp)
 	if err != nil {
-		t.Fatalf("dial: %v (response %v)", err, resp)
+		t.Fatalf("dial: %v (response %v)", err, r)
 	}
-	c.CloseNow()
+	_ = c.CloseNow()
 }
 
 func TestLiveAddressNeedsUpgrade(t *testing.T) {
 	srv, checks, _ := liveSite(t, Options{}, nil, nil)
 	for _, method := range []string{http.MethodGet, http.MethodPost} {
-		req, err := http.NewRequest(method, srv.URL+"/admin/live/__ws", nil)
+		req, err := http.NewRequestWithContext(t.Context(), method, srv.URL+"/admin/live/__ws", nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -530,7 +549,7 @@ func TestLiveUpgradeTokenIsCaseInsensitive(t *testing.T) {
 	captureLiveLog(t)
 	checks := &hookLog{}
 	m := newMux(map[string]Route{"/": &liveFake{name: "root", key: "rk000001", checks: checks, ran: &hookLog{}}}, Options{})
-	r := httptest.NewRequest(http.MethodGet, "/__ws", nil)
+	r := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/__ws", nil)
 	r.Header.Set("Connection", "Upgrade")
 	r.Header.Set("Upgrade", "WebSocket")
 	m.ServeHTTP(httptest.NewRecorder(), r)

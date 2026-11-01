@@ -102,7 +102,7 @@ func renderBlock_displayName(data *RouteData) string {
 // in this route. Call Set<VarName> to push an update to the connected client.
 type ReactiveState struct {
 	conn                 *reactive.Conn
-	routeKey             string     // owning route's 8-hex path hash (for patch frames)
+	route                string     // owning route's 8-hex path hash (for patch frames)
 	data                 *RouteData // current route data; Set* methods update this in-place
 	muDisplayName        sync.Mutex
 	muVisitorsBadgeClass sync.Mutex
@@ -110,7 +110,7 @@ type ReactiveState struct {
 }
 
 func NewReactiveState(conn *reactive.Conn, data *RouteData) *ReactiveState {
-	return &ReactiveState{conn: conn, routeKey: routeKey, data: data}
+	return &ReactiveState{conn: conn, route: routeKey, data: data}
 }
 
 // SetDisplayName pushes a new value for the displayName binding.
@@ -122,7 +122,7 @@ func (s *ReactiveState) SetDisplayName(v string) {
 	s.muDisplayName.Lock()
 	s.data.DisplayName = v
 	s.muDisplayName.Unlock()
-	s.conn.Enqueue(s.routeKey, "2cc974af.displayName", renderBlock_displayName(s.data))
+	s.conn.Enqueue(s.route, "2cc974af.displayName", renderBlock_displayName(s.data))
 }
 
 // SetVisitorsBadgeClass pushes a new value for the visitorsBadgeClass binding.
@@ -134,7 +134,7 @@ func (s *ReactiveState) SetVisitorsBadgeClass(v string) {
 	s.muVisitorsBadgeClass.Lock()
 	s.data.VisitorsBadgeClass = v
 	s.muVisitorsBadgeClass.Unlock()
-	s.conn.Enqueue(s.routeKey, "2cc974af.2148738a1b6a87aa", renderBlock_2148738a1b6a87aa(s.data))
+	s.conn.Enqueue(s.route, "2cc974af.2148738a1b6a87aa", renderBlock_2148738a1b6a87aa(s.data))
 }
 
 // SetVisitorsOnline pushes a new value for the visitorsOnline binding.
@@ -146,7 +146,7 @@ func (s *ReactiveState) SetVisitorsOnline(v int) {
 	s.muVisitorsOnline.Lock()
 	s.data.VisitorsOnline = v
 	s.muVisitorsOnline.Unlock()
-	s.conn.Enqueue(s.routeKey, "2cc974af.2148738a1b6a87aa", renderBlock_2148738a1b6a87aa(s.data))
+	s.conn.Enqueue(s.route, "2cc974af.2148738a1b6a87aa", renderBlock_2148738a1b6a87aa(s.data))
 }
 
 // Snapshot returns the current rendered values for all reactive binding sites.
@@ -195,8 +195,8 @@ func (rt *ssrRoute) Layout() bool { return false }
 func (rt *ssrRoute) NewState() mux.RouteState {
 	s := &ssrState{dp: rt.dp}
 	s.SetAssets([]string{
-		"<link href=\"/static/css/vendors.5a2176a80029d4f81fc6.css\" rel=\"stylesheet\">",
-		"<script defer=\"defer\" src=\"/static/js/vendors.5a2176a80029d4f81fc6.js\"></script>",
+		"<link href=\"/static/css/vendors.5cea4e3d8eccf96590ce.css\" rel=\"stylesheet\">",
+		"<script defer=\"defer\" src=\"/static/js/vendors.5cea4e3d8eccf96590ce.js\"></script>",
 		"<link href=\"/static/css/pages/home.eb1fcc08529a6b061a27.css\" rel=\"stylesheet\">",
 		"<script defer=\"defer\" src=\"/static/js/pages/home.eb1fcc08529a6b061a27.js\"></script>",
 	})

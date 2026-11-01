@@ -53,22 +53,23 @@ func TestAppLog_KeepsTheTailAndReportsWhatWasLost(t *testing.T) {
 // The address is confirmed by connecting to it: an application that prints a URL
 // and then fails to bind must not be reported as ready.
 func TestProbeURL_OnlyReportsAnAddressThatAnswers(t *testing.T) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	var lc net.ListenConfig
+	ln, err := lc.Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Listen: %v", err)
 	}
 	defer ln.Close()
-	go http.Serve(ln, http.NotFoundHandler())
+	go func() { _ = http.Serve(ln, http.NotFoundHandler()) }()
 
 	live := fmt.Sprintf("http://localhost:%d/", ln.Addr().(*net.TCPAddr).Port)
 
-	if got := probeURL("Server listens on " + live + "\n"); got != live {
+	if got := probeURL(t.Context(), "Server listens on "+live+"\n"); got != live {
 		t.Errorf("probeURL = %q, want %q", got, live)
 	}
-	if got := probeURL("see http://localhost:1/ for details"); got != "" {
+	if got := probeURL(t.Context(), "see http://localhost:1/ for details"); got != "" {
 		t.Errorf("probeURL = %q for an address nothing answers on, want empty", got)
 	}
-	if got := probeURL("no address here"); got != "" {
+	if got := probeURL(t.Context(), "no address here"); got != "" {
 		t.Errorf("probeURL = %q, want empty", got)
 	}
 }

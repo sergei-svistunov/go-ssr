@@ -1,9 +1,11 @@
 package generator_test
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -187,5 +189,51 @@ func touch(t *testing.T, path string, when time.Time) {
 	t.Helper()
 	if err := os.Chtimes(path, when, when); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// Build writes a route's __ssr_gen__.ts before webpack runs, so the page's
+// TypeScript can import it on the first build, and generates the Go code after,
+// so it embeds what webpack wrote. Webpack runs again only when a
+// __ssr_gen__.ts changes or the caller asks.
+func TestBuildOrder(t *testing.T) {
+	webDir := filepath.Join(t.TempDir(), "web")
+	writeTemplate(t, webDir, ".", "<ssr:var name=\"count\" type=\"int\" reactive=\"true\"/>\n<p>{{ count }}</p>")
+	g := makeGen(t, webDir)
+	runs := 0
+	g.SetWebpack(func(context.Context) error {
+		runs++
+		if ts, err := os.ReadFile(filepath.Join(webDir, "pages", "__ssr_gen__.ts")); err != nil || !strings.Contains(string(ts), "createSsrClient") {
+			t.Errorf("webpack ran before __ssr_gen__.ts was written: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(webDir, "pages", "ssrroute_gen.go")); runs == 1 && err == nil {
+			t.Error("the Go code was generated before webpack ran")
+		}
+		writeFile(t, filepath.Join(webDir, "webpack-assets.json"), `{"outputPath":"static","entrypoints":{"main":["/static/main.js"]},"images":{}}`)
+		writeFile(t, filepath.Join(webDir, "static", "main.js"), "x")
+		return nil
+	})
+
+	if err := g.Build(t.Context(), false); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if runs != 1 {
+		t.Fatalf("webpack ran %d times on the first build, want 1", runs)
+	}
+	if gen, err := os.ReadFile(filepath.Join(webDir, "pages", "ssrstaticfiles_gen.go")); err != nil || !strings.Contains(string(gen), `"/static/main.js"`) {
+		t.Errorf("the Go code does not embed what webpack wrote: %v", err)
+	}
+
+	if err := g.Build(t.Context(), false); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if runs != 1 {
+		t.Error("webpack ran again though no __ssr_gen__.ts changed")
+	}
+	if err := g.Build(t.Context(), true); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if runs != 2 {
+		t.Error("webpack did not run when asked")
 	}
 }

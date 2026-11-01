@@ -58,18 +58,12 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err := g.Webpack(); err != nil {
-		fatal(err)
-	}
-	if err := g.Analyze(); err != nil {
-		fatal(err)
-	}
-	if err := g.Generate(); err != nil {
+	if err := g.Build(ctx, true); err != nil {
 		fatal(err)
 	}
 
 	if *fInit {
-		if err := g.GoModTidy(); err != nil {
+		if err := g.GoModTidy(ctx); err != nil {
 			fatal(err)
 		}
 	}

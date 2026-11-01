@@ -137,10 +137,12 @@ render the page — before it upgrades. Then:
 
 ## Request bodies
 
-A form POST is read with the standard library: `ParseForm` stops at 10 MB for a url-encoded body, and a
-multipart body keeps `mux.MaxMultipartMemory` (32 MB) in memory and writes the rest to temporary files, with
-no total limit. Cap request bodies in front of the handler — `http.MaxBytesHandler`, or your proxy's body
-size limit — at what your largest form needs.
+The mux caps the body of every POST to a page at `mux.Options.MaxBodyBytes`, 10 MiB by default, multipart
+uploads included. A body declared longer is refused with 413 `Request body too large.` before any hook runs;
+one without a declared length that turns out longer is refused with 413 when it is read, after the guards and
+before any form hook. A multipart body keeps `mux.MaxMultipartMemory` (32 MB) of it in memory and writes the
+rest to temporary files, which the cap bounds. Set the cap to what your largest form needs; a proxy body
+limit in front is still advised.
 
 ## gossr-runtime
 

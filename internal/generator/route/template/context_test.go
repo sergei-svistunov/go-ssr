@@ -526,6 +526,16 @@ func TestEndTagsCloseTheirElement(t *testing.T) {
 	}
 }
 
+// Browsers keep the first of two attributes with one name, other parsers the last.
+func TestDuplicateAttributeIsRefused(t *testing.T) {
+	for _, src := range []string{`<a b="1" b="2"></a>`, `<a B="1" b="{{ x }}"></a>`} {
+		_, err := parseSource(t, `<ssr:var name="x" type="string"/>`+src)
+		if err == nil || !strings.Contains(err.Error(), "has the attribute b twice") {
+			t.Errorf("%s: %v", src, err)
+		}
+	}
+}
+
 func TestScannedAttrsMatchTokenizer(t *testing.T) {
 	for _, src := range []string{
 		`<a b="1" c='2' d=3 e f = "4" g=>`,
@@ -539,7 +549,12 @@ func TestScannedAttrsMatchTokenizer(t *testing.T) {
 		z := html.NewTokenizer(strings.NewReader(src))
 		z.Next()
 		tok := z.Token()
-		got := scanAttrs(z.Raw())
+		var got []scannedAttr
+		for _, a := range scanAttrs(z.Raw()) {
+			if !a.dup {
+				got = append(got, a)
+			}
+		}
 		if len(got) != len(tok.Attr) {
 			t.Errorf("%s: scanned %v, tokenizer %v", src, got, tok.Attr)
 			continue

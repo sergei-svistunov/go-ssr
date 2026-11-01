@@ -74,10 +74,10 @@ func main() {
 - **The CSRF key** comes from your secret store, and every instance that serves the site gets the same one;
   `NewSsrHandler` refuses one shorter than 32 bytes. Tokens survive a restart only if the key does, and
   rotating it costs every open form one 400.
-- **Request bodies** need a cap in front of the handler: a url-encoded form stops at the standard library's
-  10 MB, but a multipart body keeps `mux.MaxMultipartMemory` in memory and spills the rest to temporary files
-  with no total limit. `http.MaxBytesHandler`, as above, or the proxy's body size limit, set to what the
-  largest form needs.
+- **Request bodies**: go-ssr caps bodies at `MaxBodyBytes`, 10 MiB unless you set it to what the largest form
+  needs; a proxy cap in front is still advised. An outer cap, `http.MaxBytesHandler` as in the example above
+  or the proxy's body size limit, also covers handlers outside the mux; set it to at least `MaxBodyBytes`, or it
+  refuses the largest forms before the mux sees them.
 - **https**: the CSRF cookie is `__Host-`-prefixed and `Secure`, so browsers drop it on plain http
   (terminating TLS at the proxy is fine).
 - **Behind a reverse proxy**, pass the public host through — `proxy_set_header Host $http_host;` in nginx
