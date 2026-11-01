@@ -23,7 +23,7 @@
     "@popperjs/core": "^2.11.8",
     "bootstrap": "^5.3.3",
     "bootstrap-icons": "^1.11.3",
-    "gossr-runtime": "^0.1.1",
+    "gossr-runtime": "^0.2.0",
     "luxon": "^3.5.0"
   }
 }
